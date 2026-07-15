@@ -10,6 +10,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: "Shed",
     description: "Good care shows. A shared household dashboard for animal husbandry.",
+    icons: { icon: "/favicon.svg" },
     openGraph: { title: "Shed", description: "Good care shows.", images: [socialImage] },
     twitter: { card: "summary_large_image", title: "Shed", description: "Good care shows.", images: [socialImage] },
   };
