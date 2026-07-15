@@ -1,0 +1,36 @@
+import { integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+
+export const animals = sqliteTable("animals", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  species: text("species").notNull(),
+  groupName: text("group_name").notNull(),
+  location: text("location").notNull(),
+  weightGrams: integer("weight_grams"),
+  weightDate: text("weight_date"),
+});
+
+export const careTasks = sqliteTable("care_tasks", {
+  id: text("id").primaryKey(),
+  animalId: text("animal_id").notNull(),
+  title: text("title").notNull(),
+  details: text("details").notNull(),
+  dueDate: text("due_date").notNull(),
+});
+
+export const husbandryEvents = sqliteTable("husbandry_events", {
+  id: text("id").primaryKey(),
+  taskId: text("task_id"),
+  animalId: text("animal_id").notNull(),
+  title: text("title").notNull(),
+  dueDate: text("due_date"),
+  occurredAt: text("occurred_at").notNull(),
+  actorRole: text("actor_role").notNull(),
+}, (table) => [uniqueIndex("event_task_due_unique").on(table.taskId, table.dueDate)]);
+
+export const weightEvents = sqliteTable("weight_events", {
+  id: text("id").primaryKey(),
+  animalId: text("animal_id").notNull(),
+  recordedOn: text("recorded_on").notNull(),
+  weightGrams: integer("weight_grams").notNull(),
+});
