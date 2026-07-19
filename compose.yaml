@@ -8,4 +8,4 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - ./data:/data
+      - ${SHED_DATA_PATH:-./data}:/data

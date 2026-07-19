@@ -13,6 +13,7 @@ ANTHROPIC_API_KEY=your-api-key
 SHED_VOICE_TOKEN=a-long-random-shared-secret
 SHED_TIME_ZONE=America/New_York
 PORT=3000
+SHED_DATA_PATH=../data
 ```
 
 Generate a suitable shared secret with `openssl rand -hex 32`. The real `.env`
