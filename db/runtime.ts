@@ -16,6 +16,7 @@ const animalRows = [
   ["turtle", "Turtle", "Leopard Gecko", "Reptile", "Indoor habitat", null, null],
   ["blue", "Blue", "Leopard Gecko", "Reptile", "Indoor habitat", null, null],
   ["rhino", "Rhino", "Western Hognose", "Reptile", "Indoor habitat", null, null],
+  ["sriracha", "Sriracha", "Western Hognose — Albino", "Reptile", "Indoor habitat", null, null],
   ["echo", "Echo", "Crested Gecko", "Reptile", "Indoor habitat", null, null],
   ["rue", "Rue", "Crested Gecko", "Reptile", "Indoor habitat", null, null],
   ["taco", "Taco", "Pacman Frog", "Amphibian", "Indoor habitat", null, null],
