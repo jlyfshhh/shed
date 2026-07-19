@@ -1,14 +1,14 @@
 import { env } from "cloudflare:workers";
-
-const today = "2026-07-14";
+import { dateInTimeZone, DEFAULT_TIME_ZONE } from "@/lib/date";
+import { previousIsoDate, scheduledTasksForDate } from "@/lib/care-schedule";
 
 const animalRows = [
-  ["telemachus", "Telemachus", "Ball Python", "Reptile", "Indoor habitat", 576, today],
-  ["achilles", "Achilles", "Ball Python", "Reptile", "Indoor habitat", 425, today],
-  ["ares", "Ares", "Ball Python", "Reptile", "Indoor habitat", 1257, today],
-  ["calypso", "Calypso", "Ball Python", "Reptile", "Indoor habitat", 625, today],
-  ["odysseus", "Odysseus", "Ball Python", "Reptile", "Indoor habitat", 935, today],
-  ["apollo", "Apollo", "Ball Python", "Reptile", "Indoor habitat", 411, today],
+  ["telemachus", "Telemachus", "Ball Python", "Reptile", "Indoor habitat", 576, "2026-07-14"],
+  ["achilles", "Achilles", "Ball Python", "Reptile", "Indoor habitat", 425, "2026-07-14"],
+  ["ares", "Ares", "Ball Python", "Reptile", "Indoor habitat", 1257, "2026-07-14"],
+  ["calypso", "Calypso", "Ball Python", "Reptile", "Indoor habitat", 625, "2026-07-14"],
+  ["odysseus", "Odysseus", "Ball Python", "Reptile", "Indoor habitat", 935, "2026-07-14"],
+  ["apollo", "Apollo", "Ball Python", "Reptile", "Indoor habitat", 411, "2026-07-14"],
   ["dracarys", "Dracarys", "Bearded Dragon", "Reptile", "Indoor habitat", null, null],
   ["pascal", "Pascal", "Veiled Chameleon", "Reptile", "Indoor habitat", null, null],
   ["wasabi", "Wasabi", "Panther Chameleon", "Reptile", "Indoor habitat", null, null],
@@ -29,47 +29,68 @@ const animalRows = [
   ["pond", "Porch Pond", "Ricefish", "Aquatic", "Outdoor habitat", null, null],
 ] as const;
 
-const taskRows = [
-  ["dracarys-salad", "dracarys", "Serve salad", "Greens, vegetables, and topper", today],
-  ["dracarys-bugs", "dracarys", "Feed insects", "Dubia roaches in today’s rotation", today],
-  ["echo-cgd", "echo", "Replace gecko smoothie", "Fresh crested gecko diet", today],
-  ["rue-cgd", "rue", "Replace gecko smoothie", "Fresh crested gecko diet", today],
-  ["paludarium-cgd", "paludarium", "Replace gecko smoothie", "Fresh CGD for the mourning geckos", today],
-] as const;
-
 const initialEvents = [
-  ["seed-salad", "dracarys-salad", "dracarys", "Served salad", today, `${today}T13:10:00-04:00`, "Zookeeper"],
-  ["seed-bugs", "dracarys-bugs", "dracarys", "Fed dubia roaches", today, `${today}T13:12:00-04:00`, "Zookeeper"],
-  ["seed-mist-pascal", null, "pascal", "Misted enclosure", null, `${today}T18:30:00-04:00`, "Zookeeper"],
-  ["seed-mist-wasabi", null, "wasabi", "Misted enclosure", null, `${today}T18:31:00-04:00`, "Zookeeper"],
-  ["seed-mist-rue", null, "rue", "Misted enclosure", null, `${today}T18:32:00-04:00`, "Zookeeper"],
-  ["seed-mist-echo", null, "echo", "Misted enclosure", null, `${today}T18:33:00-04:00`, "Zookeeper"],
-  ["seed-mist-paludarium", null, "paludarium", "Misted enclosure", null, `${today}T18:34:00-04:00`, "Zookeeper"],
+  ["seed-20260719-salad", "salad-dracarys:2026-07-19", "dracarys", "feeding", "Serve salad", null, "2026-07-19", "2026-07-19T13:00:00-04:00", "Zookeeper"],
+  ["seed-20260719-bugs", "bugs-dracarys:2026-07-19", "dracarys", "feeding", "Feed insects", "Dubia roaches and a hornworm; dusted with Repashy Calcium Plus.", "2026-07-19", "2026-07-19T13:05:00-04:00", "Zookeeper"],
+  ...["telemachus", "achilles", "ares", "calypso", "odysseus"].map((animalId) => [`seed-20260719-mist-${animalId}`, `mist-${animalId}:2026-07-18`, animalId, "misting", "Mist enclosure", null, "2026-07-18", "2026-07-19T13:10:00-04:00", "Zookeeper"]),
+  ...["mort", "turtle"].map((animalId) => [`seed-20260719-mist-${animalId}`, `mist-${animalId}:2026-07-18`, animalId, "misting", "Mist enclosure", null, "2026-07-18", "2026-07-19T13:10:00-04:00", "Zookeeper"]),
+  ...["pascal", "wasabi", "taco", "echo", "rue", "paludarium"].map((animalId) => [`seed-20260719-mist-${animalId}`, null, animalId, "misting", "Mist enclosure", null, "2026-07-19", "2026-07-19T13:15:00-04:00", "Zookeeper"]),
+  ["seed-20260719-rhino-water", null, "rhino", "water refresh", "Refresh water", "Fresh water provided; bowl cleaning not reported.", "2026-07-19", "2026-07-19T13:20:00-04:00", "Zookeeper"],
+  ["seed-20260719-pascal-feed", null, "pascal", "feeding", "Feed insects", "Dubia roaches and a hornworm; dusted with Repashy Calcium Plus.", "2026-07-19", "2026-07-19T13:25:00-04:00", "Zookeeper"],
+  ["seed-20260719-wasabi-feed", null, "wasabi", "feeding", "Feed insects", "Dubia roaches and mealworms; dusted with Repashy Calcium Plus.", "2026-07-19", "2026-07-19T13:25:00-04:00", "Zookeeper"],
+  ...[["mort", "Dubia roaches"], ["turtle", "Dubia roaches"], ["paludarium", "Dubia roaches for the red-eyed tree frogs"]].map(([animalId, food]) => [`seed-20260719-feed-${animalId}`, null, animalId, "feeding", "Feed insects", `${food}; dusted with Repashy Calcium Plus.`, "2026-07-19", "2026-07-19T13:30:00-04:00", "Zookeeper"]),
+  ...[["oscar", "Fluval Bug Bites"], ["nani", "Fluval Bug Bites"], ["tetra-frog-tank", "Fluval Bug Bites for tetras and African dwarf frogs"], ["paludarium", "Fluval Bug Bites for rasboras"], ["taki", "Fluval Bug Bites for guppies"], ["pond", "Fluval Bug Bites for ricefish"], ["reef", "Marine Life pellets for reef fish"], ["community-tank", "Fluval Bug Bites for platys, Cory catfish, and gourami"]].map(([animalId, food]) => [`seed-20260719-aquatic-${animalId}`, null, animalId, "feeding", "Feed aquatic residents", food, "2026-07-19", "2026-07-19T13:35:00-04:00", "Zookeeper"]),
 ] as const;
 
 const weightRows = [
-  ["tele-prev", "telemachus", "2026-05-30", 532], ["tele-now", "telemachus", today, 576],
-  ["ach-prev", "achilles", "2026-05-30", 382], ["ach-now", "achilles", today, 425],
-  ["ares-prev", "ares", "2026-05-30", 1289], ["ares-now", "ares", today, 1257],
-  ["cal-prev", "calypso", "2026-05-16", 555], ["cal-now", "calypso", today, 625],
-  ["ody-prev", "odysseus", "2026-05-30", 924], ["ody-now", "odysseus", today, 935],
-  ["apollo-prev", "apollo", "2026-05-30", 355], ["apollo-now", "apollo", today, 411],
+  ["tele-prev", "telemachus", "2026-05-30", 532], ["tele-now", "telemachus", "2026-07-14", 576],
+  ["ach-prev", "achilles", "2026-05-30", 382], ["ach-now", "achilles", "2026-07-14", 425],
+  ["ares-prev", "ares", "2026-05-30", 1289], ["ares-now", "ares", "2026-07-14", 1257],
+  ["cal-prev", "calypso", "2026-05-16", 555], ["cal-now", "calypso", "2026-07-14", 625],
+  ["ody-prev", "odysseus", "2026-05-30", 924], ["ody-now", "odysseus", "2026-07-14", 935],
+  ["apollo-prev", "apollo", "2026-05-30", 355], ["apollo-now", "apollo", "2026-07-14", 411],
 ] as const;
 
-export async function ensureDatabase() {
+export async function ensureDatabase(targetDate?: string) {
   const db = env.DB;
+  const timeZone = typeof env.SHED_TIME_ZONE === "string" ? env.SHED_TIME_ZONE : DEFAULT_TIME_ZONE;
+  const today = targetDate ?? dateInTimeZone(timeZone);
+  const taskRows = [
+    ...scheduledTasksForDate(previousIsoDate(today)),
+    ...scheduledTasksForDate(today),
+  ];
   await db.batch([
     db.prepare("CREATE TABLE IF NOT EXISTS animals (id TEXT PRIMARY KEY, name TEXT NOT NULL, species TEXT NOT NULL, group_name TEXT NOT NULL, location TEXT NOT NULL, weight_grams INTEGER, weight_date TEXT)"),
-    db.prepare("CREATE TABLE IF NOT EXISTS care_tasks (id TEXT PRIMARY KEY, animal_id TEXT NOT NULL, title TEXT NOT NULL, details TEXT NOT NULL, due_date TEXT NOT NULL)"),
-    db.prepare("CREATE TABLE IF NOT EXISTS husbandry_events (id TEXT PRIMARY KEY, task_id TEXT, animal_id TEXT NOT NULL, title TEXT NOT NULL, due_date TEXT, occurred_at TEXT NOT NULL, actor_role TEXT NOT NULL)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS care_tasks (id TEXT PRIMARY KEY, animal_id TEXT NOT NULL, task_type TEXT NOT NULL DEFAULT 'general', title TEXT NOT NULL, details TEXT NOT NULL, due_date TEXT NOT NULL)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS husbandry_events (id TEXT PRIMARY KEY, task_id TEXT, animal_id TEXT NOT NULL, task_type TEXT NOT NULL DEFAULT 'general', title TEXT NOT NULL, notes TEXT, due_date TEXT, occurred_at TEXT NOT NULL, actor_role TEXT NOT NULL)"),
     db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS event_task_due_unique ON husbandry_events(task_id, due_date)"),
     db.prepare("CREATE TABLE IF NOT EXISTS weight_events (id TEXT PRIMARY KEY, animal_id TEXT NOT NULL, recorded_on TEXT NOT NULL, weight_grams INTEGER NOT NULL)"),
   ]);
 
+  // D1 and SQLite do not support ADD COLUMN IF NOT EXISTS consistently. Inspect
+  // the live schema so existing installations can upgrade without losing data.
+  const [taskColumns, eventColumns] = await Promise.all([
+    db.prepare("PRAGMA table_info(care_tasks)").all<{ name: string }>(),
+    db.prepare("PRAGMA table_info(husbandry_events)").all<{ name: string }>(),
+  ]);
+  const taskColumnNames = new Set(taskColumns.results.map((column: { name: string }) => column.name));
+  const eventColumnNames = new Set(eventColumns.results.map((column: { name: string }) => column.name));
+  const upgrades = [];
+  if (!taskColumnNames.has("task_type")) {
+    upgrades.push(db.prepare("ALTER TABLE care_tasks ADD COLUMN task_type TEXT NOT NULL DEFAULT 'general'"));
+  }
+  if (!eventColumnNames.has("task_type")) {
+    upgrades.push(db.prepare("ALTER TABLE husbandry_events ADD COLUMN task_type TEXT NOT NULL DEFAULT 'general'"));
+  }
+  if (!eventColumnNames.has("notes")) {
+    upgrades.push(db.prepare("ALTER TABLE husbandry_events ADD COLUMN notes TEXT"));
+  }
+  if (upgrades.length) await db.batch(upgrades);
+
   await db.batch([
     ...animalRows.map((row) => db.prepare("INSERT OR IGNORE INTO animals (id, name, species, group_name, location, weight_grams, weight_date) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(...row)),
-    ...taskRows.map((row) => db.prepare("INSERT OR IGNORE INTO care_tasks (id, animal_id, title, details, due_date) VALUES (?, ?, ?, ?, ?)").bind(...row)),
-    ...initialEvents.map((row) => db.prepare("INSERT OR IGNORE INTO husbandry_events (id, task_id, animal_id, title, due_date, occurred_at, actor_role) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(...row)),
+    ...taskRows.map((row) => db.prepare("INSERT OR IGNORE INTO care_tasks (id, animal_id, task_type, title, details, due_date) VALUES (?, ?, ?, ?, ?, ?)").bind(row.id, row.animalId, row.taskType, row.title, row.details, row.dueDate)),
+    ...initialEvents.map((row) => db.prepare("INSERT OR IGNORE INTO husbandry_events (id, task_id, animal_id, task_type, title, notes, due_date, occurred_at, actor_role) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(...row)),
     ...weightRows.map((row) => db.prepare("INSERT OR IGNORE INTO weight_events (id, animal_id, recorded_on, weight_grams) VALUES (?, ?, ?, ?)").bind(...row)),
   ]);
   return db;

@@ -13,6 +13,7 @@ export const animals = sqliteTable("animals", {
 export const careTasks = sqliteTable("care_tasks", {
   id: text("id").primaryKey(),
   animalId: text("animal_id").notNull(),
+  taskType: text("task_type").notNull().default("general"),
   title: text("title").notNull(),
   details: text("details").notNull(),
   dueDate: text("due_date").notNull(),
@@ -22,7 +23,9 @@ export const husbandryEvents = sqliteTable("husbandry_events", {
   id: text("id").primaryKey(),
   taskId: text("task_id"),
   animalId: text("animal_id").notNull(),
+  taskType: text("task_type").notNull().default("general"),
   title: text("title").notNull(),
+  notes: text("notes"),
   dueDate: text("due_date"),
   occurredAt: text("occurred_at").notNull(),
   actorRole: text("actor_role").notNull(),

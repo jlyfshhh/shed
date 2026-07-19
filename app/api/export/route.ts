@@ -10,7 +10,7 @@ export async function GET(request: Request) {
     db.prepare("SELECT * FROM husbandry_events ORDER BY occurred_at").all(),
     db.prepare("SELECT * FROM weight_events ORDER BY animal_id, recorded_on").all(),
   ]);
-  const bundle = { exportedAt: new Date().toISOString(), schemaVersion: 1, animals: animals.results, careTasks: careTasks.results, husbandryEvents: events.results, weightEvents: weights.results };
+  const bundle = { exportedAt: new Date().toISOString(), schemaVersion: 2, animals: animals.results, careTasks: careTasks.results, husbandryEvents: events.results, weightEvents: weights.results };
   const format = new URL(request.url).searchParams.get("format");
   if (format === "csv") {
     const lines = ["record_type,data_json", ...Object.entries(bundle).flatMap(([kind, rows]) => Array.isArray(rows) ? rows.map((row) => `${csvCell(kind)},${csvCell(JSON.stringify(row))}`) : [])];
