@@ -40,6 +40,7 @@ const initialEvents = [
   ["seed-20260719-wasabi-feed", null, "wasabi", "feeding", "Feed insects", "Dubia roaches and mealworms; dusted with Repashy Calcium Plus.", "2026-07-19", "2026-07-19T13:25:00-04:00", "Zookeeper"],
   ...[["mort", "Dubia roaches"], ["turtle", "Dubia roaches"], ["paludarium", "Dubia roaches for the red-eyed tree frogs"]].map(([animalId, food]) => [`seed-20260719-feed-${animalId}`, null, animalId, "feeding", "Feed insects", `${food}; dusted with Repashy Calcium Plus.`, "2026-07-19", "2026-07-19T13:30:00-04:00", "Zookeeper"]),
   ...[["oscar", "Fluval Bug Bites"], ["nani", "Fluval Bug Bites"], ["tetra-frog-tank", "Fluval Bug Bites for tetras and African dwarf frogs"], ["paludarium", "Fluval Bug Bites for rasboras"], ["taki", "Fluval Bug Bites for guppies"], ["pond", "Fluval Bug Bites for ricefish"], ["reef", "Marine Life pellets for reef fish"], ["community-tank", "Fluval Bug Bites for platys, Cory catfish, and gourami"]].map(([animalId, food]) => [`seed-20260719-aquatic-${animalId}`, null, animalId, "feeding", "Feed aquatic residents", food, "2026-07-19", "2026-07-19T13:35:00-04:00", "Zookeeper"]),
+  ["seed-20260719-taki-pellets", null, "taki", "feeding", "Feed", "Taki was fed pellets; separate from the guppies' Fluval Bug Bites.", "2026-07-19", "2026-07-19T14:00:00-04:00", "Zookeeper"],
 ] as const;
 
 const weightRows = [
