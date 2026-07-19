@@ -22,7 +22,7 @@ type AnimalResolution =
 export async function loadVoiceAnimalRoster(db: D1Database): Promise<AnimalRow[]> {
   const result = await db
     .prepare(
-      "SELECT id, name, species, group_name AS groupName FROM animals WHERE group_name IN ('Reptile', 'Amphibian', 'Community') ORDER BY species, name",
+      "SELECT id, name, species, group_name AS groupName FROM animals ORDER BY species, name",
     )
     .all<AnimalRow>();
   return result.results;
