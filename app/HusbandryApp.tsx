@@ -82,9 +82,17 @@ export default function HusbandryApp() {
   };
 
   useEffect(() => {
-    refresh().catch(() => setToast("Couldn’t load the habitat collection yet."));
+    // Deferred a tick so the effect body itself never sets state
+    // (react-hooks/set-state-in-effect); polling keeps it fresh after that.
+    const initial = window.setTimeout(
+      () => refresh().catch(() => setToast("Couldn’t load the habitat collection yet.")),
+      0,
+    );
     const timer = window.setInterval(() => refresh().catch(() => undefined), 15000);
-    return () => window.clearInterval(timer);
+    return () => {
+      window.clearTimeout(initial);
+      window.clearInterval(timer);
+    };
   }, []);
 
   const completeTask = async (task: Task) => {
