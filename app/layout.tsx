@@ -1,6 +1,10 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
 import "./globals.css";
+
+export const viewport: Viewport = {
+  themeColor: "#21372e",
+};
 
 export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();
@@ -10,7 +14,10 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: "Shed",
     description: "Good care shows. A shared household dashboard for animal husbandry.",
-    icons: { icon: "/favicon.svg" },
+    manifest: "/manifest.webmanifest",
+    icons: { icon: "/favicon.svg", apple: "/apple-touch-icon.png" },
+    appleWebApp: { capable: true, statusBarStyle: "default", title: "Shed" },
+    formatDetection: { telephone: false },
     openGraph: { title: "Shed", description: "Good care shows.", images: [socialImage] },
     twitter: { card: "summary_large_image", title: "Shed", description: "Good care shows.", images: [socialImage] },
   };
