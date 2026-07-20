@@ -83,6 +83,9 @@ export async function ensureDatabase(targetDate?: string) {
     db.prepare("CREATE TABLE IF NOT EXISTS animals (id TEXT PRIMARY KEY, name TEXT NOT NULL, species TEXT NOT NULL, group_name TEXT NOT NULL, location TEXT NOT NULL, weight_grams INTEGER, weight_date TEXT)"),
     db.prepare("CREATE TABLE IF NOT EXISTS care_tasks (id TEXT PRIMARY KEY, animal_id TEXT NOT NULL, task_type TEXT NOT NULL DEFAULT 'general', title TEXT NOT NULL, details TEXT NOT NULL, due_date TEXT NOT NULL)"),
     db.prepare("CREATE TABLE IF NOT EXISTS husbandry_events (id TEXT PRIMARY KEY, task_id TEXT, animal_id TEXT NOT NULL, task_type TEXT NOT NULL DEFAULT 'general', title TEXT NOT NULL, notes TEXT, due_date TEXT, occurred_at TEXT NOT NULL, actor_role TEXT NOT NULL)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS household_members (id TEXT PRIMARY KEY, display_name TEXT NOT NULL, role TEXT NOT NULL, access_code_hash TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, last_login_at TEXT)"),
+    db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS household_members_access_code_hash_unique ON household_members(access_code_hash)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS household_members_active_role_idx ON household_members(active, role)"),
     db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS event_task_due_unique ON husbandry_events(task_id, due_date)"),
     db.prepare("CREATE TABLE IF NOT EXISTS weight_events (id TEXT PRIMARY KEY, animal_id TEXT NOT NULL, recorded_on TEXT NOT NULL, weight_grams INTEGER NOT NULL)"),
     db.prepare("CREATE TABLE IF NOT EXISTS voice_audit_logs (id TEXT PRIMARY KEY, requested_at TEXT NOT NULL, completed_at TEXT, utterance TEXT NOT NULL, status TEXT NOT NULL, model TEXT NOT NULL, tool_calls_json TEXT NOT NULL DEFAULT '[]', response_text TEXT, error_message TEXT, duration_ms INTEGER, user_agent TEXT)"),
@@ -112,6 +115,12 @@ export async function ensureDatabase(targetDate?: string) {
   }
   if (!eventColumnNames.has("notes")) {
     upgrades.push(db.prepare("ALTER TABLE husbandry_events ADD COLUMN notes TEXT"));
+  }
+  if (!eventColumnNames.has("completed_by_member_id")) {
+    upgrades.push(db.prepare("ALTER TABLE husbandry_events ADD COLUMN completed_by_member_id TEXT"));
+  }
+  if (!eventColumnNames.has("completed_by_name")) {
+    upgrades.push(db.prepare("ALTER TABLE husbandry_events ADD COLUMN completed_by_name TEXT"));
   }
   if (upgrades.length) await db.batch(upgrades);
 

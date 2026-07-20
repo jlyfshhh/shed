@@ -29,7 +29,23 @@ export const husbandryEvents = sqliteTable("husbandry_events", {
   dueDate: text("due_date"),
   occurredAt: text("occurred_at").notNull(),
   actorRole: text("actor_role").notNull(),
+  completedByMemberId: text("completed_by_member_id"),
+  completedByName: text("completed_by_name"),
 }, (table) => [uniqueIndex("event_task_due_unique").on(table.taskId, table.dueDate)]);
+
+export const householdMembers = sqliteTable("household_members", {
+  id: text("id").primaryKey(),
+  displayName: text("display_name").notNull(),
+  role: text("role").notNull(),
+  accessCodeHash: text("access_code_hash").notNull(),
+  active: integer("active", { mode: "boolean" }).notNull().default(true),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+  lastLoginAt: text("last_login_at"),
+}, (table) => [
+  uniqueIndex("household_members_access_code_hash_unique").on(table.accessCodeHash),
+  index("household_members_active_role_idx").on(table.active, table.role),
+]);
 
 export const weightEvents = sqliteTable("weight_events", {
   id: text("id").primaryKey(),

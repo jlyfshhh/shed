@@ -1,5 +1,6 @@
 import { ensureDatabase } from "@/db/runtime";
 import { dateInTimeZone } from "@/lib/date";
+import { householdAuthRequired, memberFromRequest } from "@/lib/household-auth";
 import {
   buildFeederForecast,
   type AvailableFeeder,
@@ -18,6 +19,9 @@ export async function GET(request: Request) {
     const horizonDays = Number.isFinite(parsedHorizon) ? parsedHorizon : 60;
     const today = dateInTimeZone();
     const db = await ensureDatabase(today);
+    if (householdAuthRequired() && !(await memberFromRequest(request, db))) {
+      return Response.json({ error: "Sign in to Shed first" }, { status: 401 });
+    }
     const [animals, weights, availableFeeders] = await Promise.all([
       db.prepare("SELECT id, name FROM animals ORDER BY name").all<ForecastAnimal>(),
       db.prepare("SELECT animal_id AS animalId, recorded_on AS recordedOn, weight_grams AS weightGrams FROM weight_events ORDER BY animal_id, recorded_on").all<ForecastWeight>(),
