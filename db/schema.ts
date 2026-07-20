@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const animals = sqliteTable("animals", {
   id: text("id").primaryKey(),
@@ -8,15 +8,56 @@ export const animals = sqliteTable("animals", {
   location: text("location").notNull(),
   weightGrams: integer("weight_grams"),
   weightDate: text("weight_date"),
+  scientificName: text("scientific_name"),
+  morph: text("morph"),
+  sex: text("sex"),
+  birthDate: text("birth_date"),
+  acquiredDate: text("acquired_date"),
+  source: text("source"),
+  notes: text("notes"),
+  active: integer("active", { mode: "boolean" }).notNull().default(true),
+  enclosureId: text("enclosure_id"),
+  createdAt: text("created_at"),
+  updatedAt: text("updated_at"),
+});
+
+export const enclosures = sqliteTable("enclosures", {
+  id: text("id").primaryKey(), name: text("name").notNull(), enclosureType: text("enclosure_type"),
+  manufacturer: text("manufacturer"), model: text("model"), width: real("width"), depth: real("depth"), height: real("height"),
+  dimensionUnit: text("dimension_unit").notNull().default("in"), location: text("location"), substrate: text("substrate"),
+  bioactive: integer("bioactive", { mode: "boolean" }).notNull().default(false), sharedHabitatId: text("shared_habitat_id"),
+  notes: text("notes"), active: integer("active", { mode: "boolean" }).notNull().default(true), createdAt: text("created_at").notNull(), updatedAt: text("updated_at").notNull(),
+});
+
+export const careSchedules = sqliteTable("care_schedules", {
+  id: text("id").primaryKey(), animalId: text("animal_id").notNull(), taskType: text("task_type").notNull(), title: text("title").notNull(),
+  details: text("details").notNull().default(""), frequency: text("frequency").notNull(), intervalDays: integer("interval_days"),
+  weekdaysJson: text("weekdays_json"), dayOfMonth: integer("day_of_month"), startDate: text("start_date").notNull(), endDate: text("end_date"),
+  active: integer("active", { mode: "boolean" }).notNull().default(true), createdAt: text("created_at").notNull(), updatedAt: text("updated_at").notNull(),
+  preySpecies: text("prey_species"), preyDescription: text("prey_description"), targetPercent: real("target_percent"),
+  minimumPercent: real("minimum_percent"), maximumPercent: real("maximum_percent"), buyAsNeeded: integer("buy_as_needed", { mode: "boolean" }).notNull().default(false),
 });
 
 export const careTasks = sqliteTable("care_tasks", {
   id: text("id").primaryKey(),
+  scheduleId: text("schedule_id"),
   animalId: text("animal_id").notNull(),
   taskType: text("task_type").notNull().default("general"),
   title: text("title").notNull(),
   details: text("details").notNull(),
   dueDate: text("due_date").notNull(),
+});
+
+export const animalNotes = sqliteTable("animal_notes", {
+  id: text("id").primaryKey(), animalId: text("animal_id"), enclosureId: text("enclosure_id"), category: text("category").notNull().default("general"),
+  title: text("title").notNull(), body: text("body").notNull(), pinned: integer("pinned", { mode: "boolean" }).notNull().default(false),
+  createdAt: text("created_at").notNull(), updatedAt: text("updated_at").notNull(), createdByMemberId: text("created_by_member_id"), createdByName: text("created_by_name"),
+});
+
+export const equipment = sqliteTable("equipment", {
+  id: text("id").primaryKey(), animalId: text("animal_id"), enclosureId: text("enclosure_id"), category: text("category").notNull().default("other"),
+  name: text("name").notNull(), brand: text("brand"), model: text("model"), installedOn: text("installed_on"), replaceOn: text("replace_on"),
+  active: integer("active", { mode: "boolean" }).notNull().default(true), notes: text("notes"), createdAt: text("created_at").notNull(), updatedAt: text("updated_at").notNull(),
 });
 
 export const husbandryEvents = sqliteTable("husbandry_events", {
@@ -35,7 +76,15 @@ export const husbandryEvents = sqliteTable("husbandry_events", {
   voidedByMemberId: text("voided_by_member_id"),
   voidedByName: text("voided_by_name"),
   voidReason: text("void_reason"),
+  editedAt: text("edited_at"),
+  editedByMemberId: text("edited_by_member_id"),
+  editedByName: text("edited_by_name"),
 }, (table) => [uniqueIndex("event_task_due_unique").on(table.taskId, table.dueDate)]);
+
+export const husbandryEventRevisions = sqliteTable("husbandry_event_revisions", {
+  id: text("id").primaryKey(), eventId: text("event_id").notNull(), changedAt: text("changed_at").notNull(),
+  changedByMemberId: text("changed_by_member_id").notNull(), changedByName: text("changed_by_name").notNull(), previousJson: text("previous_json").notNull(),
+});
 
 export const householdMembers = sqliteTable("household_members", {
   id: text("id").primaryKey(),
@@ -56,6 +105,10 @@ export const weightEvents = sqliteTable("weight_events", {
   animalId: text("animal_id").notNull(),
   recordedOn: text("recorded_on").notNull(),
   weightGrams: integer("weight_grams").notNull(),
+  notes: text("notes"),
+  recordedByMemberId: text("recorded_by_member_id"),
+  recordedByName: text("recorded_by_name"),
+  createdAt: text("created_at"),
 });
 
 export const feederInventory = sqliteTable("feeder_inventory", {

@@ -50,6 +50,20 @@
       "when": 1784588384742,
       "tag": "0006_massive_lorna_dane",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1784589555858,
+      "tag": "0007_tiny_rictor",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1784589695145,
+      "tag": "0008_loose_pepper_potts",
+      "breakpoints": true
     }
   ]
 }

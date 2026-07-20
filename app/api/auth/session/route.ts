@@ -4,8 +4,9 @@ import { expiredAccessCookie, householdAuthRequired, memberFromRequest } from "@
 export async function GET(request: Request) {
   const db = await ensureDatabase();
   const member = await memberFromRequest(request, db);
+  const memberCount = await db.prepare("SELECT COUNT(*) AS count FROM household_members").first<{ count: number }>();
   return Response.json(
-    { authenticated: Boolean(member), authRequired: householdAuthRequired(), member: member ? { id: member.id, displayName: member.displayName, role: member.role } : null },
+    { authenticated: Boolean(member), authRequired: householdAuthRequired(), setupRequired: (memberCount?.count ?? 0) === 0, member: member ? { id: member.id, displayName: member.displayName, role: member.role } : null },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

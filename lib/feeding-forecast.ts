@@ -1,4 +1,4 @@
-import { scheduledTasksForDate } from "./care-schedule.ts";
+import { scheduleIsDue, type CareScheduleRow } from "./schedules.ts";
 
 export type ForecastAnimal = {
   id: string;
@@ -18,23 +18,16 @@ export type AvailableFeeder = {
   weightGrams: number;
 };
 
-type PercentageProfile = {
+export type FeedingProfile = {
   animalId: string;
-  taskKey: string;
-  preySpecies: "rat";
-  targetPercent: number;
-  minimumPercent: number;
-  maximumPercent: number;
-};
-
-type FixedProfile = {
-  animalId: string;
-  taskKey: string;
-  preySpecies: "mouse";
+  preySpecies: string;
   preyDescription: string;
+  targetPercent: number | null;
+  minimumPercent: number | null;
+  maximumPercent: number | null;
+  buyAsNeeded: boolean;
+  schedule: CareScheduleRow;
 };
-
-type FeedingProfile = PercentageProfile | FixedProfile;
 
 export type FeederForecastEvent = {
   animalId: string;
@@ -62,28 +55,13 @@ export type FeederForecastAlert = {
   message: string;
 };
 
-const profiles: FeedingProfile[] = [
-  { animalId: "telemachus", taskKey: "feed-telemachus", preySpecies: "rat", targetPercent: 0.055, minimumPercent: 0.045, maximumPercent: 0.06 },
-  { animalId: "achilles", taskKey: "feed-achilles", preySpecies: "rat", targetPercent: 0.10, minimumPercent: 0.08, maximumPercent: 0.12 },
-  { animalId: "ares", taskKey: "feed-ares", preySpecies: "rat", targetPercent: 0.05, minimumPercent: 0.04, maximumPercent: 0.06 },
-  { animalId: "calypso", taskKey: "feed-calypso", preySpecies: "rat", targetPercent: 0.055, minimumPercent: 0.045, maximumPercent: 0.06 },
-  { animalId: "odysseus", taskKey: "feed-odysseus", preySpecies: "rat", targetPercent: 0.05, minimumPercent: 0.04, maximumPercent: 0.06 },
-  { animalId: "apollo", taskKey: "feed-apollo", preySpecies: "rat", targetPercent: 0.10, minimumPercent: 0.08, maximumPercent: 0.12 },
-  { animalId: "rhino", taskKey: "feed-rhino", preySpecies: "mouse", preyDescription: "pinky mouse" },
-  { animalId: "taco", taskKey: "mouse-taco", preySpecies: "mouse", preyDescription: "pinky mouse" },
-];
-
-const knownFeederAnimals = new Set([
-  ...profiles.map((profile) => profile.animalId),
-  "sriracha",
-]);
-
 export function buildFeederForecast(options: {
   today: string;
   horizonDays: number;
   animals: ForecastAnimal[];
   weights: ForecastWeight[];
   availableFeeders: AvailableFeeder[];
+  profiles: FeedingProfile[];
 }) {
   const horizonDays = Math.min(Math.max(Math.trunc(options.horizonDays), 1), 180);
   const animalById = new Map(options.animals.map((animal) => [animal.id, animal]));
@@ -98,7 +76,7 @@ export function buildFeederForecast(options: {
     rows.sort((left, right) => left.recordedOn.localeCompare(right.recordedOn));
   }
 
-  const events = profiles.flatMap((profile) => {
+  const events = options.profiles.flatMap((profile) => {
     const animal = animalById.get(profile.animalId);
     if (!animal) return [];
     return feedingDates(profile, options.today, horizonDays).map((feedingDate) =>
@@ -135,7 +113,7 @@ export function buildFeederForecast(options: {
     remaining.splice(selected.index, 1);
   }
 
-  const alerts = buildAlerts(events, options.animals);
+  const alerts = buildAlerts(events);
   return {
     generatedFor: options.today,
     horizonDays,
@@ -152,7 +130,7 @@ function feedingDates(profile: FeedingProfile, today: string, horizonDays: numbe
   const dates: string[] = [];
   for (let offset = 1; offset <= horizonDays; offset += 1) {
     const date = addDays(today, offset);
-    if (scheduledTasksForDate(date).some((task) => task.id === `${profile.taskKey}:${date}`)) {
+    if (scheduleIsDue(profile.schedule, date)) {
       dates.push(date);
     }
   }
@@ -165,7 +143,7 @@ function forecastEvent(
   feedingDate: string,
   weights: ForecastWeight[],
 ): FeederForecastEvent {
-  if (profile.preySpecies === "mouse") {
+  if (profile.buyAsNeeded) {
     return {
       animalId: animal.id,
       animalName: animal.name,
@@ -214,11 +192,11 @@ function forecastEvent(
     predictedWeightGrams: prediction.predictedWeightGrams,
     weightTrendGramsPerDay: prediction.trendGramsPerDay,
     weightTrendConfidence: prediction.confidence,
-    targetPreyGrams: Math.round(prediction.predictedWeightGrams * profile.targetPercent),
-    minimumPreyGrams: Math.ceil(prediction.predictedWeightGrams * profile.minimumPercent),
-    maximumPreyGrams: Math.floor(prediction.predictedWeightGrams * profile.maximumPercent),
+    targetPreyGrams: Math.round(prediction.predictedWeightGrams * (profile.targetPercent ?? 0)),
+    minimumPreyGrams: Math.ceil(prediction.predictedWeightGrams * (profile.minimumPercent ?? profile.targetPercent ?? 0)),
+    maximumPreyGrams: Math.floor(prediction.predictedWeightGrams * (profile.maximumPercent ?? profile.targetPercent ?? 0)),
     allocatedFeeder: null,
-    status: "shortage",
+    status: profile.preySpecies === "rat" ? "shortage" : "inventory-untracked",
   };
 }
 
@@ -264,7 +242,7 @@ export function predictWeight(weights: ForecastWeight[], targetDate: string) {
   };
 }
 
-function buildAlerts(events: FeederForecastEvent[], animals: ForecastAnimal[]): FeederForecastAlert[] {
+function buildAlerts(events: FeederForecastEvent[]): FeederForecastAlert[] {
   const alerts: FeederForecastAlert[] = [];
   for (const event of events) {
     if (event.status === "shortage") {
@@ -315,17 +293,6 @@ function buildAlerts(events: FeederForecastEvent[], animals: ForecastAnimal[]): 
     });
   }
 
-  for (const animal of animals.filter((item) => knownFeederAnimals.has(item.id))) {
-    if (!profiles.some((profile) => profile.animalId === animal.id)) {
-      alerts.push({
-        code: "missing-feeding-plan",
-        severity: "info",
-        animalId: animal.id,
-        animalName: animal.name,
-        message: `${animal.name} needs a feeding schedule and feeder-size plan before forecasting can begin.`,
-      });
-    }
-  }
   return alerts;
 }
 
