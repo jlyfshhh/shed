@@ -1,8 +1,16 @@
 import { ensureDatabase } from "@/db/runtime";
 import { accessCookie, createAccessCode, hashAccessCode } from "@/lib/household-auth";
+import { binding, voiceRequestIsAuthorized } from "@/lib/voice-auth";
 
 export async function POST(request: Request) {
   try {
+    const bootstrapToken = binding("SHED_BOOTSTRAP_TOKEN");
+    if (!bootstrapToken) {
+      return Response.json({ error: "Owner bootstrap is not enabled" }, { status: 503 });
+    }
+    if (!(await voiceRequestIsAuthorized(request, bootstrapToken))) {
+      return Response.json({ error: "Invalid bootstrap token" }, { status: 401 });
+    }
     const db = await ensureDatabase();
     const existing = await db.prepare("SELECT COUNT(*) AS count FROM household_members").first<{ count: number }>();
     if ((existing?.count ?? 0) > 0) {

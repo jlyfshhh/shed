@@ -5,5 +5,6 @@ declare namespace Cloudflare {
     SHED_VOICE_TOKEN?: string;
     SHED_TIME_ZONE?: string;
     SHED_AUTH_REQUIRED?: string;
+    SHED_BOOTSTRAP_TOKEN?: string;
   }
 }
