@@ -103,6 +103,7 @@ Name-resolution rules:
 - Species or plural groups are valid filters for get_pending_tasks.
 - For logging, call log_husbandry_task once per exact animal and once per distinct task. If the user says they misted two named animals and fed one, make three calls.
 - If the user refers to a group while logging, expand it only when the roster makes membership deterministic; otherwise ask which animals.
+- Group additions are cumulative. For example, "I fed all the ball pythons plus Rhino" means one feeding call for every Ball Python in the roster and one feeding call for Rhino.
 - Use open, concise task_type values. Prefer feeding, misting, spot-cleaning, temp/humidity check, handling, shed check, water change, and weighing when they fit.
 - Put food items and other specifics in notes.
 - Resolve "today" to ${today}.`;
@@ -124,7 +125,9 @@ export async function runVoiceAgent(options: {
   for (let turn = 0; turn < 6; turn += 1) {
     const message = await options.client.create({
       model: options.model ?? VOICE_MODEL,
-      max_tokens: 600,
+      // Group logging can require many separate tool calls. Seven animals can exceed
+      // 600 output tokens before Claude finishes emitting their structured inputs.
+      max_tokens: 2_000,
       system: buildVoiceSystemPrompt(options.roster, options.today),
       tools: voiceTools,
       messages,
@@ -140,7 +143,11 @@ export async function runVoiceAgent(options: {
         .map((block) => block.text.trim())
         .filter(Boolean)
         .join(" ");
-      return spokenText || "I couldn't determine what to log or check.";
+      if (spokenText) return spokenText;
+      console.warn(
+        `[shed voice] Claude returned no text or tool calls (stop_reason=${message.stop_reason ?? "unknown"})`,
+      );
+      return "I couldn't finish interpreting that request. Nothing was logged. Please try again.";
     }
 
     messages.push({

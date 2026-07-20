@@ -50,6 +50,54 @@ test("fed dracarys today produces the expected logging tool arguments", async ()
   ]);
   assert.match(response, /logged/i);
   assert.equal(client.requests[0].model, VOICE_MODEL);
+  assert.equal(client.requests[0].max_tokens, 2_000);
+});
+
+test("all ball pythons plus Rhino logs each named roster member", async () => {
+  const groupRoster: VoiceAnimal[] = [
+    ...roster,
+    { id: "ares", name: "Ares", species: "Ball Python" },
+    { id: "calypso", name: "Calypso", species: "Ball Python" },
+    { id: "odysseus", name: "Odysseus", species: "Ball Python" },
+    { id: "apollo", name: "Apollo", species: "Ball Python" },
+    { id: "rhino", name: "Rhino", species: "Western Hognose" },
+  ];
+  const expectedNames = [
+    "Telemachus",
+    "Achilles",
+    "Ares",
+    "Calypso",
+    "Odysseus",
+    "Apollo",
+    "Rhino",
+  ];
+  const calls: Array<{ name: string; input: Record<string, unknown> }> = [];
+  const client = mockClient([
+    multiToolMessage(
+      expectedNames.map((animalName, index) => [
+        `log-${index}`,
+        "log_husbandry_task",
+        { animal_name: animalName, task_type: "feeding" },
+      ]),
+    ),
+    textMessage("All six ball pythons and Rhino are logged as fed."),
+  ]);
+
+  const response = await runVoiceAgent({
+    client,
+    text: "I fed all the ball pythons plus Rhino",
+    roster: groupRoster,
+    today: "2026-07-19",
+    executeTool: async (name, input) => {
+      calls.push({ name, input });
+      return { ok: true, saved: true };
+    },
+  });
+
+  assert.deepEqual(calls.map((call) => call.input.animal_name), expectedNames);
+  assert.ok(calls.every((call) => call.input.task_type === "feeding"));
+  assert.match(response, /Rhino/i);
+  assert.match(buildVoiceSystemPrompt(groupRoster, "2026-07-19"), /all the ball pythons plus Rhino/i);
 });
 
 test("one utterance may execute multiple husbandry tool calls", async () => {
