@@ -10,7 +10,6 @@ export async function ensureDatabase(targetDate?: string) {
 
   await db.batch([
     db.prepare("CREATE TABLE IF NOT EXISTS animals (id TEXT PRIMARY KEY, name TEXT NOT NULL, species TEXT NOT NULL, group_name TEXT NOT NULL DEFAULT 'Reptile', location TEXT NOT NULL DEFAULT '', weight_grams INTEGER, weight_date TEXT, scientific_name TEXT, morph TEXT, sex TEXT, birth_date TEXT, acquired_date TEXT, source TEXT, notes TEXT, active INTEGER NOT NULL DEFAULT 1, enclosure_id TEXT, created_at TEXT, updated_at TEXT)"),
-    db.prepare("CREATE INDEX IF NOT EXISTS animals_active_name_idx ON animals(active, name)"),
     db.prepare("CREATE TABLE IF NOT EXISTS enclosures (id TEXT PRIMARY KEY, name TEXT NOT NULL, enclosure_type TEXT, manufacturer TEXT, model TEXT, width REAL, depth REAL, height REAL, dimension_unit TEXT NOT NULL DEFAULT 'in', location TEXT, substrate TEXT, bioactive INTEGER NOT NULL DEFAULT 0, shared_habitat_id TEXT, notes TEXT, active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"),
     db.prepare("CREATE INDEX IF NOT EXISTS enclosures_active_name_idx ON enclosures(active, name)"),
     db.prepare("CREATE TABLE IF NOT EXISTS care_schedules (id TEXT PRIMARY KEY, animal_id TEXT NOT NULL, task_type TEXT NOT NULL, title TEXT NOT NULL, details TEXT NOT NULL DEFAULT '', frequency TEXT NOT NULL, interval_days INTEGER, weekdays_json TEXT, day_of_month INTEGER, start_date TEXT NOT NULL, end_date TEXT, active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, prey_species TEXT, prey_description TEXT, target_percent REAL, minimum_percent REAL, maximum_percent REAL, buy_as_needed INTEGER NOT NULL DEFAULT 0)"),
@@ -54,6 +53,7 @@ export async function ensureDatabase(targetDate?: string) {
   await addMissingColumns(db, "weight_events", [
     ["notes", "TEXT"], ["recorded_by_member_id", "TEXT"], ["recorded_by_name", "TEXT"], ["created_at", "TEXT"],
   ]);
+  await db.prepare("CREATE INDEX IF NOT EXISTS animals_active_name_idx ON animals(active, name)").run();
 
   const schedules = await db.prepare(
     "SELECT id, animal_id AS animalId, task_type AS taskType, title, details, frequency, interval_days AS intervalDays, weekdays_json AS weekdaysJson, day_of_month AS dayOfMonth, start_date AS startDate, end_date AS endDate FROM care_schedules WHERE active = 1",
