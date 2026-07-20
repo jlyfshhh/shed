@@ -18,6 +18,13 @@ export type VoiceToolExecutor = (
   input: Record<string, unknown>,
 ) => Promise<VoiceToolResult>;
 
+export type VoiceToolAuditEntry = {
+  toolUseId: string;
+  name: string;
+  input: Record<string, unknown>;
+  result: VoiceToolResult;
+};
+
 type MessageClient = {
   create(
     params: Anthropic.Messages.MessageCreateParamsNonStreaming,
@@ -107,6 +114,7 @@ export async function runVoiceAgent(options: {
   roster: VoiceAnimal[];
   today: string;
   executeTool: VoiceToolExecutor;
+  onToolResult?: (entry: VoiceToolAuditEntry) => void;
   model?: string;
 }): Promise<string> {
   const messages: Anthropic.Messages.MessageParam[] = [
@@ -150,6 +158,16 @@ export async function runVoiceAgent(options: {
         );
       } catch {
         result = { ok: false, error: "Shed could not complete that action." };
+      }
+      try {
+        options.onToolResult?.({
+          toolUseId: call.id,
+          name: call.name,
+          input: call.input as Record<string, unknown>,
+          result,
+        });
+      } catch {
+        // Auditing must never prevent a husbandry action from completing.
       }
       results.push({
         type: "tool_result",

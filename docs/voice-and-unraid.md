@@ -72,20 +72,33 @@ loaded from Shed's `animals` table for every request rather than being embedded
 in route code. Logs append to `husbandry_events`; pending questions read
 incomplete rows from `care_tasks` for the requested date.
 
+Every authenticated, valid voice request also creates a durable row in
+`voice_audit_logs`. The audit row contains the full utterance, model, tool calls
+and results, final response, success or failure, duration, timestamps, and user
+agent. API keys and shared-secret headers are never recorded. A request starts
+with `processing` status so an interrupted request remains visible during an
+audit.
+
+Recent audit entries can be read through `GET /api/voice/audit?limit=50` using
+the same `X-Shed-Token` header. The limit is clamped to 1–200. Voice audit rows
+are also included in both full data-export formats.
+
 ## iPhone/HomePod Shortcut
 
 Create a Shortcut named **Ask Shed**:
 
-1. Add **Dictate Text** (or **Ask for Input** while testing).
+1. Add **Ask for Input** with a short husbandry prompt. Siri supplies the spoken
+   answer when the Shortcut is invoked by voice.
 2. Add **Get Contents of URL** with a URL such as
    `http://shed.local:3000/api/voice` or the Unraid server's reserved LAN IP.
 3. Set the method to **POST**.
 4. Add the header `X-Shed-Token` with the same shared secret used by the
    container.
-5. Set the request body to **JSON**, add a `text` field, and use the dictated
-   text as its value.
+5. Set the request body to **File** and use the answer from **Ask for Input**.
+   The endpoint accepts this raw text as well as the documented JSON format.
 6. Add **Get Dictionary Value**, selecting the `response` key from the result.
-7. Add **Speak Text** with that value.
+7. Add **Show Content** with that value so Siri reads the result and manual runs
+   display it.
 
 Enable Personal Requests for the HomePod and make sure the phone, HomePod, and
 Shed server can reach one another on the same network. You can then say,

@@ -54,6 +54,7 @@ test("fed dracarys today produces the expected logging tool arguments", async ()
 
 test("one utterance may execute multiple husbandry tool calls", async () => {
   const calls: Array<{ name: string; input: Record<string, unknown> }> = [];
+  const auditEntries: Array<{ name: string; result: { ok: boolean } }> = [];
   const client = mockClient([
     multiToolMessage([
       ["log-1", "log_husbandry_task", { animal_name: "Dracarys", task_type: "feeding" }],
@@ -72,6 +73,7 @@ test("one utterance may execute multiple husbandry tool calls", async () => {
       calls.push({ name, input });
       return { ok: true, saved: true };
     },
+    onToolResult: (entry) => auditEntries.push({ name: entry.name, result: entry.result }),
   });
 
   assert.equal(calls.length, 3);
@@ -80,6 +82,12 @@ test("one utterance may execute multiple husbandry tool calls", async () => {
     "Pascal",
     "Wasabi",
   ]);
+  assert.deepEqual(auditEntries.map((entry) => entry.name), [
+    "log_husbandry_task",
+    "log_husbandry_task",
+    "log_husbandry_task",
+  ]);
+  assert.ok(auditEntries.every((entry) => entry.result.ok));
 });
 
 test("what is left for ball pythons uses the pending-task tool", async () => {

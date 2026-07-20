@@ -67,6 +67,8 @@ export async function ensureDatabase(targetDate?: string) {
     db.prepare("CREATE TABLE IF NOT EXISTS husbandry_events (id TEXT PRIMARY KEY, task_id TEXT, animal_id TEXT NOT NULL, task_type TEXT NOT NULL DEFAULT 'general', title TEXT NOT NULL, notes TEXT, due_date TEXT, occurred_at TEXT NOT NULL, actor_role TEXT NOT NULL)"),
     db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS event_task_due_unique ON husbandry_events(task_id, due_date)"),
     db.prepare("CREATE TABLE IF NOT EXISTS weight_events (id TEXT PRIMARY KEY, animal_id TEXT NOT NULL, recorded_on TEXT NOT NULL, weight_grams INTEGER NOT NULL)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS voice_audit_logs (id TEXT PRIMARY KEY, requested_at TEXT NOT NULL, completed_at TEXT, utterance TEXT NOT NULL, status TEXT NOT NULL, model TEXT NOT NULL, tool_calls_json TEXT NOT NULL DEFAULT '[]', response_text TEXT, error_message TEXT, duration_ms INTEGER, user_agent TEXT)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS voice_audit_requested_at_idx ON voice_audit_logs(requested_at)"),
   ]);
 
   // D1 and SQLite do not support ADD COLUMN IF NOT EXISTS consistently. Inspect

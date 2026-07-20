@@ -1,5 +1,4 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { env } from "cloudflare:workers";
 import { ensureDatabase } from "@/db/runtime";
 import { dateInTimeZone, DEFAULT_TIME_ZONE } from "@/lib/date";
 import {
@@ -7,19 +6,22 @@ import {
   loadVoiceAnimalRoster,
 } from "@/lib/husbandry-tools";
 import { runVoiceAgent, VOICE_MODEL } from "@/lib/voice-agent";
+import type { VoiceToolAuditEntry } from "@/lib/voice-agent";
+import { finishVoiceAudit, startVoiceAudit } from "@/lib/voice-audit";
+import { binding, voiceRequestIsAuthorized } from "@/lib/voice-auth";
 import { readVoiceText } from "@/lib/voice-request";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
+  const startedAt = Date.now();
   const apiKey = binding("ANTHROPIC_API_KEY");
   const sharedSecret = binding("SHED_VOICE_TOKEN");
   if (!apiKey || !sharedSecret) {
     return spokenError("Shed's voice service isn't configured yet.", 503);
   }
 
-  const suppliedToken = request.headers.get("X-Shed-Token") ?? "";
-  if (!(await tokensMatch(suppliedToken, sharedSecret))) {
+  if (!(await voiceRequestIsAuthorized(request, sharedSecret))) {
     return spokenError("Shed couldn't verify this Shortcut.", 401);
   }
 
@@ -38,10 +40,26 @@ export async function POST(request: Request) {
     );
   }
 
+  const timeZone = binding("SHED_TIME_ZONE") ?? DEFAULT_TIME_ZONE;
+  const today = dateInTimeZone(timeZone);
+  const toolCalls: VoiceToolAuditEntry[] = [];
+  let db: Awaited<ReturnType<typeof ensureDatabase>> | undefined;
+  let auditId: string | undefined;
+
   try {
-    const timeZone = binding("SHED_TIME_ZONE") ?? DEFAULT_TIME_ZONE;
-    const today = dateInTimeZone(timeZone);
-    const db = await ensureDatabase(today);
+    db = await ensureDatabase(today);
+    try {
+      auditId = await startVoiceAudit({
+        db,
+        utterance: text,
+        model: VOICE_MODEL,
+        requestedAt: new Date(startedAt).toISOString(),
+        userAgent: request.headers.get("User-Agent"),
+      });
+    } catch (auditError) {
+      console.error("[shed voice audit] unable to start:", errorMessage(auditError));
+    }
+
     const roster = await loadVoiceAnimalRoster(db);
     const client = new Anthropic({ apiKey });
     const response = await runVoiceAgent({
@@ -51,39 +69,55 @@ export async function POST(request: Request) {
       today,
       model: VOICE_MODEL,
       executeTool: createHusbandryToolExecutor({ db, roster, today }),
+      onToolResult: (entry) => toolCalls.push(entry),
     });
+    const durationMs = Date.now() - startedAt;
+    if (auditId) {
+      try {
+        await finishVoiceAudit({
+          db,
+          id: auditId,
+          status: "succeeded",
+          completedAt: new Date().toISOString(),
+          durationMs,
+          toolCalls,
+          responseText: response,
+        });
+      } catch (auditError) {
+        console.error("[shed voice audit] unable to finish:", errorMessage(auditError));
+      }
+    }
+    console.info(`[shed voice] ${auditId ?? "untracked"} succeeded in ${durationMs}ms`);
     return Response.json({ response });
   } catch (error) {
+    const response = "I couldn't reach Shed's voice service just now. Please try again.";
+    const durationMs = Date.now() - startedAt;
+    if (db && auditId) {
+      try {
+        await finishVoiceAudit({
+          db,
+          id: auditId,
+          status: "failed",
+          completedAt: new Date().toISOString(),
+          durationMs,
+          toolCalls,
+          responseText: response,
+          errorMessage: errorMessage(error),
+        });
+      } catch (auditError) {
+        console.error("[shed voice audit] unable to record failure:", errorMessage(auditError));
+      }
+    }
     console.error(
       "[shed voice] request failed:",
-      error instanceof Error ? error.message : "unknown error",
+      errorMessage(error),
     );
-    return spokenError(
-      "I couldn't reach Shed's voice service just now. Please try again.",
-      502,
-    );
+    return spokenError(response, 502);
   }
 }
 
-function binding(name: string): string | undefined {
-  const value = (env as unknown as Record<string, unknown>)[name];
-  return typeof value === "string" && value.trim() ? value.trim() : undefined;
-}
-
-async function tokensMatch(supplied: string, expected: string): Promise<boolean> {
-  if (!supplied || !expected) return false;
-  const encoder = new TextEncoder();
-  const [left, right] = await Promise.all([
-    crypto.subtle.digest("SHA-256", encoder.encode(supplied)),
-    crypto.subtle.digest("SHA-256", encoder.encode(expected)),
-  ]);
-  const leftBytes = new Uint8Array(left);
-  const rightBytes = new Uint8Array(right);
-  let difference = leftBytes.length ^ rightBytes.length;
-  for (let index = 0; index < leftBytes.length; index += 1) {
-    difference |= leftBytes[index] ^ (rightBytes[index] ?? 0);
-  }
-  return difference === 0;
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "unknown error";
 }
 
 function spokenError(response: string, status: number) {

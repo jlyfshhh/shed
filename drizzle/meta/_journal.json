@@ -15,6 +15,13 @@
       "when": 1784159732399,
       "tag": "0001_dazzling_polaris",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1784508593236,
+      "tag": "0002_talented_bill_hollister",
+      "breakpoints": true
     }
   ]
 }
