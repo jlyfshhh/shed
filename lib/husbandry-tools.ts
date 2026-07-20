@@ -146,7 +146,7 @@ async function pendingRows(
        FROM care_tasks t
        JOIN animals a ON a.id = t.animal_id
        LEFT JOIN husbandry_events e ON e.task_id = t.id AND e.due_date = t.due_date
-       WHERE (t.due_date = ? OR (t.due_date = ? AND t.id NOT LIKE 'salad-dracarys:%'))
+       WHERE (t.due_date = ? OR (t.due_date = ? AND t.id NOT LIKE 'salad-dracarys:%' AND NOT (t.task_type = 'misting' AND t.animal_id IN ('pascal', 'wasabi', 'echo', 'rue'))))
          AND t.animal_id IN (${placeholders}) AND e.id IS NULL
        ORDER BY t.due_date, a.name, t.title`,
     )
