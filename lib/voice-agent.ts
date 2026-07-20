@@ -23,6 +23,7 @@ export type VoiceToolAuditEntry = {
   name: string;
   input: Record<string, unknown>;
   result: VoiceToolResult;
+  technicalError?: string;
 };
 
 type MessageClient = {
@@ -158,12 +159,15 @@ export async function runVoiceAgent(options: {
     const results: Anthropic.Messages.ToolResultBlockParam[] = [];
     for (const call of toolCalls) {
       let result: VoiceToolResult;
+      let technicalError: string | undefined;
       try {
         result = await options.executeTool(
           call.name,
           call.input as Record<string, unknown>,
         );
-      } catch {
+      } catch (error) {
+        technicalError = error instanceof Error ? error.message : "unknown tool error";
+        console.error(`[shed voice] tool ${call.name} failed:`, technicalError);
         result = { ok: false, error: "Shed could not complete that action." };
       }
       try {
@@ -172,6 +176,7 @@ export async function runVoiceAgent(options: {
           name: call.name,
           input: call.input as Record<string, unknown>,
           result,
+          ...(technicalError ? { technicalError } : {}),
         });
       } catch {
         // Auditing must never prevent a husbandry action from completing.

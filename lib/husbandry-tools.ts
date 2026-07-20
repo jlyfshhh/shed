@@ -1,6 +1,6 @@
-import { isIsoDate } from "./date";
-import { previousIsoDate } from "./care-schedule";
-import type { VoiceAnimal, VoiceToolExecutor, VoiceToolResult } from "./voice-agent";
+import { isIsoDate } from "./date.ts";
+import { previousIsoDate } from "./care-schedule.ts";
+import type { VoiceAnimal, VoiceToolExecutor, VoiceToolResult } from "./voice-agent.ts";
 
 type AnimalRow = VoiceAnimal & { groupName: string };
 
@@ -83,7 +83,7 @@ async function logHusbandryTask(
       animal.id,
       taskType,
       title,
-      notes,
+      notes ?? null,
       date,
       occurredAt,
       "Zookeeper",
