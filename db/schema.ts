@@ -51,3 +51,33 @@ export const voiceAuditLogs = sqliteTable("voice_audit_logs", {
   durationMs: integer("duration_ms"),
   userAgent: text("user_agent"),
 }, (table) => [index("voice_audit_requested_at_idx").on(table.requestedAt)]);
+
+export const feederInventory = sqliteTable("feeder_inventory", {
+  id: text("id").primaryKey(),
+  preySpecies: text("prey_species").notNull(),
+  sizeClass: text("size_class").notNull(),
+  weightGrams: integer("weight_grams").notNull(),
+  status: text("status").notNull().default("available"),
+  addedOn: text("added_on").notNull(),
+  consumedAt: text("consumed_at"),
+  animalId: text("animal_id"),
+  husbandryEventId: text("husbandry_event_id"),
+  notes: text("notes"),
+}, (table) => [
+  index("feeder_inventory_status_idx").on(table.status),
+  index("feeder_inventory_size_weight_idx").on(table.preySpecies, table.sizeClass, table.weightGrams),
+]);
+
+export const feedingAssignments = sqliteTable("feeding_assignments", {
+  id: text("id").primaryKey(),
+  animalId: text("animal_id").notNull(),
+  feederId: text("feeder_id").notNull(),
+  plannedFor: text("planned_for").notNull(),
+  status: text("status").notNull().default("planned"),
+  createdAt: text("created_at").notNull(),
+  consumedAt: text("consumed_at"),
+  husbandryEventId: text("husbandry_event_id"),
+}, (table) => [
+  index("feeding_assignments_animal_date_idx").on(table.animalId, table.plannedFor),
+  index("feeding_assignments_feeder_idx").on(table.feederId),
+]);

@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { dateInTimeZone, DEFAULT_TIME_ZONE } from "@/lib/date";
 import { previousIsoDate, scheduledTasksForDate } from "@/lib/care-schedule";
+import { feederInventorySeed } from "@/lib/feeder-inventory";
 
 const animalRows = [
   ["telemachus", "Telemachus", "Ball Python", "Reptile", "Indoor habitat", 576, "2026-07-14"],
@@ -69,6 +70,12 @@ export async function ensureDatabase(targetDate?: string) {
     db.prepare("CREATE TABLE IF NOT EXISTS weight_events (id TEXT PRIMARY KEY, animal_id TEXT NOT NULL, recorded_on TEXT NOT NULL, weight_grams INTEGER NOT NULL)"),
     db.prepare("CREATE TABLE IF NOT EXISTS voice_audit_logs (id TEXT PRIMARY KEY, requested_at TEXT NOT NULL, completed_at TEXT, utterance TEXT NOT NULL, status TEXT NOT NULL, model TEXT NOT NULL, tool_calls_json TEXT NOT NULL DEFAULT '[]', response_text TEXT, error_message TEXT, duration_ms INTEGER, user_agent TEXT)"),
     db.prepare("CREATE INDEX IF NOT EXISTS voice_audit_requested_at_idx ON voice_audit_logs(requested_at)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS feeder_inventory (id TEXT PRIMARY KEY, prey_species TEXT NOT NULL, size_class TEXT NOT NULL, weight_grams INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'available', added_on TEXT NOT NULL, consumed_at TEXT, animal_id TEXT, husbandry_event_id TEXT, notes TEXT)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS feeder_inventory_status_idx ON feeder_inventory(status)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS feeder_inventory_size_weight_idx ON feeder_inventory(prey_species, size_class, weight_grams)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS feeding_assignments (id TEXT PRIMARY KEY, animal_id TEXT NOT NULL, feeder_id TEXT NOT NULL, planned_for TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'planned', created_at TEXT NOT NULL, consumed_at TEXT, husbandry_event_id TEXT)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS feeding_assignments_animal_date_idx ON feeding_assignments(animal_id, planned_for)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS feeding_assignments_feeder_idx ON feeding_assignments(feeder_id)"),
   ]);
 
   // D1 and SQLite do not support ADD COLUMN IF NOT EXISTS consistently. Inspect
@@ -96,6 +103,7 @@ export async function ensureDatabase(targetDate?: string) {
     ...taskRows.map((row) => db.prepare("INSERT OR IGNORE INTO care_tasks (id, animal_id, task_type, title, details, due_date) VALUES (?, ?, ?, ?, ?, ?)").bind(row.id, row.animalId, row.taskType, row.title, row.details, row.dueDate)),
     ...initialEvents.map((row) => db.prepare("INSERT OR IGNORE INTO husbandry_events (id, task_id, animal_id, task_type, title, notes, due_date, occurred_at, actor_role) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(...row)),
     ...weightRows.map((row) => db.prepare("INSERT OR IGNORE INTO weight_events (id, animal_id, recorded_on, weight_grams) VALUES (?, ?, ?, ?)").bind(...row)),
+    ...feederInventorySeed.map((row) => db.prepare("INSERT OR IGNORE INTO feeder_inventory (id, prey_species, size_class, weight_grams, status, added_on) VALUES (?, ?, ?, ?, 'available', '2026-07-19')").bind(row.id, row.preySpecies, row.sizeClass, row.weightGrams)),
   ]);
   return db;
 }
