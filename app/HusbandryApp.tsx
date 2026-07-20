@@ -1,8 +1,49 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 type Role = "Owner" | "Zookeeper";
+type Viewer = { id: string; displayName: string; role: Role };
+type Session = { authenticated: boolean; authRequired: boolean; member: Viewer | null };
+type Member = {
+  id: string;
+  displayName: string;
+  role: Role;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+  lastLoginAt: string | null;
+};
+type Invite = { displayName: string; accessCode: string };
+type ContributionReport = {
+  from: string;
+  to: string;
+  contributions: Array<{ memberId: string; displayName: string; taskCount: number }>;
+  completions: Array<{
+    eventId: string;
+    memberId: string;
+    completedBy: string;
+    animalName: string;
+    title: string;
+    dueDate: string | null;
+    completedAt: string;
+  }>;
+};
+type VoiceToolCall = { toolUseId: string; name: string; input: unknown; result: unknown };
+type VoiceAuditLog = {
+  id: string;
+  requestedAt: string;
+  completedAt: string | null;
+  utterance: string;
+  status: string;
+  model: string;
+  toolCalls: VoiceToolCall[];
+  responseText: string | null;
+  errorMessage: string | null;
+  durationMs: number | null;
+  userAgent: string | null;
+};
+type VoiceAuditState = "locked" | "loading" | "ready" | "unauthorized" | "failed";
 type Tab = "today" | "animals" | "trends" | "more";
 type Task = {
   id: string;
@@ -13,6 +54,8 @@ type Task = {
   details: string;
   dueDate: string;
   complete: boolean;
+  completedByMemberId: string | null;
+  completedBy: string | null;
 };
 type Animal = {
   id: string;
@@ -29,6 +72,7 @@ type RecentEvent = {
   title: string;
   occurredAt: string;
   actorRole: string;
+  completedBy: string | null;
 };
 type WeightTrend = {
   animalId: string;
@@ -40,6 +84,7 @@ type WeightTrend = {
 };
 type DashboardData = {
   date: string;
+  viewer: Viewer | null;
   tasks: Task[];
   animals: Animal[];
   recentEvents: RecentEvent[];
@@ -52,6 +97,10 @@ const navItems: Array<{ id: Tab; label: string; glyph: string }> = [
   { id: "trends", label: "Trends", glyph: "↗" },
   { id: "more", label: "More", glyph: "•••" },
 ];
+
+// Internal API roles stay "Owner"/"Zookeeper" for backend compatibility;
+// keepers see the household-friendly labels.
+const roleLabel = (role: Role) => (role === "Owner" ? "Head Keeper" : "Keeper");
 
 const formatDate = (date: string) =>
   new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric" }).format(
@@ -69,14 +118,63 @@ const timeAgo = (value: string) => {
 
 export default function HusbandryApp() {
   const [data, setData] = useState<DashboardData | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("today");
-  const [role, setRole] = useState<Role>("Owner");
   const [busyTask, setBusyTask] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [query, setQuery] = useState("");
 
+  // ── Sign-in (real sessions; the old role-preview toggle is gone on purpose) ──
+  const [accessCodeInput, setAccessCodeInput] = useState("");
+  const [loginBusy, setLoginBusy] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
+
+  // ── Household management (Head Keeper only) ──
+  const [members, setMembers] = useState<Member[] | null>(null);
+  const [membersError, setMembersError] = useState<string | null>(null);
+  const [newMemberName, setNewMemberName] = useState("");
+  const [memberBusy, setMemberBusy] = useState<string | null>(null);
+  const [invite, setInvite] = useState<Invite | null>(null);
+  const [report, setReport] = useState<ContributionReport | null>(null);
+  const [reportError, setReportError] = useState<string | null>(null);
+  const [reportBusy, setReportBusy] = useState(false);
+  const [reportFrom, setReportFrom] = useState("");
+  const [reportTo, setReportTo] = useState("");
+
+  // ── Voice history (PROVISIONAL convenience gate — NOT real authorization) ──
+  // The audit endpoint still uses the shared voice token, separate from member
+  // sessions. The token is prompted for per page load and held only in this
+  // ref: never in local/session storage, cookies, URLs, or the rendered DOM.
+  // When voice history moves behind household sessions, DELETE this
+  // token-prompt flow entirely (do not layer real auth underneath it).
+  const voiceTokenRef = useRef<string | null>(null);
+  const [voiceTokenInput, setVoiceTokenInput] = useState("");
+  const [voiceAudit, setVoiceAudit] = useState<VoiceAuditLog[]>([]);
+  const [voiceAuditState, setVoiceAuditState] = useState<VoiceAuditState>("locked");
+  const [expandedLog, setExpandedLog] = useState<string | null>(null);
+
+  const viewer = session?.member ?? data?.viewer ?? null;
+  const authRequired = session?.authRequired ?? false;
+  const signedIn = Boolean(session?.member);
+  const isOwner = viewer ? viewer.role === "Owner" : !authRequired;
+  const gateOpen = Boolean(session && session.authRequired && !session.member);
+
+  const loadSession = async () => {
+    try {
+      const response = await fetch("/api/auth/session", { cache: "no-store" });
+      if (!response.ok) throw new Error("Session unavailable");
+      setSession((await response.json()) as Session);
+    } catch {
+      setSession({ authenticated: false, authRequired: false, member: null });
+    }
+  };
+
   const refresh = async () => {
     const response = await fetch("/api/dashboard", { cache: "no-store" });
+    if (response.status === 401) {
+      await loadSession();
+      return;
+    }
     if (!response.ok) throw new Error("Dashboard data is unavailable");
     setData(await response.json());
   };
@@ -84,16 +182,212 @@ export default function HusbandryApp() {
   useEffect(() => {
     // Deferred a tick so the effect body itself never sets state
     // (react-hooks/set-state-in-effect); polling keeps it fresh after that.
-    const initial = window.setTimeout(
-      () => refresh().catch(() => setToast("Couldn’t load the habitat collection yet.")),
-      0,
-    );
+    const initial = window.setTimeout(() => {
+      loadSession().catch(() => undefined);
+      refresh().catch(() => setToast("Couldn’t load the habitat collection yet."));
+    }, 0);
     const timer = window.setInterval(() => refresh().catch(() => undefined), 15000);
     return () => {
       window.clearTimeout(initial);
       window.clearInterval(timer);
     };
+    // Mount-only: loadSession/refresh are stable for the component's lifetime.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const loadMembers = async () => {
+    setMembersError(null);
+    try {
+      const response = await fetch("/api/household/members", { cache: "no-store" });
+      if (response.status === 401 || response.status === 403) {
+        setMembers(null);
+        return;
+      }
+      if (!response.ok) throw new Error("Couldn’t load household members.");
+      setMembers(((await response.json()) as { members: Member[] }).members);
+    } catch {
+      setMembersError("Couldn’t load household members.");
+    }
+  };
+
+  const loadReport = async (from?: string, to?: string) => {
+    setReportBusy(true);
+    setReportError(null);
+    try {
+      const params = new URLSearchParams();
+      if (from) params.set("from", from);
+      if (to) params.set("to", to);
+      const queryString = params.toString();
+      const response = await fetch(`/api/household/contributions${queryString ? `?${queryString}` : ""}`, { cache: "no-store" });
+      if (response.status === 401 || response.status === 403) {
+        setReport(null);
+        return;
+      }
+      const payload = (await response.json()) as ContributionReport & { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "Couldn’t load the contribution report.");
+      setReport(payload);
+      setReportFrom(payload.from);
+      setReportTo(payload.to);
+    } catch (error) {
+      setReportError(error instanceof Error ? error.message : "Couldn’t load the contribution report.");
+    } finally {
+      setReportBusy(false);
+    }
+  };
+
+  const openTab = (tab: Tab) => {
+    setActiveTab(tab);
+    if (tab === "more" && signedIn && viewer?.role === "Owner") {
+      if (!members) void loadMembers();
+      if (!report && !reportBusy) void loadReport();
+    }
+  };
+
+  const signIn = async (event: FormEvent) => {
+    event.preventDefault();
+    const code = accessCodeInput.trim();
+    setAccessCodeInput("");
+    if (!code) return;
+    setLoginBusy(true);
+    setLoginError(null);
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ accessCode: code }),
+      });
+      if (response.status === 401) {
+        setLoginError("That access code wasn’t accepted.");
+        return;
+      }
+      if (!response.ok) throw new Error("Sign-in failed");
+      const payload = (await response.json()) as { member: Viewer };
+      setSession((previous) => ({
+        authenticated: true,
+        authRequired: previous?.authRequired ?? false,
+        member: payload.member,
+      }));
+      setToast(`Signed in as ${payload.member.displayName}`);
+      window.setTimeout(() => setToast(null), 2800);
+      await refresh().catch(() => undefined);
+      if (payload.member.role === "Owner") {
+        await Promise.all([loadMembers(), loadReport()]);
+      }
+    } catch {
+      setLoginError("Sign-in didn’t go through. Please try again.");
+    } finally {
+      setLoginBusy(false);
+    }
+  };
+
+  const signOut = async () => {
+    try {
+      await fetch("/api/auth/session", { method: "DELETE" });
+    } catch {
+      // The cookie clear is best-effort; the session reload below is what matters.
+    }
+    setMembers(null);
+    setReport(null);
+    setInvite(null);
+    setLoginError(null);
+    await loadSession();
+    await refresh().catch(() => undefined);
+  };
+
+  const createMember = async (event: FormEvent) => {
+    event.preventDefault();
+    const displayName = newMemberName.trim();
+    if (!displayName) return;
+    setMemberBusy("create");
+    setMembersError(null);
+    try {
+      const response = await fetch("/api/household/members", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ displayName }),
+      });
+      const payload = (await response.json()) as { member?: Member; accessCode?: string; error?: string };
+      if (!response.ok || !payload.member || !payload.accessCode) {
+        throw new Error(payload.error ?? "Unable to add the keeper.");
+      }
+      setNewMemberName("");
+      setInvite({ displayName: payload.member.displayName, accessCode: payload.accessCode });
+      await loadMembers();
+    } catch (error) {
+      setMembersError(error instanceof Error ? error.message : "Unable to add the keeper.");
+    } finally {
+      setMemberBusy(null);
+    }
+  };
+
+  const patchMember = async (member: Member, body: { active?: boolean; reissueAccessCode?: boolean }) => {
+    setMemberBusy(member.id);
+    setMembersError(null);
+    try {
+      const response = await fetch(`/api/household/members/${member.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const payload = (await response.json()) as { member?: Member; accessCode?: string | null; error?: string };
+      if (!response.ok || !payload.member) throw new Error(payload.error ?? "Unable to update that keeper.");
+      if (payload.accessCode) setInvite({ displayName: payload.member.displayName, accessCode: payload.accessCode });
+      await loadMembers();
+    } catch (error) {
+      setMembersError(error instanceof Error ? error.message : "Unable to update that keeper.");
+    } finally {
+      setMemberBusy(null);
+    }
+  };
+
+  const copyInvite = async () => {
+    if (!invite) return;
+    try {
+      await navigator.clipboard.writeText(invite.accessCode);
+      setToast("Access code copied");
+    } catch {
+      setToast("Copy didn’t work — write the code down instead");
+    }
+    window.setTimeout(() => setToast(null), 2800);
+  };
+
+  const loadVoiceAudit = async () => {
+    const token = voiceTokenRef.current;
+    if (!token) {
+      setVoiceAuditState("locked");
+      return;
+    }
+    setVoiceAuditState("loading");
+    try {
+      const response = await fetch("/api/voice/audit?limit=50", {
+        headers: { "X-Shed-Token": token },
+        cache: "no-store",
+      });
+      if (response.status === 401) {
+        voiceTokenRef.current = null;
+        setVoiceAuditState("unauthorized");
+        return;
+      }
+      if (!response.ok) {
+        setVoiceAuditState("failed");
+        return;
+      }
+      setVoiceAudit(((await response.json()) as { logs: VoiceAuditLog[] }).logs);
+      setVoiceAuditState("ready");
+    } catch {
+      setVoiceAuditState("failed");
+    }
+  };
+
+  const unlockVoiceAudit = async (event: FormEvent) => {
+    event.preventDefault();
+    const token = voiceTokenInput.trim();
+    // Clear the field immediately; the token lives only in the ref from here on.
+    setVoiceTokenInput("");
+    if (!token) return;
+    voiceTokenRef.current = token;
+    await loadVoiceAudit();
+  };
 
   const completeTask = async (task: Task) => {
     setBusyTask(task.id);
@@ -101,11 +395,11 @@ export default function HusbandryApp() {
       const response = await fetch("/api/tasks/complete", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ taskId: task.id, dueDate: task.dueDate, actorRole: role }),
+        body: JSON.stringify({ taskId: task.id, dueDate: task.dueDate, actorRole: viewer?.role ?? "Owner" }),
       });
       if (!response.ok) throw new Error("Unable to save");
       await refresh();
-      setToast(`${task.animalName}: ${task.title} recorded`);
+      setToast(`${task.animalName}: ${task.title} recorded${viewer ? ` by ${viewer.displayName}` : ""}`);
       window.setTimeout(() => setToast(null), 2800);
     } catch {
       setToast("That update didn’t save. Please try again.");
@@ -125,13 +419,27 @@ export default function HusbandryApp() {
     );
   }, [data?.animals, query]);
 
+  const accessCodeField = (
+    <input
+      type="password"
+      value={accessCodeInput}
+      onChange={(event) => setAccessCodeInput(event.target.value)}
+      placeholder="Access code"
+      aria-label="Access code"
+      autoComplete="off"
+      autoCapitalize="none"
+      autoCorrect="off"
+      spellCheck={false}
+    />
+  );
+
   return (
     <div className="app-shell">
       <aside className="desktop-rail" aria-label="Primary navigation">
         <div className="brand-mark" aria-hidden="true"><span /></div>
         <nav>
           {navItems.map((item) => (
-            <button key={item.id} className={activeTab === item.id ? "active" : ""} onClick={() => setActiveTab(item.id)}>
+            <button key={item.id} className={activeTab === item.id ? "active" : ""} onClick={() => openTab(item.id)}>
               <b>{item.glyph}</b><span>{item.label}</span>
             </button>
           ))}
@@ -140,16 +448,35 @@ export default function HusbandryApp() {
 
       <main>
         <header className="topbar">
-          <button className="wordmark" onClick={() => setActiveTab("today")} aria-label="Open today dashboard">
+          <button className="wordmark" onClick={() => openTab("today")} aria-label="Open today dashboard">
             <span className="mini-mark" aria-hidden="true" />
             <span><b>Shed</b><small>Good care shows</small></span>
           </button>
-          <button className={`role-chip ${role.toLowerCase()}`} onClick={() => setRole(role === "Owner" ? "Zookeeper" : "Owner")}>
-            <span>{role === "Owner" ? "O" : "Z"}</span>{role}<i>⌄</i>
-          </button>
+          {viewer ? (
+            <button className="role-chip" onClick={() => openTab("more")} title="Household & access">
+              <span>{viewer.displayName.slice(0, 1).toUpperCase()}</span>{viewer.displayName}<em>{roleLabel(viewer.role)}</em>
+            </button>
+          ) : (
+            <button className="role-chip" onClick={() => openTab("more")}>
+              <span>→</span>Sign in
+            </button>
+          )}
         </header>
 
-        {!data ? (
+        {gateOpen ? (
+          <section className="auth-gate">
+            <div className="auth-card">
+              <span className="mini-mark" aria-hidden="true" />
+              <h1>Sign in to Shed</h1>
+              <p>Enter your personal access code. Ask your Head Keeper if you need a new one.</p>
+              <form onSubmit={signIn}>
+                {accessCodeField}
+                <button disabled={loginBusy}>{loginBusy ? "Checking…" : "Sign in"}</button>
+              </form>
+              {loginError && <p className="form-error" role="alert">{loginError}</p>}
+            </div>
+          </section>
+        ) : !data ? (
           <section className="loading-state" aria-live="polite">
             <div className="loader" /><h1>Opening Shed…</h1>
           </section>
@@ -158,7 +485,7 @@ export default function HusbandryApp() {
             <div className="eyebrow">{formatDate(data.date)}</div>
             <div className="page-heading">
               <div><h1>Today’s care</h1><p>{pending.length ? `${pending.length} things still need a keeper.` : "Everything is tucked in for today."}</p></div>
-              {role === "Owner" && <button className="quiet-button" onClick={() => setActiveTab("more")}>Manage care plans</button>}
+              {isOwner && <button className="quiet-button" onClick={() => openTab("more")}>Manage care plans</button>}
             </div>
 
             <article className="progress-card">
@@ -188,13 +515,15 @@ export default function HusbandryApp() {
 
             <div className="section-title compact"><h2>Completed today</h2><span>{completed.length}</span></div>
             <div className="completed-list">
-              {completed.map((task) => <div key={task.id}><span>✓</span><b>{task.animalName}</b><p>{task.title}</p></div>)}
+              {completed.map((task) => (
+                <div key={task.id}><span>✓</span><b>{task.animalName}</b><p>{task.title}{task.completedBy ? ` · ${task.completedBy}` : ""}</p></div>
+              ))}
             </div>
 
-            <div className="section-title compact"><h2>Recent activity</h2><button onClick={() => setActiveTab("animals")}>View all</button></div>
+            <div className="section-title compact"><h2>Recent activity</h2><button onClick={() => openTab("animals")}>View all</button></div>
             <div className="activity-list">
               {data.recentEvents.slice(0, 6).map((event) => (
-                <div key={event.id}><span className="activity-dot" /><p><b>{event.animalName}</b> · {event.title}<small>{event.actorRole} · {timeAgo(event.occurredAt)}</small></p></div>
+                <div key={event.id}><span className="activity-dot" /><p><b>{event.animalName}</b> · {event.title}<small>{event.completedBy ?? event.actorRole} · {timeAgo(event.occurredAt)}</small></p></div>
               ))}
             </div>
           </section>
@@ -235,23 +564,240 @@ export default function HusbandryApp() {
           <section className="page">
             <div className="eyebrow">Household controls</div>
             <div className="page-heading"><div><h1>More</h1><p>Access, portability, and care-plan controls.</p></div></div>
+
             <article className="settings-card role-panel">
-              <div><span className="settings-icon">{role === "Owner" ? "O" : "Z"}</span><div><h2>{role} view</h2><p>{role === "Owner" ? "Full access to schedules, records, exports, and household access." : "Can view animals and record husbandry without changing schedules or deleting history."}</p></div></div>
-              <button onClick={() => setRole(role === "Owner" ? "Zookeeper" : "Owner")}>Preview {role === "Owner" ? "Zookeeper" : "Owner"}</button>
+              {viewer ? (
+                <>
+                  <div>
+                    <span className="settings-icon">{viewer.displayName.slice(0, 1).toUpperCase()}</span>
+                    <div>
+                      <h2>{viewer.displayName}</h2>
+                      <p>{roleLabel(viewer.role)} · {viewer.role === "Owner" ? "Full access to schedules, records, exports, and household access." : "Can view animals and record completed care. Schedules, exports, and history edits stay with the Head Keeper."}</p>
+                    </div>
+                  </div>
+                  {signedIn && <button onClick={signOut}>Sign out</button>}
+                </>
+              ) : (
+                <>
+                  <div>
+                    <span className="settings-icon">→</span>
+                    <div>
+                      <h2>Sign in</h2>
+                      <p>Sign in with your access code so completed care is recorded under your name.</p>
+                    </div>
+                  </div>
+                  <div className="panel-login">
+                    <form className="inline-login" onSubmit={signIn}>
+                      {accessCodeField}
+                      <button disabled={loginBusy}>{loginBusy ? "Checking…" : "Sign in"}</button>
+                    </form>
+                    {loginError && <p className="form-error" role="alert">{loginError}</p>}
+                  </div>
+                </>
+              )}
             </article>
 
             <div className="settings-grid">
-              <article className="settings-card"><span className="settings-icon">↥</span><h2>Your data, always portable</h2><p>Download a complete open-format copy at any time. Exports use stable identifiers, ISO dates, and numeric gram values.</p><div className="export-actions"><a href="/api/export?format=json">Download JSON</a><a href="/api/export?format=csv">Download CSV</a></div></article>
-              <article className="settings-card"><span className="settings-icon">⌁</span><h2>Household access</h2><p>Owner and Zookeeper permissions are designed for shared care across multiple phones.</p><div className="device-row"><span>Owner device</span><b>Full access</b></div><div className="device-row"><span>Zookeeper invitation</span><b>Ready to connect</b></div></article>
-              <article className={`settings-card ${role === "Zookeeper" ? "locked" : ""}`}><span className="settings-icon">☷</span><h2>Care plans</h2><p>Daily, weekly, monthly, and every-N-day schedules live here.</p><button disabled={role === "Zookeeper"}>{role === "Zookeeper" ? "Owner access required" : "Manage schedules"}</button></article>
-              <article className={`settings-card ${role === "Zookeeper" ? "locked" : ""}`}><span className="settings-icon">↺</span><h2>Backup status</h2><p>The production version will keep dated SQL, CSV, JSON, and workbook snapshots outside the live database.</p><div className="backup-status"><i />Export design ready</div></article>
+              {isOwner && (
+                <article className="settings-card"><span className="settings-icon">↥</span><h2>Your data, always portable</h2><p>Download a complete open-format copy at any time. Exports use stable identifiers, ISO dates, and numeric gram values.</p><div className="export-actions"><a href="/api/export?format=json">Download JSON</a><a href="/api/export?format=csv">Download CSV</a></div></article>
+              )}
+              <article className={`settings-card ${isOwner ? "" : "locked"}`}><span className="settings-icon">☷</span><h2>Care plans</h2><p>Daily, weekly, monthly, and every-N-day schedules live here.</p><button disabled={!isOwner}>{isOwner ? "Manage schedules" : "Head Keeper access required"}</button></article>
+              <article className="settings-card"><span className="settings-icon">↺</span><h2>Backup status</h2><p>The production version will keep dated SQL, CSV, JSON, and workbook snapshots outside the live database.</p><div className="backup-status"><i />Export design ready</div></article>
             </div>
+
+            {isOwner && (
+              <article className="settings-card wide">
+                <span className="settings-icon">⌗</span>
+                <h2>Household access</h2>
+                <p>Every member of the household gets their own name and private access code, so completed care is credited to the right keeper.</p>
+                {invite && (
+                  <div className="invite-reveal" role="status">
+                    <b>Access code for {invite.displayName}</b>
+                    <code>{invite.accessCode}</code>
+                    <div className="invite-actions">
+                      <button onClick={copyInvite}>Copy code</button>
+                      <button onClick={() => setInvite(null)}>Done — I saved it</button>
+                    </div>
+                    <small>This code is shown only once. Share it privately; a new one can be issued any time.</small>
+                  </div>
+                )}
+                {members ? (
+                  <>
+                    <div className="member-list">
+                      {members.map((member) => (
+                        <div className="member-row" key={member.id}>
+                          <span className="member-avatar">{member.displayName.slice(0, 1).toUpperCase()}</span>
+                          <div>
+                            <b>{member.displayName}{!member.active && <i> · disabled</i>}</b>
+                            <small>{roleLabel(member.role)}{member.lastLoginAt ? ` · last signed in ${timeAgo(member.lastLoginAt)}` : " · never signed in"}</small>
+                          </div>
+                          <div className="member-actions">
+                            <button
+                              disabled={memberBusy === member.id}
+                              onClick={() => {
+                                if (window.confirm(`Issue a new access code for ${member.displayName}? The current code stops working immediately.`)) {
+                                  void patchMember(member, { reissueAccessCode: true });
+                                }
+                              }}
+                            >
+                              New code
+                            </button>
+                            {member.role !== "Owner" && (
+                              <button
+                                disabled={memberBusy === member.id}
+                                onClick={() => {
+                                  if (member.active && !window.confirm(`Disable ${member.displayName}’s access? They can be re-enabled later.`)) return;
+                                  void patchMember(member, { active: !member.active });
+                                }}
+                              >
+                                {member.active ? "Disable" : "Enable"}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <form className="member-add" onSubmit={createMember}>
+                      <input
+                        value={newMemberName}
+                        onChange={(event) => setNewMemberName(event.target.value)}
+                        placeholder="New keeper’s name"
+                        aria-label="New keeper’s name"
+                        maxLength={40}
+                      />
+                      <button disabled={memberBusy === "create" || !newMemberName.trim()}>{memberBusy === "create" ? "Adding…" : "Add keeper"}</button>
+                    </form>
+                  </>
+                ) : (
+                  <p className="member-note">{signedIn ? "Loading household members…" : "Sign in with the Head Keeper code to manage household access."}</p>
+                )}
+                {membersError && <p className="form-error" role="alert">{membersError}</p>}
+              </article>
+            )}
+
+            {isOwner && (
+              <article className="settings-card wide">
+                <span className="settings-icon">✶</span>
+                <h2>Contributions</h2>
+                <p>Scheduled tasks completed by each member of the household — handy for allowance day.</p>
+                {report ? (
+                  <>
+                    <form
+                      className="report-range"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        void loadReport(reportFrom, reportTo);
+                      }}
+                    >
+                      <label>From<input type="date" value={reportFrom} onChange={(event) => setReportFrom(event.target.value)} /></label>
+                      <label>To<input type="date" value={reportTo} onChange={(event) => setReportTo(event.target.value)} /></label>
+                      <button disabled={reportBusy}>{reportBusy ? "Loading…" : "Update"}</button>
+                    </form>
+                    {report.contributions.length ? (
+                      <div className="contrib-list">
+                        {report.contributions.map((contribution) => (
+                          <div key={contribution.memberId}>
+                            <span>{contribution.displayName.slice(0, 1).toUpperCase()}</span>
+                            <b>{contribution.displayName}</b>
+                            <i>{contribution.taskCount} task{contribution.taskCount === 1 ? "" : "s"}</i>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="member-note">No attributed completions in this range yet. Once keepers sign in, their completed tasks show up here.</p>
+                    )}
+                    {report.completions.length > 0 && (
+                      <details className="report-details">
+                        <summary>All {report.completions.length} completion{report.completions.length === 1 ? "" : "s"}</summary>
+                        <div>
+                          {report.completions.map((row) => (
+                            <p key={row.eventId}><b>{row.completedBy}</b> · {row.animalName} · {row.title} <small>{timeAgo(row.completedAt)}</small></p>
+                          ))}
+                        </div>
+                      </details>
+                    )}
+                  </>
+                ) : (
+                  <p className="member-note">{signedIn ? "Loading the report…" : "Sign in with the Head Keeper code to see the report."}</p>
+                )}
+                {reportError && <p className="form-error" role="alert">{reportError}</p>}
+              </article>
+            )}
+
+            {isOwner && (
+              <article className="settings-card wide">
+                <span className="settings-icon">❝</span>
+                <h2>Voice history</h2>
+                <p>Every “Ask Shed” request, with exactly what the assistant heard and logged. Worth a skim now and then — an AI interpretation can get things wrong.</p>
+                {(voiceAuditState === "locked" || voiceAuditState === "unauthorized") && (
+                  <>
+                    <form className="inline-login" onSubmit={unlockVoiceAudit}>
+                      <input
+                        type="password"
+                        value={voiceTokenInput}
+                        onChange={(event) => setVoiceTokenInput(event.target.value)}
+                        placeholder="Voice token"
+                        aria-label="Voice token"
+                        autoComplete="off"
+                        autoCapitalize="none"
+                        autoCorrect="off"
+                        spellCheck={false}
+                      />
+                      <button>Unlock</button>
+                    </form>
+                    {voiceAuditState === "unauthorized" && <p className="form-error" role="alert">That token wasn’t accepted.</p>}
+                    <p className="member-note">Temporary gate: the voice token is asked for on each visit and kept only in memory, never stored.</p>
+                  </>
+                )}
+                {voiceAuditState === "loading" && <p className="member-note">Loading voice history…</p>}
+                {voiceAuditState === "failed" && (
+                  <p className="form-error" role="alert">Couldn’t load voice history. <button onClick={() => void loadVoiceAudit()}>Try again</button></p>
+                )}
+                {voiceAuditState === "ready" && (
+                  <>
+                    <div className="audit-toolbar">
+                      <span>{voiceAudit.length} most recent request{voiceAudit.length === 1 ? "" : "s"}</span>
+                      <button onClick={() => void loadVoiceAudit()}>Refresh</button>
+                    </div>
+                    {voiceAudit.length === 0 && <p className="member-note">No voice requests recorded yet. Say “Ask Shed” to Siri and it will show up here.</p>}
+                    <div className="audit-list">
+                      {voiceAudit.map((log) => (
+                        <div className="audit-row" key={log.id}>
+                          <div className="audit-head">
+                            <span className={`status-pill ${log.status}`}>{log.status === "processing" ? "in progress" : log.status}</span>
+                            <small>{timeAgo(log.requestedAt)}{log.durationMs !== null ? ` · ${(log.durationMs / 1000).toFixed(1)}s` : ""} · {log.model}</small>
+                          </div>
+                          <p className="audit-utterance">“{log.utterance}”</p>
+                          {log.responseText && <p className="audit-response">{log.responseText}</p>}
+                          {log.status === "processing" && <p className="audit-note">Still being handled (or was interrupted) — this is not a failed request.</p>}
+                          {log.errorMessage && <p className="form-error">{log.errorMessage}</p>}
+                          {log.toolCalls.length > 0 && (
+                            <button className="audit-expand" onClick={() => setExpandedLog(expandedLog === log.id ? null : log.id)}>
+                              {expandedLog === log.id ? "Hide" : "Show"} {log.toolCalls.length} tool call{log.toolCalls.length === 1 ? "" : "s"}
+                            </button>
+                          )}
+                          {expandedLog === log.id && log.toolCalls.map((call) => (
+                            <div className="tool-call" key={call.toolUseId}>
+                              <b>{call.name}</b>
+                              <small>input</small>
+                              <pre>{JSON.stringify(call.input ?? null, null, 2)}</pre>
+                              <small>result</small>
+                              <pre>{JSON.stringify(call.result ?? null, null, 2)}</pre>
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </article>
+            )}
           </section>
         )}
 
         <nav className="mobile-nav" aria-label="Primary navigation">
           {navItems.map((item) => (
-            <button key={item.id} className={activeTab === item.id ? "active" : ""} onClick={() => setActiveTab(item.id)}><b>{item.glyph}</b><span>{item.label}</span></button>
+            <button key={item.id} className={activeTab === item.id ? "active" : ""} onClick={() => openTab(item.id)}><b>{item.glyph}</b><span>{item.label}</span></button>
           ))}
         </nav>
         {toast && <div className="toast" role="status">{toast}</div>}
