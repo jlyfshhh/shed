@@ -122,6 +122,18 @@ export async function ensureDatabase(targetDate?: string) {
   if (!eventColumnNames.has("completed_by_name")) {
     upgrades.push(db.prepare("ALTER TABLE husbandry_events ADD COLUMN completed_by_name TEXT"));
   }
+  if (!eventColumnNames.has("voided_at")) {
+    upgrades.push(db.prepare("ALTER TABLE husbandry_events ADD COLUMN voided_at TEXT"));
+  }
+  if (!eventColumnNames.has("voided_by_member_id")) {
+    upgrades.push(db.prepare("ALTER TABLE husbandry_events ADD COLUMN voided_by_member_id TEXT"));
+  }
+  if (!eventColumnNames.has("voided_by_name")) {
+    upgrades.push(db.prepare("ALTER TABLE husbandry_events ADD COLUMN voided_by_name TEXT"));
+  }
+  if (!eventColumnNames.has("void_reason")) {
+    upgrades.push(db.prepare("ALTER TABLE husbandry_events ADD COLUMN void_reason TEXT"));
+  }
   if (upgrades.length) await db.batch(upgrades);
 
   await db.batch([

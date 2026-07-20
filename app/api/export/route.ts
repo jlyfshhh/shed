@@ -19,7 +19,7 @@ export async function GET(request: Request) {
     db.prepare("SELECT * FROM feeding_assignments ORDER BY planned_for, animal_id").all(),
     db.prepare("SELECT id, display_name, role, active, created_at, updated_at, last_login_at FROM household_members ORDER BY display_name").all(),
   ]);
-  const bundle = { exportedAt: new Date().toISOString(), schemaVersion: 5, animals: animals.results, careTasks: careTasks.results, husbandryEvents: events.results, weightEvents: weights.results, voiceAuditLogs: voiceAuditLogs.results, feederInventory: feederInventory.results, feedingAssignments: feedingAssignments.results, householdMembers: householdMembers.results };
+  const bundle = { exportedAt: new Date().toISOString(), schemaVersion: 6, animals: animals.results, careTasks: careTasks.results, husbandryEvents: events.results, weightEvents: weights.results, voiceAuditLogs: voiceAuditLogs.results, feederInventory: feederInventory.results, feedingAssignments: feedingAssignments.results, householdMembers: householdMembers.results };
   const format = new URL(request.url).searchParams.get("format");
   if (format === "csv") {
     const lines = ["record_type,data_json", ...Object.entries(bundle).flatMap(([kind, rows]) => Array.isArray(rows) ? rows.map((row) => `${csvCell(kind)},${csvCell(JSON.stringify(row))}`) : [])];

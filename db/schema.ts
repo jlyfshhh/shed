@@ -31,6 +31,10 @@ export const husbandryEvents = sqliteTable("husbandry_events", {
   actorRole: text("actor_role").notNull(),
   completedByMemberId: text("completed_by_member_id"),
   completedByName: text("completed_by_name"),
+  voidedAt: text("voided_at"),
+  voidedByMemberId: text("voided_by_member_id"),
+  voidedByName: text("voided_by_name"),
+  voidReason: text("void_reason"),
 }, (table) => [uniqueIndex("event_task_due_unique").on(table.taskId, table.dueDate)]);
 
 export const householdMembers = sqliteTable("household_members", {
