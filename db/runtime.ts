@@ -99,6 +99,7 @@ export async function ensureDatabase(targetDate?: string) {
   if (upgrades.length) await db.batch(upgrades);
 
   await db.batch([
+    db.prepare("DELETE FROM care_tasks WHERE task_type = 'water bowl cleaning' AND animal_id IN ('pascal', 'wasabi', 'echo', 'rue')"),
     ...animalRows.map((row) => db.prepare("INSERT OR IGNORE INTO animals (id, name, species, group_name, location, weight_grams, weight_date) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(...row)),
     ...taskRows.map((row) => db.prepare("INSERT OR IGNORE INTO care_tasks (id, animal_id, task_type, title, details, due_date) VALUES (?, ?, ?, ?, ?, ?)").bind(row.id, row.animalId, row.taskType, row.title, row.details, row.dueDate)),
     ...initialEvents.map((row) => db.prepare("INSERT OR IGNORE INTO husbandry_events (id, task_id, animal_id, task_type, title, notes, due_date, occurred_at, actor_role) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(...row)),

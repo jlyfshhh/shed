@@ -15,8 +15,9 @@ type Plan = Omit<ScheduledTask, "id" | "dueDate"> & {
 const ballPythons = ["telemachus", "achilles", "ares", "calypso", "odysseus", "apollo"];
 const waterBowls = [
   ...ballPythons,
-  "dracarys", "pascal", "wasabi", "mort", "turtle", "blue", "rhino", "echo", "rue", "taco",
+  "dracarys", "mort", "turtle", "blue", "rhino", "taco",
 ];
+const dailyMisters = ["pascal", "wasabi", "echo", "rue"];
 
 const saturday = (date: string) => weekday(date) === 6;
 const firstOfMonth = (date: string) => date.endsWith("-01");
@@ -26,6 +27,7 @@ const every = (anchor: string, days: number) => (date: string) =>
 const plans: Plan[] = [
   ...ballPythons.map((animalId) => plan(`mist-${animalId}`, animalId, "misting", "Mist enclosure", "Saturday enclosure misting.", saturday)),
   ...waterBowls.map((animalId) => plan(`water-${animalId}`, animalId, "water bowl cleaning", "Clean water bowl", "Clean and refresh the water bowl.", saturday)),
+  ...dailyMisters.map((animalId) => plan(`mist-${animalId}`, animalId, "misting", "Mist enclosure", "Daily misting provides drinking water; this enclosure has no water bowl.", () => true)),
   ...["mort", "turtle", "blue"].map((animalId) => plan(`mist-${animalId}`, animalId, "misting", "Mist enclosure", "Saturday enclosure misting.", saturday)),
   plan("feed-telemachus", "telemachus", "feeding", "Feed", "Every 14 days; choose prey from the recorded feeder plan.", every("2026-07-19", 14)),
   plan("feed-achilles", "achilles", "feeding", "Feed", "Every 14 days; growing snake target is near 10% when body condition supports it.", every("2026-07-19", 14)),
