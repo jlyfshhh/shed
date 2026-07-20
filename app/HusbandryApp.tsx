@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
 type Role = "Owner" | "Zookeeper";
 type Viewer = { id: string; displayName: string; role: Role };
@@ -29,21 +29,6 @@ type ContributionReport = {
     completedAt: string;
   }>;
 };
-type VoiceToolCall = { toolUseId: string; name: string; input: unknown; result: unknown };
-type VoiceAuditLog = {
-  id: string;
-  requestedAt: string;
-  completedAt: string | null;
-  utterance: string;
-  status: string;
-  model: string;
-  toolCalls: VoiceToolCall[];
-  responseText: string | null;
-  errorMessage: string | null;
-  durationMs: number | null;
-  userAgent: string | null;
-};
-type VoiceAuditState = "locked" | "loading" | "ready" | "unauthorized" | "failed";
 type Tab = "today" | "animals" | "trends" | "more";
 type Task = {
   id: string;
@@ -140,18 +125,6 @@ export default function HusbandryApp() {
   const [reportBusy, setReportBusy] = useState(false);
   const [reportFrom, setReportFrom] = useState("");
   const [reportTo, setReportTo] = useState("");
-
-  // ── Voice history (PROVISIONAL convenience gate — NOT real authorization) ──
-  // The audit endpoint still uses the shared voice token, separate from member
-  // sessions. The token is prompted for per page load and held only in this
-  // ref: never in local/session storage, cookies, URLs, or the rendered DOM.
-  // When voice history moves behind household sessions, DELETE this
-  // token-prompt flow entirely (do not layer real auth underneath it).
-  const voiceTokenRef = useRef<string | null>(null);
-  const [voiceTokenInput, setVoiceTokenInput] = useState("");
-  const [voiceAudit, setVoiceAudit] = useState<VoiceAuditLog[]>([]);
-  const [voiceAuditState, setVoiceAuditState] = useState<VoiceAuditState>("locked");
-  const [expandedLog, setExpandedLog] = useState<string | null>(null);
 
   const viewer = session?.member ?? data?.viewer ?? null;
   const authRequired = session?.authRequired ?? false;
@@ -349,44 +322,6 @@ export default function HusbandryApp() {
       setToast("Copy didn’t work — write the code down instead");
     }
     window.setTimeout(() => setToast(null), 2800);
-  };
-
-  const loadVoiceAudit = async () => {
-    const token = voiceTokenRef.current;
-    if (!token) {
-      setVoiceAuditState("locked");
-      return;
-    }
-    setVoiceAuditState("loading");
-    try {
-      const response = await fetch("/api/voice/audit?limit=50", {
-        headers: { "X-Shed-Token": token },
-        cache: "no-store",
-      });
-      if (response.status === 401) {
-        voiceTokenRef.current = null;
-        setVoiceAuditState("unauthorized");
-        return;
-      }
-      if (!response.ok) {
-        setVoiceAuditState("failed");
-        return;
-      }
-      setVoiceAudit(((await response.json()) as { logs: VoiceAuditLog[] }).logs);
-      setVoiceAuditState("ready");
-    } catch {
-      setVoiceAuditState("failed");
-    }
-  };
-
-  const unlockVoiceAudit = async (event: FormEvent) => {
-    event.preventDefault();
-    const token = voiceTokenInput.trim();
-    // Clear the field immediately; the token lives only in the ref from here on.
-    setVoiceTokenInput("");
-    if (!token) return;
-    voiceTokenRef.current = token;
-    await loadVoiceAudit();
   };
 
   const completeTask = async (task: Task) => {
@@ -724,74 +659,6 @@ export default function HusbandryApp() {
               </article>
             )}
 
-            {isOwner && (
-              <article className="settings-card wide">
-                <span className="settings-icon">❝</span>
-                <h2>Voice history</h2>
-                <p>Every “Ask Shed” request, with exactly what the assistant heard and logged. Worth a skim now and then — an AI interpretation can get things wrong.</p>
-                {(voiceAuditState === "locked" || voiceAuditState === "unauthorized") && (
-                  <>
-                    <form className="inline-login" onSubmit={unlockVoiceAudit}>
-                      <input
-                        type="password"
-                        value={voiceTokenInput}
-                        onChange={(event) => setVoiceTokenInput(event.target.value)}
-                        placeholder="Voice token"
-                        aria-label="Voice token"
-                        autoComplete="off"
-                        autoCapitalize="none"
-                        autoCorrect="off"
-                        spellCheck={false}
-                      />
-                      <button>Unlock</button>
-                    </form>
-                    {voiceAuditState === "unauthorized" && <p className="form-error" role="alert">That token wasn’t accepted.</p>}
-                    <p className="member-note">Temporary gate: the voice token is asked for on each visit and kept only in memory, never stored.</p>
-                  </>
-                )}
-                {voiceAuditState === "loading" && <p className="member-note">Loading voice history…</p>}
-                {voiceAuditState === "failed" && (
-                  <p className="form-error" role="alert">Couldn’t load voice history. <button onClick={() => void loadVoiceAudit()}>Try again</button></p>
-                )}
-                {voiceAuditState === "ready" && (
-                  <>
-                    <div className="audit-toolbar">
-                      <span>{voiceAudit.length} most recent request{voiceAudit.length === 1 ? "" : "s"}</span>
-                      <button onClick={() => void loadVoiceAudit()}>Refresh</button>
-                    </div>
-                    {voiceAudit.length === 0 && <p className="member-note">No voice requests recorded yet. Say “Ask Shed” to Siri and it will show up here.</p>}
-                    <div className="audit-list">
-                      {voiceAudit.map((log) => (
-                        <div className="audit-row" key={log.id}>
-                          <div className="audit-head">
-                            <span className={`status-pill ${log.status}`}>{log.status === "processing" ? "in progress" : log.status}</span>
-                            <small>{timeAgo(log.requestedAt)}{log.durationMs !== null ? ` · ${(log.durationMs / 1000).toFixed(1)}s` : ""} · {log.model}</small>
-                          </div>
-                          <p className="audit-utterance">“{log.utterance}”</p>
-                          {log.responseText && <p className="audit-response">{log.responseText}</p>}
-                          {log.status === "processing" && <p className="audit-note">Still being handled (or was interrupted) — this is not a failed request.</p>}
-                          {log.errorMessage && <p className="form-error">{log.errorMessage}</p>}
-                          {log.toolCalls.length > 0 && (
-                            <button className="audit-expand" onClick={() => setExpandedLog(expandedLog === log.id ? null : log.id)}>
-                              {expandedLog === log.id ? "Hide" : "Show"} {log.toolCalls.length} tool call{log.toolCalls.length === 1 ? "" : "s"}
-                            </button>
-                          )}
-                          {expandedLog === log.id && log.toolCalls.map((call) => (
-                            <div className="tool-call" key={call.toolUseId}>
-                              <b>{call.name}</b>
-                              <small>input</small>
-                              <pre>{JSON.stringify(call.input ?? null, null, 2)}</pre>
-                              <small>result</small>
-                              <pre>{JSON.stringify(call.result ?? null, null, 2)}</pre>
-                            </div>
-                          ))}
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </article>
-            )}
           </section>
         )}
 

@@ -1,4 +1,4 @@
-import { binding } from "./voice-auth.ts";
+import { binding } from "./env.ts";
 import {
   ACCESS_COOKIE,
   accessCodeFromCookie,

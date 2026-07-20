@@ -150,24 +150,6 @@ h1, h2, h3, p { margin-top: 0; }
 .report-details p { margin: 8px 0 0; font-size: 13px; }
 .report-details small { color: var(--muted); margin-left: 6px; }
 
-/* ── Voice history ── */
-.audit-toolbar { display: flex; justify-content: space-between; align-items: center; margin: 4px 0 10px; color: var(--muted); font-size: 12px; }
-.audit-toolbar button, .audit-expand, .form-error > button { border: 0; background: transparent; color: var(--moss); font-weight: 800; cursor: pointer; padding: 4px; font-size: 12px; }
-.audit-list { display: grid; gap: 10px; }
-.audit-row { border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px; background: rgba(255,253,247,.85); }
-.audit-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 8px; }
-.audit-head small { color: var(--muted); font-size: 11px; text-align: right; overflow-wrap: anywhere; }
-.status-pill { flex: 0 0 auto; font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; border-radius: 999px; padding: 4px 9px; background: #e9eddf; color: #4f704b; }
-.status-pill.failed { background: #f7e3dc; color: #a14432; }
-.status-pill.processing { background: #fff0c9; color: #92600c; }
-.audit-utterance { margin: 0 0 6px; font-weight: 700; font-size: 14px; overflow-wrap: anywhere; }
-.audit-response { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
-.audit-note { margin: 8px 0 0; color: #92600c; font-size: 12px; font-weight: 600; }
-.audit-expand { display: block; margin-top: 8px; padding-left: 0; }
-.tool-call { border-top: 1px dashed var(--line); margin-top: 10px; padding-top: 10px; }
-.tool-call b { font-size: 12px; }
-.tool-call small { display: block; margin-top: 6px; color: var(--muted); font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
-.tool-call pre { margin: 4px 0 0; background: #f4f2ea; border-radius: 10px; padding: 10px; font-size: 11px; line-height: 1.5; overflow-x: auto; }
 .loading-state { min-height: 65vh; display: grid; place-content: center; text-align: center; }.loading-state h1 { font-family: Georgia, serif; font-weight: 500; }.loader { width: 42px; height: 42px; margin: 0 auto 14px; border: 3px solid #dbe0d1; border-top-color: var(--moss); border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -178,7 +160,7 @@ h1, h2, h3, p { margin-top: 0; }
   .task-card { grid-template-columns: auto 1fr; padding: 15px; }.complete-button { grid-column: 1 / -1; width: 100%; justify-content: center; padding: 10px; }.animal-badge { width: 44px; height: 44px; }.task-copy p { padding-right: 2px; }
   .completed-list, .trend-grid, .settings-grid { grid-template-columns: 1fr; }.animal-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }.animal-card { min-height: 166px; padding: 15px; }.animal-card h2 { font-size: 20px; }
   .role-panel { display: block; }.role-panel button { width: 100%; margin-top: 17px; }.role-panel .panel-login { margin-top: 15px; }.trend-summary { display: block; }.trend-summary b { display: block; margin-top: 4px; }.toast { left: 14px; right: 14px; bottom: 84px; text-align: center; }
-  .role-chip { max-width: 44vw; }.role-chip em { display: none; }.member-row { grid-template-columns: auto minmax(0,1fr); }.member-actions { grid-column: 1 / -1; justify-content: start; }.audit-head { flex-wrap: wrap; }.audit-head small { text-align: left; }
+  .role-chip { max-width: 44vw; }.role-chip em { display: none; }.member-row { grid-template-columns: auto minmax(0,1fr); }.member-actions { grid-column: 1 / -1; justify-content: start; }
   .mobile-nav { position: fixed; display: grid; grid-template-columns: repeat(4,1fr); left: 10px; right: 10px; bottom: 10px; z-index: 10; padding: 7px; background: rgba(33,55,46,.96); border-radius: 19px; box-shadow: 0 15px 40px rgba(20,38,29,.24); backdrop-filter: blur(10px); }.mobile-nav button { border: 0; color: #aab9af; background: transparent; border-radius: 13px; padding: 7px 3px 6px; display: grid; justify-items: center; gap: 2px; cursor: pointer; }.mobile-nav button b { font-size: 17px; line-height: 1; }.mobile-nav button span { font-size: 10px; }.mobile-nav button.active { background: rgba(219,231,181,.14); color: white; }
 }
 

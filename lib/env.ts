@@ -5,14 +5,12 @@ export function binding(name: string): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-export async function voiceRequestIsAuthorized(
+export async function sharedSecretIsAuthorized(
   request: Request,
-  sharedSecret: string,
+  expected: string,
+  headerName: string,
 ): Promise<boolean> {
-  return tokensMatch(request.headers.get("X-Shed-Token") ?? "", sharedSecret);
-}
-
-async function tokensMatch(supplied: string, expected: string): Promise<boolean> {
+  const supplied = request.headers.get(headerName) ?? "";
   if (!supplied || !expected) return false;
   const encoder = new TextEncoder();
   const [left, right] = await Promise.all([

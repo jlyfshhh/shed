@@ -58,20 +58,6 @@ export const weightEvents = sqliteTable("weight_events", {
   weightGrams: integer("weight_grams").notNull(),
 });
 
-export const voiceAuditLogs = sqliteTable("voice_audit_logs", {
-  id: text("id").primaryKey(),
-  requestedAt: text("requested_at").notNull(),
-  completedAt: text("completed_at"),
-  utterance: text("utterance").notNull(),
-  status: text("status").notNull(),
-  model: text("model").notNull(),
-  toolCallsJson: text("tool_calls_json").notNull().default("[]"),
-  responseText: text("response_text"),
-  errorMessage: text("error_message"),
-  durationMs: integer("duration_ms"),
-  userAgent: text("user_agent"),
-}, (table) => [index("voice_audit_requested_at_idx").on(table.requestedAt)]);
-
 export const feederInventory = sqliteTable("feeder_inventory", {
   id: text("id").primaryKey(),
   preySpecies: text("prey_species").notNull(),

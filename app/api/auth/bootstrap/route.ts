@@ -1,6 +1,6 @@
 import { ensureDatabase } from "@/db/runtime";
 import { accessCookie, createAccessCode, hashAccessCode } from "@/lib/household-auth";
-import { binding, voiceRequestIsAuthorized } from "@/lib/voice-auth";
+import { binding, sharedSecretIsAuthorized } from "@/lib/env";
 
 export async function POST(request: Request) {
   try {
@@ -8,7 +8,7 @@ export async function POST(request: Request) {
     if (!bootstrapToken) {
       return Response.json({ error: "Owner bootstrap is not enabled" }, { status: 503 });
     }
-    if (!(await voiceRequestIsAuthorized(request, bootstrapToken))) {
+    if (!(await sharedSecretIsAuthorized(request, bootstrapToken, "X-Shed-Bootstrap-Token"))) {
       return Response.json({ error: "Invalid bootstrap token" }, { status: 401 });
     }
     const db = await ensureDatabase();

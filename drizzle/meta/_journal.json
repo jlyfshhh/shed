@@ -43,6 +43,13 @@
       "when": 1784587960505,
       "tag": "0005_wooden_shard",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1784588384742,
+      "tag": "0006_massive_lorna_dane",
+      "breakpoints": true
     }
   ]
 }
