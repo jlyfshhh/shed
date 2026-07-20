@@ -7,10 +7,9 @@ import {
   loadVoiceAnimalRoster,
 } from "@/lib/husbandry-tools";
 import { runVoiceAgent, VOICE_MODEL } from "@/lib/voice-agent";
+import { readVoiceText } from "@/lib/voice-request";
 
 export const dynamic = "force-dynamic";
-
-type VoiceRequest = { text?: unknown };
 
 export async function POST(request: Request) {
   const apiKey = binding("ANTHROPIC_API_KEY");
@@ -24,13 +23,12 @@ export async function POST(request: Request) {
     return spokenError("Shed couldn't verify this Shortcut.", 401);
   }
 
-  let payload: VoiceRequest;
+  let text: string;
   try {
-    payload = (await request.json()) as VoiceRequest;
+    text = await readVoiceText(request);
   } catch {
     return spokenError("I couldn't read that request. Please try again.", 400);
   }
-  const text = typeof payload.text === "string" ? payload.text.trim() : "";
   if (!text || text.length > 1_000) {
     return spokenError(
       text.length > 1_000
