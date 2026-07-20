@@ -38,7 +38,7 @@ test("weight trend projects the latest measurement to the feeding date", () => {
   assert.equal(prediction.confidence, "low");
 });
 
-test("forecast returns next dates, allocates each rat once, and warns about mice", () => {
+test("forecast returns next dates, allocates each rat once, and schedules buy-as-needed mice", () => {
   const forecast = buildFeederForecast({
     today: "2026-07-19",
     horizonDays: 20,
@@ -59,7 +59,8 @@ test("forecast returns next dates, allocates each rat once, and warns about mice
   assert.equal(forecast.events.filter((event) => event.preySpecies === "rat" && event.status === "covered").length, 6);
   const allocatedIds = forecast.events.flatMap((event) => event.allocatedFeeder?.id ?? []);
   assert.equal(new Set(allocatedIds).size, allocatedIds.length);
-  assert.ok(forecast.alerts.some((alert) => alert.code === "inventory-untracked" && /pinky mouse/.test(alert.message)));
+  assert.ok(forecast.alerts.some((alert) => alert.code === "buy-as-needed" && alert.animalName === "Rhino"));
+  assert.ok(forecast.alerts.some((alert) => alert.code === "buy-as-needed" && alert.animalName === "Taco"));
   assert.ok(forecast.alerts.some((alert) => alert.code === "missing-feeding-plan" && alert.animalId === "sriracha"));
 });
 

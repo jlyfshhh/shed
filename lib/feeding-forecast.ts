@@ -50,11 +50,11 @@ export type FeederForecastEvent = {
   minimumPreyGrams: number | null;
   maximumPreyGrams: number | null;
   allocatedFeeder: AvailableFeeder | null;
-  status: "covered" | "shortage" | "inventory-untracked" | "weight-missing";
+  status: "covered" | "shortage" | "buy-as-needed" | "inventory-untracked" | "weight-missing";
 };
 
 export type FeederForecastAlert = {
-  code: "feeder-shortage" | "inventory-untracked" | "missing-weight" | "missing-feeding-plan";
+  code: "feeder-shortage" | "buy-as-needed" | "inventory-untracked" | "missing-weight" | "missing-feeding-plan";
   severity: "warning" | "info";
   animalId?: string;
   animalName?: string;
@@ -70,7 +70,7 @@ const profiles: FeedingProfile[] = [
   { animalId: "odysseus", taskKey: "feed-odysseus", preySpecies: "rat", targetPercent: 0.05, minimumPercent: 0.04, maximumPercent: 0.06 },
   { animalId: "apollo", taskKey: "feed-apollo", preySpecies: "rat", targetPercent: 0.10, minimumPercent: 0.08, maximumPercent: 0.12 },
   { animalId: "rhino", taskKey: "feed-rhino", preySpecies: "mouse", preyDescription: "pinky mouse" },
-  { animalId: "taco", taskKey: "mouse-taco", preySpecies: "mouse", preyDescription: "mouse (size not yet recorded)" },
+  { animalId: "taco", taskKey: "mouse-taco", preySpecies: "mouse", preyDescription: "pinky mouse" },
 ];
 
 const knownFeederAnimals = new Set([
@@ -141,7 +141,7 @@ export function buildFeederForecast(options: {
     horizonDays,
     throughDate: addDays(options.today, horizonDays),
     orderNeeded: alerts.some((alert) =>
-      alert.code === "feeder-shortage" || alert.code === "inventory-untracked"),
+      alert.code === "feeder-shortage" || alert.code === "buy-as-needed" || alert.code === "inventory-untracked"),
     nextFeedings: firstEventPerAnimal(events),
     events,
     alerts,
@@ -180,7 +180,7 @@ function forecastEvent(
       minimumPreyGrams: null,
       maximumPreyGrams: null,
       allocatedFeeder: null,
-      status: "inventory-untracked",
+      status: "buy-as-needed",
     };
   }
 
@@ -286,6 +286,17 @@ function buildAlerts(events: FeederForecastEvent[], animals: ForecastAnimal[]): 
         message: `${event.animalName} needs a current weight before Shed can predict a feeder size.`,
       });
     }
+  }
+
+  for (const event of firstEventPerAnimal(events.filter((item) => item.status === "buy-as-needed"))) {
+    alerts.push({
+      code: "buy-as-needed",
+      severity: "info",
+      animalId: event.animalId,
+      animalName: event.animalName,
+      dueBy: event.feedingDate,
+      message: `Buy 1 ${event.preyDescription} for ${event.animalName} by ${event.feedingDate}.`,
+    });
   }
 
   const untrackedGroups = new Map<string, FeederForecastEvent[]>();
