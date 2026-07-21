@@ -1,10 +1,11 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { AnimalProfile, ManageConsole, RestorePanel, SetupGate } from "./manage";
 
 type Role = "Owner" | "Zookeeper";
 type Viewer = { id: string; displayName: string; role: Role };
-type Session = { authenticated: boolean; authRequired: boolean; member: Viewer | null };
+type Session = { authenticated: boolean; authRequired: boolean; setupRequired: boolean; member: Viewer | null };
 type Member = {
   id: string;
   displayName: string;
@@ -109,6 +110,15 @@ export default function HusbandryApp() {
   const [toast, setToast] = useState<string | null>(null);
   const [query, setQuery] = useState("");
 
+  // ── Management overlays (Head Keeper) ──
+  const [manageOpen, setManageOpen] = useState(false);
+  const [profileId, setProfileId] = useState<string | null>(null);
+
+  const notify = (message: string) => {
+    setToast(message);
+    window.setTimeout(() => setToast(null), 2800);
+  };
+
   // ── Sign-in (real sessions; the old role-preview toggle is gone on purpose) ──
   const [accessCodeInput, setAccessCodeInput] = useState("");
   const [loginBusy, setLoginBusy] = useState(false);
@@ -138,7 +148,7 @@ export default function HusbandryApp() {
       if (!response.ok) throw new Error("Session unavailable");
       setSession((await response.json()) as Session);
     } catch {
-      setSession({ authenticated: false, authRequired: false, member: null });
+      setSession({ authenticated: false, authRequired: false, setupRequired: false, member: null });
     }
   };
 
@@ -238,6 +248,7 @@ export default function HusbandryApp() {
       setSession((previous) => ({
         authenticated: true,
         authRequired: previous?.authRequired ?? false,
+        setupRequired: false,
         member: payload.member,
       }));
       setToast(`Signed in as ${payload.member.displayName}`);
@@ -398,7 +409,17 @@ export default function HusbandryApp() {
           )}
         </header>
 
-        {gateOpen ? (
+        {session?.setupRequired ? (
+          <SetupGate
+            onReady={(member) => {
+              setSession((previous) => ({ authenticated: true, authRequired: previous?.authRequired ?? true, setupRequired: false, member }));
+              notify(`Welcome, ${member.displayName}`);
+              void refresh().catch(() => undefined);
+              void loadMembers();
+              void loadReport();
+            }}
+          />
+        ) : gateOpen ? (
           <section className="auth-gate">
             <div className="auth-card">
               <span className="mini-mark" aria-hidden="true" />
@@ -420,7 +441,7 @@ export default function HusbandryApp() {
             <div className="eyebrow">{formatDate(data.date)}</div>
             <div className="page-heading">
               <div><h1>Today’s care</h1><p>{pending.length ? `${pending.length} things still need a keeper.` : "Everything is tucked in for today."}</p></div>
-              {isOwner && <button className="quiet-button" onClick={() => openTab("more")}>Manage care plans</button>}
+              {isOwner && <button className="quiet-button" onClick={() => setManageOpen(true)}>Manage records</button>}
             </div>
 
             <article className="progress-card">
@@ -469,7 +490,7 @@ export default function HusbandryApp() {
             <label className="search-box"><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search animals, species, or rooms" /></label>
             <div className="animal-grid">
               {filteredAnimals.map((animal) => (
-                <article className="animal-card" key={animal.id}>
+                <article className="animal-card" key={animal.id} role="button" tabIndex={0} onClick={() => setProfileId(animal.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setProfileId(animal.id); } }}>
                   <div className="animal-card-top"><span>{animal.name.slice(0, 1)}</span><small>{animal.group}</small></div>
                   <h2>{animal.name}</h2><p>{animal.species}</p>
                   <div className="animal-meta"><span>{animal.location}</span>{animal.weightGrams !== null && <b>{animal.weightGrams} g</b>}</div>
@@ -533,12 +554,20 @@ export default function HusbandryApp() {
             </article>
 
             <div className="settings-grid">
+              <article className={`settings-card ${isOwner ? "" : "locked"}`}><span className="settings-icon">☷</span><h2>Manage records</h2><p>Add and edit animals, enclosures, care plans, notes, equipment, weights, feeders, and history.</p><button disabled={!isOwner} onClick={() => setManageOpen(true)}>{isOwner ? "Open manager" : "Head Keeper access required"}</button></article>
               {isOwner && (
-                <article className="settings-card"><span className="settings-icon">↥</span><h2>Your data, always portable</h2><p>Download a complete open-format copy at any time. Exports use stable identifiers, ISO dates, and numeric gram values.</p><div className="export-actions"><a href="/api/export?format=json">Download JSON</a><a href="/api/export?format=csv">Download CSV</a></div></article>
+                <article className="settings-card"><span className="settings-icon">↥</span><h2>Your data, always portable</h2><p>Download a complete open-format copy any time — stable identifiers, ISO dates, numeric gram values.</p><div className="export-actions"><a href="/api/export?format=json">Download JSON</a><a href="/api/export?format=csv">Download CSV</a></div></article>
               )}
-              <article className={`settings-card ${isOwner ? "" : "locked"}`}><span className="settings-icon">☷</span><h2>Care plans</h2><p>Daily, weekly, monthly, and every-N-day schedules live here.</p><button disabled={!isOwner}>{isOwner ? "Manage schedules" : "Head Keeper access required"}</button></article>
-              <article className="settings-card"><span className="settings-icon">↺</span><h2>Backup status</h2><p>The production version will keep dated SQL, CSV, JSON, and workbook snapshots outside the live database.</p><div className="backup-status"><i />Export design ready</div></article>
             </div>
+
+            {isOwner && (
+              <article className="settings-card wide">
+                <span className="settings-icon">↺</span>
+                <h2>Restore from backup</h2>
+                <p>Load a Shed JSON export. Merge keeps your current data and adds the backup on top; replace wipes husbandry data first (household sign-in stays intact).</p>
+                <RestorePanel onDone={() => void refresh().catch(() => undefined)} toast={notify} />
+              </article>
+            )}
 
             {isOwner && (
               <article className="settings-card wide">
@@ -669,6 +698,15 @@ export default function HusbandryApp() {
         </nav>
         {toast && <div className="toast" role="status">{toast}</div>}
       </main>
+
+      {manageOpen && isOwner && (
+        <ManageConsole
+          onClose={() => setManageOpen(false)}
+          onChanged={() => void refresh().catch(() => undefined)}
+          toast={notify}
+        />
+      )}
+      {profileId && <AnimalProfile animalId={profileId} onClose={() => setProfileId(null)} />}
     </div>
   );
 }
