@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { AnimalProfile, ManageConsole, RestorePanel, SetupGate } from "./manage";
+import { AnimalProfile, GettingStartedGuide, ManageConsole, RestorePanel, SetupGate, type ResourceKey, type SetupSummary } from "./manage";
 
 type Role = "Owner" | "Zookeeper";
 type Viewer = { id: string; displayName: string; role: Role };
@@ -75,6 +75,7 @@ type DashboardData = {
   animals: Animal[];
   recentEvents: RecentEvent[];
   weightTrends: WeightTrend[];
+  setupSummary: SetupSummary;
 };
 
 const navItems: Array<{ id: Tab; label: string; glyph: string }> = [
@@ -112,6 +113,8 @@ export default function HusbandryApp() {
 
   // ── Management overlays (Head Keeper) ──
   const [manageOpen, setManageOpen] = useState(false);
+  const [manageStart, setManageStart] = useState<ResourceKey>("animal");
+  const [guideOpen, setGuideOpen] = useState(false);
   const [profileId, setProfileId] = useState<string | null>(null);
 
   const notify = (message: string) => {
@@ -224,6 +227,11 @@ export default function HusbandryApp() {
       if (!members) void loadMembers();
       if (!report && !reportBusy) void loadReport();
     }
+  };
+
+  const openManager = (resource: ResourceKey = "animal") => {
+    setManageStart(resource);
+    setManageOpen(true);
   };
 
   const signIn = async (event: FormEvent) => {
@@ -414,6 +422,7 @@ export default function HusbandryApp() {
             onReady={(member) => {
               setSession((previous) => ({ authenticated: true, authRequired: previous?.authRequired ?? true, setupRequired: false, member }));
               notify(`Welcome, ${member.displayName}`);
+              setGuideOpen(true);
               void refresh().catch(() => undefined);
               void loadMembers();
               void loadReport();
@@ -441,8 +450,15 @@ export default function HusbandryApp() {
             <div className="eyebrow">{formatDate(data.date)}</div>
             <div className="page-heading">
               <div><h1>Today’s care</h1><p>{pending.length ? `${pending.length} things still need a keeper.` : "Everything is tucked in for today."}</p></div>
-              {isOwner && <button className="quiet-button" onClick={() => setManageOpen(true)}>Manage records</button>}
+              {isOwner && <button className="quiet-button" onClick={() => openManager()}>Manage records</button>}
             </div>
+
+            {isOwner && (data.setupSummary.animalCount === 0 || data.setupSummary.scheduleCount === 0) && (
+              <article className="onboarding-card">
+                <div><span className="onboarding-glyph">↗</span><p className="eyebrow">New keeper setup</p><h2>Let’s build your care list</h2><p>Add a habitat and its animal, then create a repeating care plan. Once a care plan exists, its tasks appear here on the right days.</p></div>
+                <div className="onboarding-actions"><button onClick={() => setGuideOpen(true)}>Continue setup</button><button onClick={() => openManager(data.setupSummary.animalCount ? "schedule" : data.setupSummary.enclosureCount ? "animal" : "enclosure")}>Jump to next step</button></div>
+              </article>
+            )}
 
             <article className="progress-card">
               <div className="progress-copy">
@@ -554,7 +570,8 @@ export default function HusbandryApp() {
             </article>
 
             <div className="settings-grid">
-              <article className={`settings-card ${isOwner ? "" : "locked"}`}><span className="settings-icon">☷</span><h2>Manage records</h2><p>Add and edit animals, enclosures, care plans, notes, equipment, weights, feeders, and history.</p><button disabled={!isOwner} onClick={() => setManageOpen(true)}>{isOwner ? "Open manager" : "Head Keeper access required"}</button></article>
+              <article className={`settings-card ${isOwner ? "" : "locked"}`}><span className="settings-icon">?</span><h2>Getting started</h2><p>Follow the setup checklist and learn where recurring care, one-time history, notes, equipment, and weights belong.</p><button disabled={!isOwner} onClick={() => setGuideOpen(true)}>{isOwner ? "Open guide" : "Head Keeper access required"}</button></article>
+              <article className={`settings-card ${isOwner ? "" : "locked"}`}><span className="settings-icon">☷</span><h2>Manage records</h2><p>Add and edit animals, enclosures, care plans, notes, equipment, weights, feeders, and history.</p><button disabled={!isOwner} onClick={() => openManager()}>{isOwner ? "Open manager" : "Head Keeper access required"}</button></article>
               {isOwner && (
                 <article className="settings-card"><span className="settings-icon">↥</span><h2>Your data, always portable</h2><p>Download a complete open-format copy any time — stable identifiers, ISO dates, numeric gram values.</p><div className="export-actions"><a href="/api/export?format=json">Download JSON</a><a href="/api/export?format=csv">Download CSV</a></div></article>
               )}
@@ -704,6 +721,15 @@ export default function HusbandryApp() {
           onClose={() => setManageOpen(false)}
           onChanged={() => void refresh().catch(() => undefined)}
           toast={notify}
+          initialResource={manageStart}
+        />
+      )}
+      {guideOpen && data && (
+        <GettingStartedGuide
+          summary={data.setupSummary}
+          onClose={() => setGuideOpen(false)}
+          onOpenManager={(resource) => { setGuideOpen(false); openManager(resource); }}
+          onOpenHousehold={() => { setGuideOpen(false); openTab("more"); }}
         />
       )}
       {profileId && <AnimalProfile animalId={profileId} onClose={() => setProfileId(null)} />}

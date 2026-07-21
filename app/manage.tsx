@@ -17,7 +17,14 @@ type Catalog = {
   events: Row[];
   feeders: Row[];
 };
-type ResourceKey = "animal" | "enclosure" | "schedule" | "note" | "equipment" | "weight" | "event" | "feeder";
+export type ResourceKey = "animal" | "enclosure" | "schedule" | "note" | "equipment" | "weight" | "event" | "feeder";
+export type SetupSummary = {
+  animalCount: number;
+  enclosureCount: number;
+  scheduleCount: number;
+  eventCount: number;
+  keeperCount: number;
+};
 type CatalogKey = keyof Catalog;
 
 const str = (value: unknown): string => (value === null || value === undefined ? "" : String(value));
@@ -426,15 +433,70 @@ function FieldInput({ field, value, catalog, onChange }: {
   return <input type={inputType} value={value} step={field.step} onChange={(event) => onChange(event.target.value)} />;
 }
 
+// ── Getting-started guide ────────────────────────────────────────────────────
+export function GettingStartedGuide({ summary, onOpenManager, onClose, onOpenHousehold }: {
+  summary: SetupSummary;
+  onOpenManager: (resource: ResourceKey) => void;
+  onClose: () => void;
+  onOpenHousehold: () => void;
+}) {
+  const steps = [
+    { done: summary.enclosureCount > 0, title: "Add an enclosure", copy: "Record the physical habitat, its size, location, substrate, and bioactive status. You can skip this for now and attach it later.", action: "Add enclosure", resource: "enclosure" as ResourceKey },
+    { done: summary.animalCount > 0, title: "Add an animal or community", copy: "Use one animal record per individual. For a shared habitat, you can also make a community record such as “Tree frog habitat.”", action: "Add animal", resource: "animal" as ResourceKey },
+    { done: summary.scheduleCount > 0, title: "Create a care plan", copy: "Care plans are repeating routines. Choose daily, selected weekdays, every N days, monthly, or one time. They become tasks on Today.", action: "Add care plan", resource: "schedule" as ResourceKey },
+    { done: summary.eventCount > 0, title: "Record the first care or measurement", copy: "Mark a Today task done, or add a History entry for care that already happened. Weights have their own record type so Shed can chart trends.", action: "Add history", resource: "event" as ResourceKey },
+    { done: summary.keeperCount > 0, title: "Invite another keeper", copy: "Each person gets a private access code. Their completed tasks are credited by name, while only the Head Keeper can change records and schedules.", action: "Household access", onAction: onOpenHousehold },
+  ];
+  const doneCount = steps.filter((step) => step.done).length;
+
+  return (
+    <div className="overlay" role="dialog" aria-modal="true" aria-label="Getting started with Shed">
+      <header className="overlay-head">
+        <div><b>Getting started</b><span>Build your first care list</span></div>
+        <button className="sheet-close" onClick={onClose} aria-label="Close guide">✕</button>
+      </header>
+      <div className="overlay-body guide-body">
+        <section className="guide-intro">
+          <span className="mini-mark" aria-hidden="true" />
+          <div><p className="eyebrow">{doneCount} of {steps.length} milestones</p><h1>From empty Shed to today’s care list</h1><p>Start with where an animal lives, add who lives there, then tell Shed what repeats. You can fill in detailed notes and equipment whenever you’re ready.</p></div>
+        </section>
+        <div className="guide-progress" aria-label={`${doneCount} of ${steps.length} setup milestones complete`}><span style={{ width: `${(doneCount / steps.length) * 100}%` }} /></div>
+        <div className="guide-steps">
+          {steps.map((step, index) => (
+            <article className={step.done ? "done" : ""} key={step.title}>
+              <span className="guide-number">{step.done ? "✓" : index + 1}</span>
+              <div><h2>{step.title}</h2><p>{step.copy}</p></div>
+              <button onClick={() => step.onAction ? step.onAction() : onOpenManager(step.resource!)}>{step.done ? "View or add more" : step.action}</button>
+            </article>
+          ))}
+        </div>
+        <section className="record-cheatsheet">
+          <h2>Where does each kind of information go?</h2>
+          <div>
+            <p><b>Care plan</b><span>Something expected to repeat, such as feeding every Wednesday.</span></p>
+            <p><b>History</b><span>Something that happened once, such as a vet visit or enclosure change.</span></p>
+            <p><b>Note</b><span>Reference information you want to keep, such as temperament or acquisition details.</span></p>
+            <p><b>Equipment</b><span>UVB, heating, lighting, filters, and replacement dates.</span></p>
+            <p><b>Weight</b><span>A dated measurement in grams, kept separately for trend tracking.</span></p>
+            <p><b>Feeder</b><span>Prey inventory by type and weight for feeding forecasts.</span></p>
+          </div>
+        </section>
+        <p className="guide-footer">Need installation help, backups, or phone setup? <a href="https://github.com/jlyfshhh/shed/blob/main/docs/SETUP.md" target="_blank" rel="noreferrer">Open the complete Shed guide</a>.</p>
+      </div>
+    </div>
+  );
+}
+
 // ── Management console ─────────────────────────────────────────────────────────
-export function ManageConsole({ onClose, onChanged, toast }: {
+export function ManageConsole({ onClose, onChanged, toast, initialResource = "animal" }: {
   onClose: () => void;
   onChanged: () => void;
   toast: (message: string) => void;
+  initialResource?: ResourceKey;
 }) {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [active, setActive] = useState<ResourceKey>("animal");
+  const [active, setActive] = useState<ResourceKey>(initialResource);
   const [editing, setEditing] = useState<{ def: ResourceDef; row: Row | null } | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);

@@ -23,6 +23,8 @@ Shed is a small, shared dashboard for households that keep animals together. One
 
 ## Quick start
 
+**New to Shed?** The [complete getting-started guide](docs/SETUP.md) explains first login, the recommended enclosure → animal → care-plan setup order, household accounts, backups, and phone installation.
+
 Shed runs as a Docker container on any always-on machine on your home network — an old PC, a NAS, a home server, or a Raspberry Pi.
 
 ```bash

@@ -18,6 +18,12 @@ export async function GET(request: Request) {
     const tasksResult = await db.prepare("SELECT t.id, t.animal_id AS animalId, a.name AS animalName, a.species, t.task_type AS taskType, t.title, t.details, t.due_date AS dueDate, CASE WHEN e.id IS NULL THEN 0 ELSE 1 END AS complete, e.id AS completionEventId, e.completed_by_member_id AS completedByMemberId, COALESCE(e.completed_by_name, e.actor_role) AS completedBy FROM care_tasks t JOIN animals a ON a.id=t.animal_id LEFT JOIN husbandry_events e ON e.task_id=t.id AND e.due_date=t.due_date AND e.voided_at IS NULL WHERE a.active = 1 AND (t.due_date = ? OR (t.due_date = ? AND e.id IS NULL)) ORDER BY complete, t.due_date, a.name, t.title").bind(today, yesterday).all();
     const eventsResult = await db.prepare("SELECT e.id, e.task_id AS taskId, e.due_date AS dueDate, a.name AS animalName, e.task_type AS taskType, e.title, e.notes, e.occurred_at AS occurredAt, e.actor_role AS actorRole, e.completed_by_member_id AS completedByMemberId, COALESCE(e.completed_by_name, e.actor_role) AS completedBy, e.voided_at AS voidedAt, e.voided_by_member_id AS voidedByMemberId, e.voided_by_name AS voidedBy, e.void_reason AS voidReason FROM husbandry_events e JOIN animals a ON a.id=e.animal_id ORDER BY COALESCE(e.voided_at, e.occurred_at) DESC LIMIT 20").all();
     const weightsResult = await db.prepare("SELECT w.animal_id AS animalId, a.name AS animalName, w.recorded_on AS recordedOn, w.weight_grams AS weightGrams FROM weight_events w JOIN animals a ON a.id=w.animal_id ORDER BY w.animal_id, w.recorded_on").all();
+    const [enclosureCountRow, scheduleCountRow, eventCountRow, keeperCountRow] = await Promise.all([
+      db.prepare("SELECT COUNT(*) AS count FROM enclosures WHERE active = 1").first<{ count: number }>(),
+      db.prepare("SELECT COUNT(*) AS count FROM care_schedules WHERE active = 1").first<{ count: number }>(),
+      db.prepare("SELECT COUNT(*) AS count FROM husbandry_events WHERE voided_at IS NULL").first<{ count: number }>(),
+      db.prepare("SELECT COUNT(*) AS count FROM household_members WHERE active = 1 AND role = 'Zookeeper'").first<{ count: number }>(),
+    ]);
 
     const weightMap = new Map<string, Array<{ animalId: string; animalName: string; recordedOn: string; weightGrams: number }>>();
     for (const row of weightsResult.results as Array<{ animalId: string; animalName: string; recordedOn: string; weightGrams: number }>) {
@@ -32,7 +38,21 @@ export async function GET(request: Request) {
       currentDate: rows.at(-1)!.recordedOn,
     }));
 
-    return Response.json({ date: today, viewer: member ? { id: member.id, displayName: member.displayName, role: member.role } : null, tasks: tasksResult.results, animals: animalsResult.results, recentEvents: eventsResult.results, weightTrends });
+    return Response.json({
+      date: today,
+      viewer: member ? { id: member.id, displayName: member.displayName, role: member.role } : null,
+      tasks: tasksResult.results,
+      animals: animalsResult.results,
+      recentEvents: eventsResult.results,
+      weightTrends,
+      setupSummary: {
+        animalCount: animalsResult.results.length,
+        enclosureCount: Number(enclosureCountRow?.count ?? 0),
+        scheduleCount: Number(scheduleCountRow?.count ?? 0),
+        eventCount: Number(eventCountRow?.count ?? 0),
+        keeperCount: Number(keeperCountRow?.count ?? 0),
+      },
+    });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Unable to load dashboard" }, { status: 500 });
   }

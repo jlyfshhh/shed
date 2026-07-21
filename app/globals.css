@@ -167,6 +167,40 @@ h1, h2, h3, p { margin-top: 0; }
 .sheet-close { border: 1px solid var(--line); background: var(--cream); border-radius: 50%; width: 38px; height: 38px; font-size: 15px; cursor: pointer; flex: 0 0 auto; }
 .overlay-body { flex: 1; overflow-y: auto; padding: 24px clamp(18px, 4vw, 46px) 80px; width: min(920px, 100%); margin: 0 auto; }
 
+/* ── First-run onboarding ── */
+.onboarding-card { margin: 0 0 22px; padding: clamp(20px, 4vw, 30px); border: 1px solid #e8d3a7; border-radius: 20px; background: linear-gradient(135deg, #fff8e9, #f4f0df); display: flex; align-items: end; justify-content: space-between; gap: 24px; }
+.onboarding-card > div:first-child { max-width: 610px; }
+.onboarding-glyph { float: left; width: 42px; height: 42px; margin: 1px 14px 12px 0; display: grid; place-items: center; border-radius: 13px; background: var(--gold); color: #fff; font-weight: 900; }
+.onboarding-card h2 { margin: 2px 0 6px; font-family: Georgia, serif; font-size: 25px; font-weight: 500; }
+.onboarding-card p:not(.eyebrow) { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.55; }
+.onboarding-actions { display: flex; gap: 8px; flex: 0 0 auto; }
+.onboarding-actions button, .guide-steps button { border: 0; border-radius: 999px; padding: 10px 15px; background: var(--moss); color: #fff; font-size: 12px; font-weight: 800; cursor: pointer; }
+.onboarding-actions button + button { background: transparent; color: var(--moss); border: 1px solid #b7c0ad; }
+.guide-body { width: min(860px, 100%); }
+.guide-intro { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 18px; align-items: start; padding: 8px 0 18px; }
+.guide-intro .mini-mark { width: 54px; height: 54px; }
+.guide-intro .eyebrow { margin: 0 0 3px; }
+.guide-intro h1 { margin: 0 0 7px; font-family: Georgia, serif; font-size: clamp(30px, 5vw, 45px); font-weight: 500; letter-spacing: -.04em; }
+.guide-intro p:last-child { margin: 0; max-width: 660px; color: var(--muted); line-height: 1.6; }
+.guide-progress { height: 8px; overflow: hidden; border-radius: 999px; background: #e4e5dd; margin-bottom: 22px; }
+.guide-progress span { display: block; height: 100%; border-radius: inherit; background: var(--gold); transition: width .25s ease; }
+.guide-steps { display: grid; gap: 10px; }
+.guide-steps article { display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 15px; align-items: center; padding: 17px; border: 1px solid var(--line); border-radius: 16px; background: var(--paper); }
+.guide-steps article.done { background: #f4f5ef; }
+.guide-number { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 12px; background: #fff0d7; color: #9a4a11; font-weight: 900; }
+.guide-steps .done .guide-number { background: #dce8d2; color: var(--moss); }
+.guide-steps h2 { margin: 0 0 3px; font-size: 16px; }
+.guide-steps p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.guide-steps article.done button { background: transparent; color: var(--moss); border: 1px solid #b7c0ad; }
+.record-cheatsheet { margin-top: 26px; padding: 22px; border-radius: 18px; background: #fffaf0; border: 1px solid #efe1c3; }
+.record-cheatsheet h2 { margin: 0 0 14px; font-size: 19px; }
+.record-cheatsheet > div { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 9px 20px; }
+.record-cheatsheet p { margin: 0; display: grid; gap: 2px; }
+.record-cheatsheet b { font-size: 13px; }
+.record-cheatsheet span { color: var(--muted); font-size: 12px; line-height: 1.45; }
+.guide-footer { margin: 18px 0 0; color: var(--muted); font-size: 13px; text-align: center; }
+.guide-footer a { color: var(--moss); font-weight: 800; }
+
 /* ── Manage console ── */
 .manage-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 20px; }
 .manage-tabs button { border: 1px solid var(--line); background: var(--paper); border-radius: 999px; padding: 8px 14px; font-size: 13px; font-weight: 700; cursor: pointer; color: var(--muted); }
@@ -267,6 +301,7 @@ button.primary:disabled { opacity: .6; cursor: wait; }
   .role-panel { display: block; }.role-panel button { width: 100%; margin-top: 17px; }.role-panel .panel-login { margin-top: 15px; }.trend-summary { display: block; }.trend-summary b { display: block; margin-top: 4px; }.toast { left: 14px; right: 14px; bottom: 84px; text-align: center; }
   .role-chip { max-width: 44vw; }.role-chip em { display: none; }.member-row { grid-template-columns: auto minmax(0,1fr); }.member-actions { grid-column: 1 / -1; justify-content: start; }
   .sheet-body { grid-template-columns: 1fr; }.sheet { border-radius: 20px 20px 0 0; max-height: 94vh; }.overlay-body { padding-bottom: 40px; }.manage-toolbar { align-items: start; }.manage-row { grid-template-columns: 1fr; }.manage-row-actions { justify-content: start; }.profile-hero h2 { font-size: 25px; }
+  .onboarding-card { display: block; }.onboarding-actions { margin-top: 17px; flex-wrap: wrap; }.guide-steps article { grid-template-columns: auto minmax(0,1fr); }.guide-steps button { grid-column: 1 / -1; width: 100%; }.record-cheatsheet > div { grid-template-columns: 1fr; }
   .mobile-nav { position: fixed; display: grid; grid-template-columns: repeat(4,1fr); left: 10px; right: 10px; bottom: 10px; z-index: 10; padding: 7px; background: rgba(33,55,46,.96); border-radius: 19px; box-shadow: 0 15px 40px rgba(20,38,29,.24); backdrop-filter: blur(10px); }.mobile-nav button { border: 0; color: #aab9af; background: transparent; border-radius: 13px; padding: 7px 3px 6px; display: grid; justify-items: center; gap: 2px; cursor: pointer; }.mobile-nav button b { font-size: 17px; line-height: 1; }.mobile-nav button span { font-size: 10px; }.mobile-nav button.active { background: rgba(219,231,181,.14); color: white; }
 }
 
