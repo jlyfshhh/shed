@@ -1,6 +1,7 @@
 import { ensureDatabase } from "@/db/runtime";
 import { dateInTimeZone, isIsoDate } from "@/lib/date";
 import { requireHouseholdMember } from "@/lib/household-auth";
+import { normalizedEmptyValue } from "@/lib/manage-values";
 
 type Resource = "animal" | "enclosure" | "schedule" | "note" | "equipment" | "weight" | "event" | "feeder";
 type Payload = { resource?: Resource; id?: string; data?: Record<string, unknown>; reason?: string };
@@ -154,7 +155,7 @@ function normalize(resource: Resource, data: Record<string, unknown>, creating: 
   const output: Record<string, string | number | null> = {};
   for (const [key, value] of Object.entries(data)) {
     const field = config.fields[key]; if (!field) continue;
-    if (value === null || value === "") { output[key] = null; continue; }
+    if (value === null || value === "") { output[key] = normalizedEmptyValue(resource, key); continue; }
     if (field.kind === "boolean") output[key] = value ? 1 : 0;
     else if (field.kind === "number") { const number = Number(value); if (!Number.isFinite(number) || number < 0) throw new Error(`${key} must be a positive number`); output[key] = number; }
     else if (field.kind === "date") { const text = String(value); if (!isIsoDate(text)) throw new Error(`${key} must use YYYY-MM-DD`); output[key] = text; }
