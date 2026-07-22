@@ -4,13 +4,17 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { AnimalProfile, GettingStartedGuide, ManageConsole, RestorePanel, SetupGate, type ResourceKey, type SetupSummary } from "./manage";
 
 type Role = "Owner" | "Zookeeper";
-type Viewer = { id: string; displayName: string; role: Role };
+type Viewer = { id: string; displayName: string; role: Role; earningEnabled?: boolean; balanceCents?: number | null };
 type Session = { authenticated: boolean; authRequired: boolean; setupRequired: boolean; member: Viewer | null };
 type Member = {
   id: string;
   displayName: string;
   role: Role;
   active: boolean;
+  earningEnabled: boolean;
+  balanceCents: number;
+  earnedCents: number;
+  paidCents: number;
   createdAt: string;
   updatedAt: string;
   lastLoginAt: string | null;
@@ -89,6 +93,8 @@ const navItems: Array<{ id: Tab; label: string; glyph: string }> = [
 // keepers see the household-friendly labels.
 const roleLabel = (role: Role) => (role === "Owner" ? "Head Keeper" : "Keeper");
 
+const formatCents = (cents: number) => `$${(Math.max(0, cents) / 100).toFixed(2)}`;
+
 const formatDate = (date: string) =>
   new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric" }).format(
     new Date(`${date}T12:00:00`),
@@ -133,6 +139,9 @@ export default function HusbandryApp() {
   const [newMemberName, setNewMemberName] = useState("");
   const [memberBusy, setMemberBusy] = useState<string | null>(null);
   const [invite, setInvite] = useState<Invite | null>(null);
+  // ── Task earnings ("allowance") ──
+  const [rewardInput, setRewardInput] = useState("0.25");
+  const [rewardBusy, setRewardBusy] = useState(false);
   const [report, setReport] = useState<ContributionReport | null>(null);
   const [reportError, setReportError] = useState<string | null>(null);
   const [reportBusy, setReportBusy] = useState(false);
@@ -144,6 +153,8 @@ export default function HusbandryApp() {
   const signedIn = Boolean(session?.member);
   const isOwner = viewer ? viewer.role === "Owner" : !authRequired;
   const gateOpen = Boolean(session && session.authRequired && !session.member);
+  // The signed-in keeper's own balance (from the dashboard viewer), shown by their name.
+  const earnerBalanceCents = data?.viewer?.earningEnabled ? (data.viewer.balanceCents ?? 0) : null;
 
   const loadSession = async () => {
     try {
@@ -190,9 +201,61 @@ export default function HusbandryApp() {
         return;
       }
       if (!response.ok) throw new Error("Couldn’t load household members.");
-      setMembers(((await response.json()) as { members: Member[] }).members);
+      const payload = (await response.json()) as { members: Member[]; defaultRewardCents?: number };
+      setMembers(payload.members);
+      if (typeof payload.defaultRewardCents === "number") {
+        setRewardInput((payload.defaultRewardCents / 100).toFixed(2));
+      }
     } catch {
       setMembersError("Couldn’t load household members.");
+    }
+  };
+
+  const saveDefaultReward = async (event: FormEvent) => {
+    event.preventDefault();
+    const dollars = Number(rewardInput);
+    if (!Number.isFinite(dollars) || dollars < 0) {
+      setMembersError("Enter a valid dollar amount, like 0.25.");
+      return;
+    }
+    setRewardBusy(true);
+    setMembersError(null);
+    try {
+      const response = await fetch("/api/household/rewards", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ defaultRewardCents: Math.round(dollars * 100) }),
+      });
+      const payload = (await response.json()) as { defaultRewardCents?: number; error?: string };
+      if (!response.ok || typeof payload.defaultRewardCents !== "number") throw new Error(payload.error ?? "Couldn’t save.");
+      setRewardInput((payload.defaultRewardCents / 100).toFixed(2));
+      notify("Per-task amount updated.");
+    } catch (error) {
+      setMembersError(error instanceof Error ? error.message : "Couldn’t save the amount.");
+    } finally {
+      setRewardBusy(false);
+    }
+  };
+
+  const payOut = async (member: Member) => {
+    if (!window.confirm(`Pay out ${formatCents(member.balanceCents)} to ${member.displayName}? This clears their balance and records the payout.`)) return;
+    setMemberBusy(member.id);
+    setMembersError(null);
+    try {
+      const response = await fetch(`/api/household/members/${member.id}/payout`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const payload = (await response.json()) as { paidCents?: number; error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "Couldn’t record the payout.");
+      notify(`Paid ${formatCents(payload.paidCents ?? 0)} to ${member.displayName}.`);
+      await loadMembers();
+      await refresh().catch(() => undefined);
+    } catch (error) {
+      setMembersError(error instanceof Error ? error.message : "Couldn’t record the payout.");
+    } finally {
+      setMemberBusy(null);
     }
   };
 
@@ -312,7 +375,7 @@ export default function HusbandryApp() {
     }
   };
 
-  const patchMember = async (member: Member, body: { active?: boolean; reissueAccessCode?: boolean }) => {
+  const patchMember = async (member: Member, body: { active?: boolean; reissueAccessCode?: boolean; earningEnabled?: boolean }) => {
     setMemberBusy(member.id);
     setMembersError(null);
     try {
@@ -407,9 +470,16 @@ export default function HusbandryApp() {
             <span><b>Shed</b><small>Good care shows</small></span>
           </button>
           {viewer ? (
-            <button className="role-chip" onClick={() => openTab("more")} title="Household & access">
-              <span>{viewer.displayName.slice(0, 1).toUpperCase()}</span>{viewer.displayName}<em>{roleLabel(viewer.role)}</em>
-            </button>
+            <div className="viewer-cluster">
+              {earnerBalanceCents !== null && (
+                <button className="balance-pill" onClick={() => openTab("more")} title="Your earnings balance">
+                  <i aria-hidden="true">◍</i>{formatCents(earnerBalanceCents)}
+                </button>
+              )}
+              <button className="role-chip" onClick={() => openTab("more")} title="Household & access">
+                <span>{viewer.displayName.slice(0, 1).toUpperCase()}</span>{viewer.displayName}<em>{roleLabel(viewer.role)}</em>
+              </button>
+            </div>
           ) : (
             <button className="role-chip" onClick={() => openTab("more")}>
               <span>→</span>Sign in
@@ -591,6 +661,17 @@ export default function HusbandryApp() {
                 <span className="settings-icon">⌗</span>
                 <h2>Household access</h2>
                 <p>Every member of the household gets their own name and private access code, so completed care is credited to the right keeper.</p>
+
+                <div className="earn-default">
+                  <div>
+                    <b>Task earnings</b>
+                    <small>Turn on “Earning” for a keeper and they earn money as they mark tasks done. Balance shows by their name.</small>
+                  </div>
+                  <form className="earn-form" onSubmit={saveDefaultReward}>
+                    <label>Default per task<span className="dollar"><i>$</i><input type="number" step="0.01" min="0" value={rewardInput} onChange={(event) => setRewardInput(event.target.value)} aria-label="Default reward per task in dollars" /></span></label>
+                    <button disabled={rewardBusy}>{rewardBusy ? "Saving…" : "Save"}</button>
+                  </form>
+                </div>
                 {invite && (
                   <div className="invite-reveal" role="status">
                     <b>Access code for {invite.displayName}</b>
@@ -609,10 +690,21 @@ export default function HusbandryApp() {
                         <div className="member-row" key={member.id}>
                           <span className="member-avatar">{member.displayName.slice(0, 1).toUpperCase()}</span>
                           <div>
-                            <b>{member.displayName}{!member.active && <i> · disabled</i>}</b>
-                            <small>{roleLabel(member.role)}{member.lastLoginAt ? ` · last signed in ${timeAgo(member.lastLoginAt)}` : " · never signed in"}</small>
+                            <b>{member.displayName}{!member.active && <i> · disabled</i>}{member.earningEnabled && <span className="earn-balance">{formatCents(member.balanceCents)}</span>}</b>
+                            <small>{roleLabel(member.role)}{member.lastLoginAt ? ` · last signed in ${timeAgo(member.lastLoginAt)}` : " · never signed in"}{member.earningEnabled ? ` · earned ${formatCents(member.earnedCents)}` : ""}</small>
                           </div>
                           <div className="member-actions">
+                            <button
+                              className={member.earningEnabled ? "on" : ""}
+                              disabled={memberBusy === member.id}
+                              onClick={() => void patchMember(member, { earningEnabled: !member.earningEnabled })}
+                              title="Earn money for completed tasks"
+                            >
+                              {member.earningEnabled ? "Earning ✓" : "Earning off"}
+                            </button>
+                            {member.earningEnabled && member.balanceCents > 0 && (
+                              <button className="pay" disabled={memberBusy === member.id} onClick={() => void payOut(member)}>Pay out</button>
+                            )}
                             <button
                               disabled={memberBusy === member.id}
                               onClick={() => {

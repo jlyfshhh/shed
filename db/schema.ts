@@ -36,6 +36,7 @@ export const careSchedules = sqliteTable("care_schedules", {
   active: integer("active", { mode: "boolean" }).notNull().default(true), createdAt: text("created_at").notNull(), updatedAt: text("updated_at").notNull(),
   preySpecies: text("prey_species"), preyDescription: text("prey_description"), targetPercent: real("target_percent"),
   minimumPercent: real("minimum_percent"), maximumPercent: real("maximum_percent"), buyAsNeeded: integer("buy_as_needed", { mode: "boolean" }).notNull().default(false),
+  rewardCents: integer("reward_cents"),
 });
 
 export const careTasks = sqliteTable("care_tasks", {
@@ -79,6 +80,7 @@ export const husbandryEvents = sqliteTable("husbandry_events", {
   editedAt: text("edited_at"),
   editedByMemberId: text("edited_by_member_id"),
   editedByName: text("edited_by_name"),
+  rewardCents: integer("reward_cents").notNull().default(0),
 }, (table) => [uniqueIndex("event_task_due_unique").on(table.taskId, table.dueDate)]);
 
 export const husbandryEventRevisions = sqliteTable("husbandry_event_revisions", {
@@ -92,6 +94,7 @@ export const householdMembers = sqliteTable("household_members", {
   role: text("role").notNull(),
   accessCodeHash: text("access_code_hash").notNull(),
   active: integer("active", { mode: "boolean" }).notNull().default(true),
+  earningEnabled: integer("earning_enabled", { mode: "boolean" }).notNull().default(false),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
   lastLoginAt: text("last_login_at"),
@@ -139,4 +142,22 @@ export const feedingAssignments = sqliteTable("feeding_assignments", {
 }, (table) => [
   index("feeding_assignments_animal_date_idx").on(table.animalId, table.plannedFor),
   index("feeding_assignments_feeder_idx").on(table.feederId),
+]);
+
+// Task earnings ("allowance") — added by Claude 2026-07-21 while Codex was out.
+export const appSettings = sqliteTable("app_settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+});
+
+export const rewardPayouts = sqliteTable("reward_payouts", {
+  id: text("id").primaryKey(),
+  memberId: text("member_id").notNull(),
+  amountCents: integer("amount_cents").notNull(),
+  note: text("note"),
+  paidAt: text("paid_at").notNull(),
+  paidByMemberId: text("paid_by_member_id"),
+  paidByName: text("paid_by_name"),
+}, (table) => [
+  index("reward_payouts_member_idx").on(table.memberId, table.paidAt),
 ]);

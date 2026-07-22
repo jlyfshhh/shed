@@ -17,6 +17,7 @@ export type HouseholdMember = {
   displayName: string;
   role: HouseholdRole;
   active: number | boolean;
+  earningEnabled?: number | boolean;
 };
 
 export function householdAuthRequired(): boolean {
@@ -28,7 +29,7 @@ export async function memberFromRequest(request: Request, db: D1Database): Promi
   if (!code) return null;
   const accessCodeHash = await hashAccessCode(code);
   return db.prepare(
-    "SELECT id, display_name AS displayName, role, active FROM household_members WHERE access_code_hash = ? AND active = 1",
+    "SELECT id, display_name AS displayName, role, active, earning_enabled AS earningEnabled FROM household_members WHERE access_code_hash = ? AND active = 1",
   ).bind(accessCodeHash).first<HouseholdMember>();
 }
 

@@ -150,6 +150,24 @@ h1, h2, h3, p { margin-top: 0; }
 .report-details p { margin: 8px 0 0; font-size: 13px; }
 .report-details small { color: var(--muted); margin-left: 6px; }
 
+/* ── Task earnings ("allowance") ── */
+.viewer-cluster { display: flex; align-items: center; gap: 9px; }
+.balance-pill { display: inline-flex; align-items: center; gap: 5px; border: 1px solid #bfe0c4; background: #edf8ef; color: #2f7d4b; border-radius: 999px; padding: 7px 13px 7px 11px; font-size: 13px; font-weight: 800; cursor: pointer; box-shadow: 0 4px 16px rgba(40,90,55,.06); }
+.balance-pill i { font-style: normal; font-size: 12px; }
+.earn-default { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; background: #f6f8f2; border: 1px solid #e2e7d7; border-radius: 15px; padding: 14px 16px; margin: 6px 0 16px; }
+.earn-default b { display: block; font-size: 14px; }
+.earn-default small { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; max-width: 44ch; }
+.earn-form { display: flex; align-items: end; gap: 10px; }
+.earn-form label { display: grid; gap: 4px; color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
+.dollar { display: flex; align-items: center; border: 1px solid var(--line); background: var(--cream); border-radius: 10px; padding: 0 10px; }
+.dollar i { font-style: normal; color: var(--muted); font-weight: 700; }
+.dollar input { width: 74px; border: 0; outline: 0; background: transparent; padding: 9px 4px; color: var(--ink); font-weight: 700; }
+.earn-form button { border: 1px solid #f3c991; background: #fff4df; color: #9a4a11; border-radius: 999px; padding: 9px 15px; font-weight: 800; font-size: 12px; cursor: pointer; align-self: end; }
+.earn-form button:disabled { opacity: .6; cursor: wait; }
+.earn-balance { display: inline-block; margin-left: 8px; background: #edf8ef; border: 1px solid #bfe0c4; color: #2f7d4b; border-radius: 999px; padding: 1px 9px; font-size: 12px; font-weight: 800; vertical-align: middle; }
+.member-actions button.on { border-color: #bfe0c4; background: #edf8ef; color: #2f7d4b; }
+.member-actions button.pay { border-color: #f3c991; background: #fff4df; color: #9a4a11; }
+
 .loading-state { min-height: 65vh; display: grid; place-content: center; text-align: center; }.loading-state h1 { font-family: Georgia, serif; font-weight: 500; }.loader { width: 42px; height: 42px; margin: 0 auto 14px; border: 3px solid #dbe0d1; border-top-color: var(--moss); border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 

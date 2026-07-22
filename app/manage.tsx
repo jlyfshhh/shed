@@ -129,6 +129,7 @@ const resourceDefs: ResourceDef[] = [
       { key: "dayOfMonth", column: "day_of_month", label: "Day of month", type: "number", showIf: (v) => v.frequency === "monthly", help: "1–31" },
       { key: "startDate", column: "start_date", label: "Start date", type: "date", required: true },
       { key: "endDate", column: "end_date", label: "End date", type: "date", help: "Optional — leave blank to run indefinitely" },
+      { key: "rewardCents", column: "reward_cents", label: "Reward per task (cents)", type: "number", help: "Blank = household default. e.g. 25 = 25¢, 50 = 50¢" },
       { key: "preySpecies", column: "prey_species", label: "Prey species", type: "text", showIf: isFeeding, help: "e.g. rat, mouse" },
       { key: "preyDescription", column: "prey_description", label: "Prey description", type: "text", showIf: isFeeding },
       { key: "targetPercent", column: "target_percent", label: "Target % of body weight", type: "number", step: "0.001", showIf: isFeeding, help: "Decimal: 5% = 0.05" },

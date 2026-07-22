@@ -69,3 +69,27 @@ builder; animal profile/baseball card; add/edit notes, equipment, weight, event,
 feeder forms; archive/void confirmations; JSON backup download and restore; feeder
 forecast configuration; and validation/error/success states. Keeper UI remains focused
 on viewing records and completing care.
+
+## Task earnings ("allowance") — added by Claude 2026-07-21
+
+Optional per-keeper earnings. When a member has `earning_enabled`, completing a task
+adds a reward to their (derived) balance.
+
+- Amount: `care_schedules.reward_cents` overrides the household default in
+  `app_settings.default_reward_cents` (seeded at `25`). The reward is snapshotted onto
+  `husbandry_events.reward_cents` at completion, so later changes don't rewrite history.
+- Balance = sum of non-voided completion `reward_cents` for the member minus their
+  `reward_payouts`. Voiding a completion removes its reward automatically.
+- `GET /api/auth/session` is unchanged; `GET /api/dashboard` `viewer` gains
+  `earningEnabled` and `balanceCents` (null for non-earners).
+- `GET /api/household/members` (Owner) gains `defaultRewardCents` and, per member,
+  `earningEnabled`, `balanceCents`, `earnedCents`, `paidCents`.
+- `PATCH /api/household/members/:id` (Owner) accepts `earningEnabled`.
+- `GET|PATCH /api/household/rewards` (Owner) reads/sets `{ defaultRewardCents }`
+  (0–100000).
+- `POST /api/household/members/:id/payout` (Owner) `{ amountCents?, note? }` records a
+  payout (defaults to the full balance) and clears the owed balance.
+- `POST /api/tasks/complete` returns `rewardCents` and the member's `balanceCents`.
+- `/api/manage` schedule resource accepts `rewardCents`.
+- New tables/columns are applied by `db/runtime.ts` (self-migrating). A formal drizzle
+  migration still needs `npm run db:generate` against the updated `db/schema.ts`.

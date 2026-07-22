@@ -2,6 +2,7 @@ import { ensureDatabase } from "@/db/runtime";
 import { dateInTimeZone } from "@/lib/date";
 import { previousIsoDate } from "@/lib/care-schedule";
 import { householdAuthRequired, memberFromRequest } from "@/lib/household-auth";
+import { memberBalance } from "@/lib/rewards";
 
 export const dynamic = "force-dynamic";
 
@@ -38,9 +39,12 @@ export async function GET(request: Request) {
       currentDate: rows.at(-1)!.recordedOn,
     }));
 
+    const earningEnabled = Boolean(member?.earningEnabled);
+    const viewerBalanceCents = member && earningEnabled ? (await memberBalance(db, member.id)).balanceCents : null;
+
     return Response.json({
       date: today,
-      viewer: member ? { id: member.id, displayName: member.displayName, role: member.role } : null,
+      viewer: member ? { id: member.id, displayName: member.displayName, role: member.role, earningEnabled, balanceCents: viewerBalanceCents } : null,
       tasks: tasksResult.results,
       animals: animalsResult.results,
       recentEvents: eventsResult.results,
