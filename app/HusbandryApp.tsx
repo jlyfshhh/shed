@@ -451,6 +451,27 @@ export default function HusbandryApp() {
     }
   };
 
+  const missAllOverdue = async () => {
+    const count = data?.overdue.length ?? 0;
+    if (!count || !window.confirm(`Mark all ${count} overdue task${count === 1 ? "" : "s"} as missed? Anything you actually did, mark done instead — this clears the rest off the list.`)) return;
+    setBusyTask("__all__");
+    try {
+      const response = await fetch("/api/tasks/miss", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ all: true }),
+      });
+      const payload = (await response.json()) as { missed?: number };
+      if (!response.ok) throw new Error("Unable to update");
+      await refresh();
+      notify(`Cleared ${payload.missed ?? count} overdue task${(payload.missed ?? count) === 1 ? "" : "s"}.`);
+    } catch {
+      setToast("That didn’t save. Please try again.");
+    } finally {
+      setBusyTask(null);
+    }
+  };
+
   const pending = data?.tasks.filter((task) => !task.complete) ?? [];
   const completed = data?.tasks.filter((task) => task.complete) ?? [];
   const overdue = data?.overdue ?? [];
@@ -568,7 +589,7 @@ export default function HusbandryApp() {
 
             {overdue.length > 0 && (
               <>
-                <div className="section-title compact"><h2>Overdue</h2><span>{overdue.length} from earlier days</span></div>
+                <div className="section-title compact"><h2>Overdue</h2><div className="section-actions"><span>{overdue.length} from earlier days</span><button disabled={busyTask === "__all__"} onClick={missAllOverdue}>{busyTask === "__all__" ? "Clearing…" : "Mark all missed"}</button></div></div>
                 <div className="task-list">
                   {overdue.map((task) => (
                     <article className="task-card overdue" key={task.id}>

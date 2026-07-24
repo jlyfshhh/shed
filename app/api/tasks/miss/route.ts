@@ -3,20 +3,30 @@
 // showing without fabricating a completion event. Reversible: completing the
 // task later clears the missed mark.
 import { ensureDatabase } from "@/db/runtime";
+import { dateInTimeZone } from "@/lib/date";
 import { householdAuthRequired, memberFromRequest } from "@/lib/household-auth";
 
 const noStore = { "Cache-Control": "no-store" };
 
 export async function POST(request: Request) {
   try {
-    const payload = await request.json() as { taskId?: string; dueDate?: string };
-    if (!payload.taskId || !payload.dueDate) {
-      return Response.json({ error: "Task and due date are required" }, { status: 400, headers: noStore });
-    }
+    const payload = await request.json() as { taskId?: string; dueDate?: string; all?: boolean };
     const db = await ensureDatabase();
     const member = await memberFromRequest(request, db);
     if (householdAuthRequired() && !member) {
       return Response.json({ error: "Sign in to Shed first" }, { status: 401, headers: noStore });
+    }
+
+    // Bulk clear: mark every still-open overdue task as missed in one go.
+    if (payload.all) {
+      const result = await db.prepare(
+        "UPDATE care_tasks SET missed_at = ?, missed_by_member_id = ?, missed_by_name = ? WHERE due_date < ? AND missed_at IS NULL AND NOT EXISTS (SELECT 1 FROM husbandry_events e WHERE e.task_id = care_tasks.id AND e.due_date = care_tasks.due_date AND e.voided_at IS NULL)",
+      ).bind(new Date().toISOString(), member?.id ?? null, member?.displayName ?? null, dateInTimeZone()).run();
+      return Response.json({ saved: true, missed: result.meta?.changes ?? 0 }, { headers: noStore });
+    }
+
+    if (!payload.taskId || !payload.dueDate) {
+      return Response.json({ error: "Task and due date are required" }, { status: 400, headers: noStore });
     }
 
     const task = await db.prepare("SELECT id FROM care_tasks WHERE id = ? AND due_date = ?").bind(payload.taskId, payload.dueDate).first<{ id: string }>();

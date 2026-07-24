@@ -169,6 +169,7 @@ h1, h2, h3, p { margin-top: 0; }
 .member-actions button.pay { border-color: #f3c991; background: #fff4df; color: #9a4a11; }
 
 /* ── Overdue tasks ── */
+.section-actions { display: flex; align-items: baseline; gap: 14px; }
 .task-card.overdue { border-color: #ecd3b0; background: #fffaf1; }
 .task-card.overdue .task-copy > span { color: #b06a1a; }
 .overdue-actions { display: grid; gap: 7px; justify-items: stretch; }
