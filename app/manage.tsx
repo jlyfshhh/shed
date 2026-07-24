@@ -626,19 +626,54 @@ type AnimalProfileData = {
 export function AnimalProfile({ animalId, onClose }: { animalId: string; onClose: () => void }) {
   const [data, setData] = useState<AnimalProfileData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showWeight, setShowWeight] = useState(false);
+  const [wDate, setWDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [wGrams, setWGrams] = useState("");
+  const [wNotes, setWNotes] = useState("");
+  const [wBusy, setWBusy] = useState(false);
+  const [wError, setWError] = useState<string | null>(null);
+
+  const load = async () => {
+    try {
+      const response = await fetch(`/api/animals/${encodeURIComponent(animalId)}`, { cache: "no-store" });
+      if (!response.ok) throw new Error("Couldn’t load this animal.");
+      setData((await response.json()) as AnimalProfileData);
+      setError(null);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Couldn’t load this animal.");
+    }
+  };
 
   useEffect(() => {
-    const timer = window.setTimeout(async () => {
-      try {
-        const response = await fetch(`/api/animals/${encodeURIComponent(animalId)}`, { cache: "no-store" });
-        if (!response.ok) throw new Error("Couldn’t load this animal.");
-        setData((await response.json()) as AnimalProfileData);
-      } catch (loadError) {
-        setError(loadError instanceof Error ? loadError.message : "Couldn’t load this animal.");
-      }
-    }, 0);
+    const timer = window.setTimeout(() => void load(), 0);
     return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [animalId]);
+
+  const logWeight = async (event: FormEvent) => {
+    event.preventDefault();
+    const grams = Number(wGrams);
+    if (!Number.isFinite(grams) || grams <= 0) { setWError("Enter a weight in grams."); return; }
+    setWBusy(true);
+    setWError(null);
+    try {
+      const response = await fetch("/api/weights", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ animalId, recordedOn: wDate, weightGrams: grams, notes: wNotes.trim() || undefined }),
+      });
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "Couldn’t save the weight.");
+      setWGrams("");
+      setWNotes("");
+      setShowWeight(false);
+      await load();
+    } catch (saveError) {
+      setWError(saveError instanceof Error ? saveError.message : "Couldn’t save the weight.");
+    } finally {
+      setWBusy(false);
+    }
+  };
 
   const animal = data?.animal;
   const peakWeight = data?.weightHistory.length ? Math.max(...data.weightHistory.map((w) => w.weightGrams)) : null;
@@ -685,14 +720,28 @@ export function AnimalProfile({ animalId, onClose }: { animalId: string; onClose
               </section>
             )}
 
-            {data.weightHistory.length > 0 && (
-              <section className="profile-section">
+            <section className="profile-section">
+              <div className="profile-section-head">
                 <h3>Weight history</h3>
+                <button className="mini-add" onClick={() => { setShowWeight((open) => !open); setWError(null); }}>{showWeight ? "Cancel" : "＋ Log weight"}</button>
+              </div>
+              {showWeight && (
+                <form className="weight-form" onSubmit={logWeight}>
+                  <label>Date<input type="date" value={wDate} onChange={(event) => setWDate(event.target.value)} /></label>
+                  <label>Weight (g)<input type="number" step="0.1" min="0" value={wGrams} onChange={(event) => setWGrams(event.target.value)} placeholder="grams" autoFocus /></label>
+                  <label className="wide">Notes<input value={wNotes} onChange={(event) => setWNotes(event.target.value)} placeholder="optional" /></label>
+                  <button disabled={wBusy}>{wBusy ? "Saving…" : "Save weight"}</button>
+                </form>
+              )}
+              {wError && <p className="form-error">{wError}</p>}
+              {data.weightHistory.length > 0 ? (
                 <div className="profile-rows">
                   {data.weightHistory.slice(0, 12).map((w) => <div key={w.id}><b>{w.weightGrams} g</b><small>{w.recordedOn}</small></div>)}
                 </div>
-              </section>
-            )}
+              ) : (
+                <p className="member-note">No weights recorded yet — log one to start a trend.</p>
+              )}
+            </section>
 
             {data.equipment.length > 0 && (
               <section className="profile-section">

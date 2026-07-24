@@ -168,6 +168,25 @@ h1, h2, h3, p { margin-top: 0; }
 .member-actions button.on { border-color: #bfe0c4; background: #edf8ef; color: #2f7d4b; }
 .member-actions button.pay { border-color: #f3c991; background: #fff4df; color: #9a4a11; }
 
+/* ── Overdue tasks ── */
+.task-card.overdue { border-color: #ecd3b0; background: #fffaf1; }
+.task-card.overdue .task-copy > span { color: #b06a1a; }
+.overdue-actions { display: grid; gap: 7px; justify-items: stretch; }
+.miss-button { border: 1px solid var(--line); background: var(--paper); color: var(--muted); border-radius: 999px; padding: 8px 12px; font-size: 12px; font-weight: 800; cursor: pointer; }
+.miss-button:hover { color: #a14432; border-color: #e7c3b8; }
+.miss-button:disabled { opacity: .55; cursor: wait; }
+
+/* ── Weight logging on the animal profile ── */
+.profile-section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.profile-section-head h3 { margin: 0; }
+.mini-add { border: 1px solid #f3c991; background: #fff4df; color: #9a4a11; border-radius: 999px; padding: 7px 13px; font-size: 12px; font-weight: 800; cursor: pointer; }
+.weight-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; align-items: end; background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin-bottom: 12px; }
+.weight-form label { display: grid; gap: 4px; color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
+.weight-form label.wide { grid-column: 1 / -1; }
+.weight-form input { border: 1px solid var(--line); background: var(--cream); border-radius: 10px; padding: 9px 11px; color: var(--ink); outline-color: var(--gold); width: 100%; }
+.weight-form button { grid-column: 1 / -1; border: 0; background: var(--moss); color: #fff; border-radius: 999px; padding: 11px; font-weight: 800; font-size: 13px; cursor: pointer; }
+.weight-form button:disabled { opacity: .6; cursor: wait; }
+
 .loading-state { min-height: 65vh; display: grid; place-content: center; text-align: center; }.loading-state h1 { font-family: Georgia, serif; font-weight: 500; }.loader { width: 42px; height: 42px; margin: 0 auto 14px; border: 3px solid #dbe0d1; border-top-color: var(--moss); border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -315,6 +334,7 @@ button.primary:disabled { opacity: .6; cursor: wait; }
   .page { width: min(100% - 28px, 620px); padding: 32px 0 40px; }.page-heading { align-items: start; margin-bottom: 23px; }.page-heading h1 { font-size: 39px; }.quiet-button { display: none; }
   .progress-card { grid-template-columns: 1fr auto; gap: 14px; padding: 18px; }.progress-copy { min-width: 0; }.progress-track { grid-column: 1 / -1; grid-row: 2; }.progress-card > b { grid-column: 2; grid-row: 1; }
   .task-card { grid-template-columns: auto 1fr; padding: 15px; }.complete-button { grid-column: 1 / -1; width: 100%; justify-content: center; padding: 10px; }.animal-badge { width: 44px; height: 44px; }.task-copy p { padding-right: 2px; }
+  .overdue-actions { grid-column: 1 / -1; grid-template-columns: 1fr 1fr; }.weight-form { grid-template-columns: 1fr; }
   .completed-list, .trend-grid, .settings-grid { grid-template-columns: 1fr; }.animal-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }.animal-card { min-height: 166px; padding: 15px; }.animal-card h2 { font-size: 20px; }
   .role-panel { display: block; }.role-panel button { width: 100%; margin-top: 17px; }.role-panel .panel-login { margin-top: 15px; }.trend-summary { display: block; }.trend-summary b { display: block; margin-top: 4px; }.toast { left: 14px; right: 14px; bottom: 84px; text-align: center; }
   .role-chip { max-width: 44vw; }.role-chip em { display: none; }.member-row { grid-template-columns: auto minmax(0,1fr); }.member-actions { grid-column: 1 / -1; justify-content: start; }

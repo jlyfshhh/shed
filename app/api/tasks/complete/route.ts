@@ -58,6 +58,10 @@ export async function POST(request: Request) {
       ).bind(crypto.randomUUID(), task.id, task.animalId, task.taskType, task.title, task.details, payload.dueDate, occurredAt, actorRole, member?.id ?? null, member?.displayName ?? null, rewardCents).run();
     }
 
+    // Completing a task clears any "missed" mark — it turned out to be done.
+    await db.prepare("UPDATE care_tasks SET missed_at = NULL, missed_by_member_id = NULL, missed_by_name = NULL WHERE id = ? AND due_date = ?")
+      .bind(task.id, payload.dueDate).run();
+
     const completion = await db.prepare(
       "SELECT e.id, e.completed_by_member_id AS completedByMemberId, COALESCE(e.completed_by_name, e.actor_role) AS completedBy, e.occurred_at AS occurredAt, e.reward_cents AS rewardCents FROM husbandry_events e WHERE e.task_id = ? AND e.due_date = ? AND e.voided_at IS NULL",
     ).bind(task.id, payload.dueDate).first();

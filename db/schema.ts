@@ -47,6 +47,9 @@ export const careTasks = sqliteTable("care_tasks", {
   title: text("title").notNull(),
   details: text("details").notNull(),
   dueDate: text("due_date").notNull(),
+  missedAt: text("missed_at"),
+  missedByMemberId: text("missed_by_member_id"),
+  missedByName: text("missed_by_name"),
 });
 
 export const animalNotes = sqliteTable("animal_notes", {

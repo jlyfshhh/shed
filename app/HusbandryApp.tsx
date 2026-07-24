@@ -76,6 +76,7 @@ type DashboardData = {
   date: string;
   viewer: Viewer | null;
   tasks: Task[];
+  overdue: Task[];
   animals: Animal[];
   recentEvents: RecentEvent[];
   weightTrends: WeightTrend[];
@@ -97,6 +98,11 @@ const formatCents = (cents: number) => `$${(Math.max(0, cents) / 100).toFixed(2)
 
 const formatDate = (date: string) =>
   new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric" }).format(
+    new Date(`${date}T12:00:00`),
+  );
+
+const shortDate = (date: string) =>
+  new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric" }).format(
     new Date(`${date}T12:00:00`),
   );
 
@@ -425,8 +431,29 @@ export default function HusbandryApp() {
     }
   };
 
+  const missTask = async (task: Task) => {
+    if (!window.confirm(`Mark “${task.title}” for ${task.animalName} as missed? It’ll be recorded as not done and leave the list.`)) return;
+    setBusyTask(task.id);
+    try {
+      const response = await fetch("/api/tasks/miss", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ taskId: task.id, dueDate: task.dueDate }),
+      });
+      if (!response.ok) throw new Error("Unable to update");
+      await refresh();
+      setToast(`${task.animalName}: ${task.title} marked missed`);
+      window.setTimeout(() => setToast(null), 2800);
+    } catch {
+      setToast("That didn’t save. Please try again.");
+    } finally {
+      setBusyTask(null);
+    }
+  };
+
   const pending = data?.tasks.filter((task) => !task.complete) ?? [];
   const completed = data?.tasks.filter((task) => task.complete) ?? [];
+  const overdue = data?.overdue ?? [];
   const completionPercent = data?.tasks.length ? Math.round((completed.length / data.tasks.length) * 100) : 0;
   const filteredAnimals = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -538,6 +565,26 @@ export default function HusbandryApp() {
               <div className="progress-track" aria-label={`${completionPercent}% complete`}><span style={{ width: `${completionPercent}%` }} /></div>
               <b>{completionPercent}%</b>
             </article>
+
+            {overdue.length > 0 && (
+              <>
+                <div className="section-title compact"><h2>Overdue</h2><span>{overdue.length} from earlier days</span></div>
+                <div className="task-list">
+                  {overdue.map((task) => (
+                    <article className="task-card overdue" key={task.id}>
+                      <div className="animal-badge" aria-hidden="true">{task.animalName.slice(0, 1)}</div>
+                      <div className="task-copy">
+                        <span>{task.species} · due {shortDate(task.dueDate)}</span><h3>{task.animalName}</h3><p><b>{task.title}</b> · {task.details}</p>
+                      </div>
+                      <div className="overdue-actions">
+                        <button className="complete-button" disabled={busyTask === task.id} onClick={() => completeTask(task)}>{busyTask === task.id ? "Saving…" : "Mark done"}<span>✓</span></button>
+                        <button className="miss-button" disabled={busyTask === task.id} onClick={() => missTask(task)}>Missed</button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </>
+            )}
 
             <div className="section-title"><h2>Up next</h2><span>{pending.length} remaining</span></div>
             <div className="task-list">

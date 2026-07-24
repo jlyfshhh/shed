@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { dateInTimeZone, DEFAULT_TIME_ZONE } from "@/lib/date";
-import { previousIsoDate } from "@/lib/care-schedule";
+import { CARE_LOOKBACK_DAYS, isoDaysAgo } from "@/lib/care-schedule";
 import { scheduleIsDue, type CareScheduleRow } from "@/lib/schedules";
 
 export async function ensureDatabase(targetDate?: string) {
@@ -14,7 +14,7 @@ export async function ensureDatabase(targetDate?: string) {
     db.prepare("CREATE INDEX IF NOT EXISTS enclosures_active_name_idx ON enclosures(active, name)"),
     db.prepare("CREATE TABLE IF NOT EXISTS care_schedules (id TEXT PRIMARY KEY, animal_id TEXT NOT NULL, task_type TEXT NOT NULL, title TEXT NOT NULL, details TEXT NOT NULL DEFAULT '', frequency TEXT NOT NULL, interval_days INTEGER, weekdays_json TEXT, day_of_month INTEGER, start_date TEXT NOT NULL, end_date TEXT, active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, prey_species TEXT, prey_description TEXT, target_percent REAL, minimum_percent REAL, maximum_percent REAL, buy_as_needed INTEGER NOT NULL DEFAULT 0, reward_cents INTEGER)"),
     db.prepare("CREATE INDEX IF NOT EXISTS care_schedules_active_animal_idx ON care_schedules(active, animal_id)"),
-    db.prepare("CREATE TABLE IF NOT EXISTS care_tasks (id TEXT PRIMARY KEY, schedule_id TEXT, animal_id TEXT NOT NULL, task_type TEXT NOT NULL DEFAULT 'general', title TEXT NOT NULL, details TEXT NOT NULL, due_date TEXT NOT NULL)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS care_tasks (id TEXT PRIMARY KEY, schedule_id TEXT, animal_id TEXT NOT NULL, task_type TEXT NOT NULL DEFAULT 'general', title TEXT NOT NULL, details TEXT NOT NULL, due_date TEXT NOT NULL, missed_at TEXT, missed_by_member_id TEXT, missed_by_name TEXT)"),
     db.prepare("CREATE INDEX IF NOT EXISTS care_tasks_due_idx ON care_tasks(due_date, animal_id)"),
     db.prepare("CREATE TABLE IF NOT EXISTS husbandry_events (id TEXT PRIMARY KEY, task_id TEXT, animal_id TEXT NOT NULL, task_type TEXT NOT NULL DEFAULT 'general', title TEXT NOT NULL, notes TEXT, due_date TEXT, occurred_at TEXT NOT NULL, actor_role TEXT NOT NULL, completed_by_member_id TEXT, completed_by_name TEXT, voided_at TEXT, voided_by_member_id TEXT, voided_by_name TEXT, void_reason TEXT, edited_at TEXT, edited_by_member_id TEXT, edited_by_name TEXT, reward_cents INTEGER NOT NULL DEFAULT 0)"),
     db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS event_task_due_unique ON husbandry_events(task_id, due_date)"),
@@ -45,7 +45,7 @@ export async function ensureDatabase(targetDate?: string) {
     ["acquired_date", "TEXT"], ["source", "TEXT"], ["notes", "TEXT"], ["active", "INTEGER NOT NULL DEFAULT 1"],
     ["enclosure_id", "TEXT"], ["created_at", "TEXT"], ["updated_at", "TEXT"],
   ]);
-  await addMissingColumns(db, "care_tasks", [["task_type", "TEXT NOT NULL DEFAULT 'general'"], ["schedule_id", "TEXT"]]);
+  await addMissingColumns(db, "care_tasks", [["task_type", "TEXT NOT NULL DEFAULT 'general'"], ["schedule_id", "TEXT"], ["missed_at", "TEXT"], ["missed_by_member_id", "TEXT"], ["missed_by_name", "TEXT"]]);
   await addMissingColumns(db, "care_schedules", [["prey_species", "TEXT"], ["prey_description", "TEXT"], ["target_percent", "REAL"], ["minimum_percent", "REAL"], ["maximum_percent", "REAL"], ["buy_as_needed", "INTEGER NOT NULL DEFAULT 0"]]);
   await addMissingColumns(db, "husbandry_events", [
     ["task_type", "TEXT NOT NULL DEFAULT 'general'"], ["notes", "TEXT"], ["completed_by_member_id", "TEXT"],
@@ -66,7 +66,9 @@ export async function ensureDatabase(targetDate?: string) {
   const schedules = await db.prepare(
     "SELECT id, animal_id AS animalId, task_type AS taskType, title, details, frequency, interval_days AS intervalDays, weekdays_json AS weekdaysJson, day_of_month AS dayOfMonth, start_date AS startDate, end_date AS endDate FROM care_schedules WHERE active = 1",
   ).all<CareScheduleRow>();
-  const dates = [previousIsoDate(today), today];
+  // Materialize tasks for a lookback window (not just yesterday+today) so that
+  // care missed a few days ago still shows up as an actionable overdue task.
+  const dates = Array.from({ length: CARE_LOOKBACK_DAYS }, (_, index) => isoDaysAgo(today, index));
   const taskStatements = schedules.results.flatMap((schedule) => dates.filter((date) => scheduleIsDue(schedule, date)).map((date) =>
     db.prepare("INSERT OR IGNORE INTO care_tasks (id, schedule_id, animal_id, task_type, title, details, due_date) VALUES (?, ?, ?, ?, ?, ?, ?)")
       .bind(`${schedule.id}:${date}`, schedule.id, schedule.animalId, schedule.taskType, schedule.title, schedule.details, date),
