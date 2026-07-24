@@ -1,6 +1,7 @@
 import { ensureDatabase } from "@/db/runtime";
 import { dateInTimeZone } from "@/lib/date";
 import { CARE_LOOKBACK_DAYS, isoDaysAgo } from "@/lib/care-schedule";
+import { getCareStartDate } from "@/lib/care-settings";
 import { householdAuthRequired, memberFromRequest } from "@/lib/household-auth";
 import { memberBalance } from "@/lib/rewards";
 
@@ -9,8 +10,11 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   try {
     const today = dateInTimeZone();
-    const overdueSince = isoDaysAgo(today, CARE_LOOKBACK_DAYS - 1);
     const db = await ensureDatabase(today);
+    const careStartDate = await getCareStartDate(db);
+    const lookbackStart = isoDaysAgo(today, CARE_LOOKBACK_DAYS - 1);
+    // Overdue never reaches before the "start fresh" baseline.
+    const overdueSince = careStartDate && careStartDate > lookbackStart ? careStartDate : lookbackStart;
     const member = await memberFromRequest(request, db);
     if (householdAuthRequired() && !member) {
       return Response.json({ error: "Sign in to Shed first" }, { status: 401 });

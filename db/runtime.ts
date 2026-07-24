@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { dateInTimeZone, DEFAULT_TIME_ZONE } from "@/lib/date";
 import { CARE_LOOKBACK_DAYS, isoDaysAgo } from "@/lib/care-schedule";
+import { getCareStartDate } from "@/lib/care-settings";
 import { scheduleIsDue, type CareScheduleRow } from "@/lib/schedules";
 
 export async function ensureDatabase(targetDate?: string) {
@@ -67,8 +68,11 @@ export async function ensureDatabase(targetDate?: string) {
     "SELECT id, animal_id AS animalId, task_type AS taskType, title, details, frequency, interval_days AS intervalDays, weekdays_json AS weekdaysJson, day_of_month AS dayOfMonth, start_date AS startDate, end_date AS endDate FROM care_schedules WHERE active = 1",
   ).all<CareScheduleRow>();
   // Materialize tasks for a lookback window (not just yesterday+today) so that
-  // care missed a few days ago still shows up as an actionable overdue task.
-  const dates = Array.from({ length: CARE_LOOKBACK_DAYS }, (_, index) => isoDaysAgo(today, index));
+  // care missed a few days ago still shows up as an actionable overdue task —
+  // but never before the "start fresh" baseline, if one has been set.
+  const careStartDate = await getCareStartDate(db);
+  const dates = Array.from({ length: CARE_LOOKBACK_DAYS }, (_, index) => isoDaysAgo(today, index))
+    .filter((date) => !careStartDate || date >= careStartDate);
   const taskStatements = schedules.results.flatMap((schedule) => dates.filter((date) => scheduleIsDue(schedule, date)).map((date) =>
     db.prepare("INSERT OR IGNORE INTO care_tasks (id, schedule_id, animal_id, task_type, title, details, due_date) VALUES (?, ?, ?, ?, ?, ?, ?)")
       .bind(`${schedule.id}:${date}`, schedule.id, schedule.animalId, schedule.taskType, schedule.title, schedule.details, date),
