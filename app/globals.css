@@ -286,6 +286,16 @@ button.primary:disabled { opacity: .6; cursor: wait; }
 
 /* ── Animal profile ── */
 .profile-hero { display: flex; gap: 18px; align-items: center; margin-bottom: 20px; }
+.husbandry-badge { margin-left: auto; flex: 0 0 auto; text-align: center; border-radius: 18px; padding: 12px 16px; border: 1px solid var(--line); background: var(--paper); min-width: 92px; }
+.husbandry-badge b { display: block; font-size: 26px; font-weight: 900; letter-spacing: -.03em; line-height: 1; }
+.husbandry-badge small { display: block; margin-top: 4px; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.husbandry-badge.tier-great { background: #edf8ef; border-color: #bfe0c4; }
+.husbandry-badge.tier-great b { color: #2f7d4b; }
+.husbandry-badge.tier-good { background: #fff8e7; border-color: #f0e2c4; }
+.husbandry-badge.tier-good b { color: #9a6a12; }
+.husbandry-badge.tier-low { background: #fdf0ec; border-color: #e7c3b8; }
+.husbandry-badge.tier-low b { color: #a14432; }
+.husbandry-badge.tier-new b { color: var(--muted); font-size: 18px; }
 .profile-avatar { width: 74px; height: 74px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 22px 22px 22px 7px; background: #fff0d7; color: var(--moss); font-size: 30px; font-weight: 900; }
 .profile-hero h2 { margin: 0; font-size: 30px; font-weight: 800; letter-spacing: -.04em; }
 .archived-flag { font-style: normal; font-size: 13px; color: #a14432; font-weight: 700; }
@@ -340,6 +350,7 @@ button.primary:disabled { opacity: .6; cursor: wait; }
   .role-panel { display: block; }.role-panel button { width: 100%; margin-top: 17px; }.role-panel .panel-login { margin-top: 15px; }.trend-summary { display: block; }.trend-summary b { display: block; margin-top: 4px; }.toast { left: 14px; right: 14px; bottom: 84px; text-align: center; }
   .role-chip { max-width: 44vw; }.role-chip em { display: none; }.member-row { grid-template-columns: auto minmax(0,1fr); }.member-actions { grid-column: 1 / -1; justify-content: start; }
   .sheet-body { grid-template-columns: 1fr; }.sheet { border-radius: 20px 20px 0 0; max-height: 94vh; }.overlay-body { padding-bottom: 40px; }.manage-toolbar { align-items: start; }.manage-row { grid-template-columns: 1fr; }.manage-row-actions { justify-content: start; }.profile-hero h2 { font-size: 25px; }
+  .profile-hero { gap: 12px; }.husbandry-badge { min-width: 72px; padding: 9px 11px; }.husbandry-badge b { font-size: 21px; }.profile-avatar { width: 60px; height: 60px; font-size: 24px; }
   .onboarding-card { display: block; }.onboarding-actions { margin-top: 17px; flex-wrap: wrap; }.guide-steps article { grid-template-columns: auto minmax(0,1fr); }.guide-steps button { grid-column: 1 / -1; width: 100%; }.record-cheatsheet > div { grid-template-columns: 1fr; }
   .mobile-nav { position: fixed; display: grid; grid-template-columns: repeat(4,1fr); left: 10px; right: 10px; bottom: 10px; z-index: 10; padding: 7px; background: rgba(33,55,46,.96); border-radius: 19px; box-shadow: 0 15px 40px rgba(20,38,29,.24); backdrop-filter: blur(10px); }.mobile-nav button { border: 0; color: #aab9af; background: transparent; border-radius: 13px; padding: 7px 3px 6px; display: grid; justify-items: center; gap: 2px; cursor: pointer; }.mobile-nav button b { font-size: 17px; line-height: 1; }.mobile-nav button span { font-size: 10px; }.mobile-nav button.active { background: rgba(219,231,181,.14); color: white; }
 }

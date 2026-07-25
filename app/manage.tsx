@@ -32,6 +32,9 @@ const bool = (value: unknown): boolean => value === 1 || value === true || value
 
 const weekdayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+const scoreTier = (percent: number | null): string =>
+  percent === null ? "new" : percent >= 90 ? "great" : percent >= 75 ? "good" : "low";
+
 const relativeTime = (value: string) => {
   if (!value) return "";
   const then = new Date(value).getTime();
@@ -613,8 +616,10 @@ export function ManageConsole({ onClose, onChanged, toast, initialResource = "an
 }
 
 // ── Animal profile (baseball card) ─────────────────────────────────────────────
+type HusbandryScore = { percent: number | null; done: number; accountable: number; since: string; windowDays: number };
 type AnimalProfileData = {
   animal: Row & { enclosureName?: string | null };
+  husbandryScore?: HusbandryScore;
   weightHistory: Array<{ id: string; recordedOn: string; weightGrams: number }>;
   notes: Array<{ id: string; category: string; title: string; body: string; pinned: number; createdBy: string; updatedAt: string }>;
   equipment: Array<{ id: string; category: string; name: string; brand: string | null; replaceOn: string | null; active: number }>;
@@ -702,6 +707,12 @@ export function AnimalProfile({ animalId, onClose }: { animalId: string; onClose
                   {animal.weightGrams ? <span>{str(animal.weightGrams)} g</span> : null}
                 </div>
               </div>
+              {data.husbandryScore && (
+                <div className={`husbandry-badge tier-${scoreTier(data.husbandryScore.percent)}`} title={data.husbandryScore.percent === null ? "No care due yet in the tracking window" : `${data.husbandryScore.done} of ${data.husbandryScore.accountable} scheduled tasks completed`}>
+                  <b>{data.husbandryScore.percent === null ? "New" : `${data.husbandryScore.percent}%`}</b>
+                  <small>Husbandry</small>
+                </div>
+              )}
             </div>
 
             <div className="profile-facts">

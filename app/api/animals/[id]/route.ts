@@ -1,7 +1,17 @@
 import { ensureDatabase } from "@/db/runtime";
+import { dateInTimeZone } from "@/lib/date";
+import { isoDaysAgo } from "@/lib/care-schedule";
+import { getCareStartDate } from "@/lib/care-settings";
 import { householdAuthRequired, memberFromRequest } from "@/lib/household-auth";
 
 export const dynamic = "force-dynamic";
+
+// Husbandry score — added by Claude 2026-07-25. A derived (never stored) rolling
+// completion rate: of the animal's scheduled care that is fully accountable
+// (everything due before today, plus anything already done today), how much got
+// done. Today's not-yet-done tasks don't count against it. Respects the
+// "start fresh" baseline. This is the intended basis for future achievements.
+const SCORE_WINDOW_DAYS = 30;
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
@@ -37,9 +47,35 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
 
     const history = events.results as Array<{ taskType: string; notes?: string | null; voidedAt?: string | null }>;
     const activeEvents = history.filter((event) => !event.voidedAt);
+
+    // Husbandry score over the rolling window (clamped to the fresh-start baseline).
+    const today = dateInTimeZone();
+    const careStartDate = await getCareStartDate(db);
+    const windowStart = isoDaysAgo(today, SCORE_WINDOW_DAYS - 1);
+    const scoreSince = careStartDate && careStartDate > windowStart ? careStartDate : windowStart;
+    const scoreRow = await db.prepare(
+      `SELECT
+         COALESCE(SUM(CASE WHEN t.due_date < ? THEN 1 ELSE 0 END), 0) AS pastDue,
+         COALESCE(SUM(CASE WHEN t.due_date < ? AND e.id IS NOT NULL THEN 1 ELSE 0 END), 0) AS pastDone,
+         COALESCE(SUM(CASE WHEN t.due_date = ? AND e.id IS NOT NULL THEN 1 ELSE 0 END), 0) AS todayDone
+       FROM care_tasks t
+       LEFT JOIN husbandry_events e ON e.task_id = t.id AND e.due_date = t.due_date AND e.voided_at IS NULL
+       WHERE t.animal_id = ? AND t.due_date >= ? AND t.due_date <= ?`,
+    ).bind(today, today, today, id, scoreSince, today).first<{ pastDue: number; pastDone: number; todayDone: number }>();
+    const accountable = Number(scoreRow?.pastDue ?? 0) + Number(scoreRow?.todayDone ?? 0);
+    const done = Number(scoreRow?.pastDone ?? 0) + Number(scoreRow?.todayDone ?? 0);
+    const husbandryScore = {
+      percent: accountable > 0 ? Math.round((done / accountable) * 100) : null,
+      done,
+      accountable,
+      since: scoreSince,
+      windowDays: SCORE_WINDOW_DAYS,
+    };
+
     return Response.json({
       viewer: member ? { id: member.id, displayName: member.displayName, role: member.role } : null,
       animal,
+      husbandryScore,
       weightHistory: weights.results,
       notes: notes.results,
       legacyEventNotes: activeEvents.filter((event) => Boolean(event.notes?.trim())),
