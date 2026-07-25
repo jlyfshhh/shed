@@ -85,6 +85,8 @@ Your live data is stored in SQLite on your own server. For an easy portable copy
 - **Merge restore** adds or updates records while keeping current data.
 - **Replace restore** replaces husbandry data with the backup while preserving household sign-in.
 
+Access codes are never written into an export. On a new server, Shed matches existing household profiles by identity or display name. Any additional restored Keepers are disabled until the Head Keeper issues them a new private code and enables access. Their historical task credit, earnings, and payouts remain attached to their restored profile.
+
 The included `scripts/backup.sh` also creates dated SQLite snapshots. Keep at least one backup on a different device.
 
 ## 7. Update Shed

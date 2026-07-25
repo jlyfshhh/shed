@@ -1,19 +1,63 @@
 import { ensureDatabase } from "@/db/runtime";
 import { requireHouseholdMember } from "@/lib/household-auth";
+import {
+  matchingExistingMember,
+  PORTABLE_APP_SETTING_KEYS,
+  PORTABLE_RESOURCES,
+  remapMemberReferences,
+  type ExistingMember,
+  type PortableMember,
+} from "@/lib/portable-backup";
 
-const resources = {
-  animals: ["animals", ["id", "name", "species", "group_name", "location", "weight_grams", "weight_date", "scientific_name", "morph", "sex", "birth_date", "acquired_date", "source", "notes", "active", "enclosure_id", "created_at", "updated_at"]],
-  enclosures: ["enclosures", ["id", "name", "enclosure_type", "manufacturer", "model", "width", "depth", "height", "dimension_unit", "location", "substrate", "bioactive", "shared_habitat_id", "notes", "active", "created_at", "updated_at"]],
-  careSchedules: ["care_schedules", ["id", "animal_id", "task_type", "title", "details", "frequency", "interval_days", "weekdays_json", "day_of_month", "start_date", "end_date", "active", "created_at", "updated_at", "prey_species", "prey_description", "target_percent", "minimum_percent", "maximum_percent", "buy_as_needed"]],
-  careTasks: ["care_tasks", ["id", "schedule_id", "animal_id", "task_type", "title", "details", "due_date"]],
-  husbandryEvents: ["husbandry_events", ["id", "task_id", "animal_id", "task_type", "title", "notes", "due_date", "occurred_at", "actor_role", "completed_by_member_id", "completed_by_name", "voided_at", "voided_by_member_id", "voided_by_name", "void_reason", "edited_at", "edited_by_member_id", "edited_by_name"]],
-  husbandryEventRevisions: ["husbandry_event_revisions", ["id", "event_id", "changed_at", "changed_by_member_id", "changed_by_name", "previous_json"]],
-  animalNotes: ["animal_notes", ["id", "animal_id", "enclosure_id", "category", "title", "body", "pinned", "created_at", "updated_at", "created_by_member_id", "created_by_name"]],
-  equipment: ["equipment", ["id", "animal_id", "enclosure_id", "category", "name", "brand", "model", "installed_on", "replace_on", "active", "notes", "created_at", "updated_at"]],
-  weightEvents: ["weight_events", ["id", "animal_id", "recorded_on", "weight_grams", "notes", "recorded_by_member_id", "recorded_by_name", "created_at"]],
-  feederInventory: ["feeder_inventory", ["id", "prey_species", "size_class", "weight_grams", "status", "added_on", "consumed_at", "animal_id", "husbandry_event_id", "notes"]],
-  feedingAssignments: ["feeding_assignments", ["id", "animal_id", "feeder_id", "planned_for", "status", "created_at", "consumed_at", "husbandry_event_id"]],
-} as const;
+const isPortableMember = (value: Record<string, unknown>): value is Record<string, unknown> & PortableMember =>
+  typeof value.id === "string"
+  && typeof value.display_name === "string"
+  && value.display_name.trim().length > 0
+  && value.display_name.trim().length <= 40
+  && (value.role === "Owner" || value.role === "Zookeeper");
+
+async function restoreHouseholdProfiles(
+  db: D1Database,
+  bundle: Record<string, unknown>,
+): Promise<{ memberIds: Map<string, string>; restored: number }> {
+  const sourceMembers = (Array.isArray(bundle.householdMembers) ? bundle.householdMembers : [])
+    .filter((value): value is Record<string, unknown> => Boolean(value) && typeof value === "object")
+    .filter(isPortableMember);
+  const existingResult = await db.prepare(
+    "SELECT id, display_name AS displayName, role FROM household_members ORDER BY created_at",
+  ).all<ExistingMember>();
+  const existing = [...existingResult.results];
+  const memberIds = new Map<string, string>();
+  let restored = 0;
+
+  for (const source of sourceMembers) {
+    let target = matchingExistingMember(source, existing);
+    if (!target && source.role === "Zookeeper") {
+      const now = new Date().toISOString();
+      const restoredId = existing.some((member) => member.id === source.id) ? crypto.randomUUID() : source.id;
+      target = { id: restoredId, displayName: source.display_name.trim().replace(/\s+/g, " "), role: "Zookeeper" };
+      await db.prepare(
+        "INSERT OR IGNORE INTO household_members (id, display_name, role, access_code_hash, active, earning_enabled, created_at, updated_at) VALUES (?, ?, 'Zookeeper', ?, 0, ?, ?, ?)",
+      ).bind(
+        target.id,
+        target.displayName,
+        `restored-disabled:${crypto.randomUUID()}`,
+        Number(source.earning_enabled ?? 0) ? 1 : 0,
+        typeof source.created_at === "string" ? source.created_at : now,
+        typeof source.updated_at === "string" ? source.updated_at : now,
+      ).run();
+      existing.push(target);
+    }
+    if (!target) continue;
+    if (Object.hasOwn(source, "earning_enabled")) {
+      await db.prepare("UPDATE household_members SET earning_enabled = ?, updated_at = ? WHERE id = ?")
+        .bind(Number(source.earning_enabled ?? 0) ? 1 : 0, new Date().toISOString(), target.id).run();
+    }
+    memberIds.set(source.id, target.id);
+    restored += 1;
+  }
+  return { memberIds, restored };
+}
 
 export async function POST(request: Request) {
   try {
@@ -26,22 +70,30 @@ export async function POST(request: Request) {
     if (payload.mode === "replace" && payload.confirmation !== "REPLACE") return Response.json({ error: "Type REPLACE to confirm a full data restore" }, { status: 400 });
 
     if (payload.mode === "replace") {
-      const deleteOrder = ["feeding_assignments", "feeder_inventory", "husbandry_event_revisions", "husbandry_events", "care_tasks", "care_schedules", "weight_events", "animal_notes", "equipment", "animals", "enclosures"];
+      const deleteOrder = ["reward_payouts", "feeding_assignments", "feeder_inventory", "husbandry_event_revisions", "husbandry_events", "care_tasks", "care_schedules", "weight_events", "animal_notes", "equipment", "animals", "enclosures"];
       await db.batch(deleteOrder.map((table) => db.prepare(`DELETE FROM ${table}`)));
+      await db.prepare(`DELETE FROM app_settings WHERE key IN (${PORTABLE_APP_SETTING_KEYS.map(() => "?").join(", ")})`)
+        .bind(...PORTABLE_APP_SETTING_KEYS).run();
+      await db.prepare("UPDATE household_members SET earning_enabled = 0").run();
     }
 
-    let imported = 0;
-    for (const [bundleKey, [table, columns]] of Object.entries(resources) as Array<[keyof typeof resources, readonly [string, readonly string[]]]>) {
-      const rows = Array.isArray(bundle[bundleKey]) ? bundle[bundleKey] as Array<Record<string, unknown>> : [];
-      const statements = rows.map((row) => {
+    const household = await restoreHouseholdProfiles(db, bundle);
+    let imported = household.restored;
+    for (const [bundleKey, definition] of Object.entries(PORTABLE_RESOURCES) as Array<[keyof typeof PORTABLE_RESOURCES, (typeof PORTABLE_RESOURCES)[keyof typeof PORTABLE_RESOURCES]]>) {
+      const rows = (Array.isArray(bundle[bundleKey]) ? bundle[bundleKey] as Array<Record<string, unknown>> : [])
+        .filter((row) => bundleKey !== "appSettings" || PORTABLE_APP_SETTING_KEYS.includes(String(row.key) as (typeof PORTABLE_APP_SETTING_KEYS)[number]));
+      const statements = rows.map((sourceRow) => {
+        const row = remapMemberReferences(bundleKey, sourceRow, household.memberIds);
+        const { table, columns, key } = definition;
         const present = columns.filter((column) => Object.hasOwn(row, column));
-        if (!present.includes("id")) throw new Error(`${bundleKey} contains a row without an id`);
+        if (!present.includes(key)) throw new Error(`${bundleKey} contains a row without its ${key}`);
         return db.prepare(`INSERT OR REPLACE INTO ${table} (${present.join(", ")}) VALUES (${present.map(() => "?").join(", ")})`).bind(...present.map((column) => row[column] ?? null));
       });
       for (let offset = 0; offset < statements.length; offset += 100) await db.batch(statements.slice(offset, offset + 100));
       imported += statements.length;
     }
-    return Response.json({ saved: true, imported, mode: payload.mode ?? "merge" }, { headers: { "Cache-Control": "no-store" } });
+    await db.prepare("INSERT OR IGNORE INTO app_settings (key, value) VALUES ('default_reward_cents', '25')").run();
+    return Response.json({ saved: true, imported, householdProfiles: household.restored, mode: payload.mode ?? "merge" }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Unable to import the backup" }, { status: 400, headers: { "Cache-Control": "no-store" } });
   }

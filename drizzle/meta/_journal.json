@@ -64,6 +64,13 @@
       "when": 1784589695145,
       "tag": "0008_loose_pepper_potts",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1784939118129,
+      "tag": "0009_dazzling_namorita",
+      "breakpoints": true
     }
   ]
 }

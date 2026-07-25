@@ -55,12 +55,15 @@ history, legacy event notes, and full auditable event history.
 
 ## Backups and restore
 
-- `GET /api/export?format=json` returns schema version 8 with all portable husbandry
-  tables. Household access-code hashes are deliberately excluded.
+- `GET /api/export?format=json` returns schema version 9 with all portable husbandry
+  tables, task rewards, payout history, missed-task state, and portable app settings
+  (including the care baseline). Household access-code hashes are deliberately excluded.
 - `GET /api/export?format=csv` provides a flat open-format copy.
 - `POST /api/import` accepts `{ mode: "merge"|"replace", confirmation?, bundle }`.
-  Replace mode requires `confirmation: "REPLACE"`. Restore never changes household
-  credentials.
+  Replace mode requires `confirmation: "REPLACE"`. Restore never imports or changes
+  access-code hashes. Existing household profiles are matched by id or name; restored
+  Keeper profiles that do not exist yet are created disabled and require a new code
+  before they can sign in.
 
 ## UI completion checklist
 
