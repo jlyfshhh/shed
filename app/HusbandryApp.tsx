@@ -431,6 +431,33 @@ export default function HusbandryApp() {
     }
   };
 
+  const undoTask = async (task: Task) => {
+    if (!window.confirm(
+      `Mark “${task.title}” for ${task.animalName} as not done?\n\nThis returns it to today’s list and removes the completion and allowance credit from ${task.completedBy ?? "the recorded keeper"}. The correction stays in history.`,
+    )) return;
+    setBusyTask(task.id);
+    try {
+      const response = await fetch("/api/tasks/complete", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          taskId: task.id,
+          dueDate: task.dueDate,
+          reason: "Completion removed from Today by the Head Keeper.",
+        }),
+      });
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "Unable to undo");
+      await refresh();
+      setToast(`${task.animalName}: ${task.title} returned to today’s list`);
+      window.setTimeout(() => setToast(null), 2800);
+    } catch (undoError) {
+      setToast(undoError instanceof Error ? undoError.message : "That correction didn’t save. Please try again.");
+    } finally {
+      setBusyTask(null);
+    }
+  };
+
   const missTask = async (task: Task) => {
     if (!window.confirm(`Mark “${task.title}” for ${task.animalName} as missed? It’ll be recorded as not done and leave the list.`)) return;
     setBusyTask(task.id);
@@ -620,7 +647,16 @@ export default function HusbandryApp() {
             <div className="section-title compact"><h2>Completed today</h2><span>{completed.length}</span></div>
             <div className="completed-list">
               {completed.map((task) => (
-                <div key={task.id}><span>✓</span><b>{task.animalName}</b><p>{task.title}{task.completedBy ? ` · ${task.completedBy}` : ""}</p></div>
+                <div key={task.id}>
+                  <span>✓</span>
+                  <b>{task.animalName}</b>
+                  <p>{task.title}{task.completedBy ? ` · ${task.completedBy}` : ""}</p>
+                  {isOwner && (
+                    <button className="undo-task" disabled={busyTask === task.id} onClick={() => void undoTask(task)}>
+                      {busyTask === task.id ? "Undoing…" : "Undo"}
+                    </button>
+                  )}
+                </div>
               ))}
             </div>
 
