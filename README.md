@@ -42,6 +42,9 @@ Re-run the same command any time to update Shed **without touching your database
 
 **Requirements:** Docker with the Compose plugin, `git`, and a machine that stays on.
 
+For one chooser that can install Bask, Shed, Clarity, or any combination, use
+the **[Animal Room installer](https://github.com/jlyfshhh/animal-room)**.
+
 ## The animal-room family
 
 Shed is one of three companion projects for keepers:

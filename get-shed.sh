@@ -7,6 +7,14 @@ install_dir="${SHED_INSTALL_DIR:-$HOME/shed}"
 command -v git >/dev/null || { echo "Shed needs git."; exit 1; }
 command -v docker >/dev/null || { echo "Shed needs Docker with the Compose plugin."; exit 1; }
 docker compose version >/dev/null 2>&1 || { echo "Docker Compose is not available."; exit 1; }
+if docker info >/dev/null 2>&1; then
+  docker_cmd=(docker)
+elif command -v sudo >/dev/null 2>&1 && sudo docker info >/dev/null 2>&1; then
+  docker_cmd=(sudo docker)
+else
+  echo "Docker is installed, but this user cannot access it." >&2
+  exit 1
+fi
 
 if [ -d "$install_dir/.git" ]; then
   git -C "$install_dir" pull --ff-only
@@ -24,9 +32,9 @@ if [ ! -f .env ]; then
   rm -f .env.bak
 fi
 
-docker compose up -d --build
+"${docker_cmd[@]}" compose up -d --build
 host="$(hostname -f 2>/dev/null || hostname)"
 echo
-echo "Shed is running at http://$host:${PORT:-3000}"
+echo "Shed is running at http://$host:${SHED_PORT:-3000}"
 echo "On first visit, use the one-time setup token stored in $install_dir/.env."
 echo "Run this installer again to update without replacing your database or settings."
