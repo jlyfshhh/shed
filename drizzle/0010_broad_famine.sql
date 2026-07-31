@@ -1,0 +1,1 @@
+ALTER TABLE `care_schedules` ADD `prey_size_class` text;

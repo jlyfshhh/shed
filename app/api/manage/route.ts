@@ -25,7 +25,7 @@ const configs: Record<Resource, Config> = {
     animalId: { column: "animal_id" }, taskType: { column: "task_type" }, title: { column: "title" }, details: { column: "details" }, frequency: { column: "frequency" },
     intervalDays: { column: "interval_days", kind: "number" }, weekdaysJson: { column: "weekdays_json" }, dayOfMonth: { column: "day_of_month", kind: "number" },
     startDate: { column: "start_date", kind: "date" }, endDate: { column: "end_date", kind: "date" }, active: { column: "active", kind: "boolean" }, createdAt: { column: "created_at" }, updatedAt: { column: "updated_at" },
-    preySpecies: { column: "prey_species" }, preyDescription: { column: "prey_description" }, targetPercent: { column: "target_percent", kind: "number" },
+    preySpecies: { column: "prey_species" }, preyDescription: { column: "prey_description" }, preySizeClass: { column: "prey_size_class" }, targetPercent: { column: "target_percent", kind: "number" },
     minimumPercent: { column: "minimum_percent", kind: "number" }, maximumPercent: { column: "maximum_percent", kind: "number" }, buyAsNeeded: { column: "buy_as_needed", kind: "boolean" },
     rewardCents: { column: "reward_cents", kind: "number" },
   } },

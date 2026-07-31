@@ -71,6 +71,13 @@
       "when": 1784939118129,
       "tag": "0009_dazzling_namorita",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1785497750146,
+      "tag": "0010_broad_famine",
+      "breakpoints": true
     }
   ]
 }

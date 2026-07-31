@@ -1,4 +1,4 @@
-export const BACKUP_SCHEMA_VERSION = 9;
+export const BACKUP_SCHEMA_VERSION = 10;
 
 export const PORTABLE_APP_SETTING_KEYS = ["default_reward_cents", "care_start_date"] as const;
 
@@ -11,7 +11,7 @@ type ResourceDefinition = {
 export const PORTABLE_RESOURCES = {
   animals: { table: "animals", key: "id", columns: ["id", "name", "species", "group_name", "location", "weight_grams", "weight_date", "scientific_name", "morph", "sex", "birth_date", "acquired_date", "source", "notes", "active", "enclosure_id", "created_at", "updated_at"] },
   enclosures: { table: "enclosures", key: "id", columns: ["id", "name", "enclosure_type", "manufacturer", "model", "width", "depth", "height", "dimension_unit", "location", "substrate", "bioactive", "shared_habitat_id", "notes", "active", "created_at", "updated_at"] },
-  careSchedules: { table: "care_schedules", key: "id", columns: ["id", "animal_id", "task_type", "title", "details", "frequency", "interval_days", "weekdays_json", "day_of_month", "start_date", "end_date", "active", "created_at", "updated_at", "prey_species", "prey_description", "target_percent", "minimum_percent", "maximum_percent", "buy_as_needed", "reward_cents"] },
+  careSchedules: { table: "care_schedules", key: "id", columns: ["id", "animal_id", "task_type", "title", "details", "frequency", "interval_days", "weekdays_json", "day_of_month", "start_date", "end_date", "active", "created_at", "updated_at", "prey_species", "prey_description", "prey_size_class", "target_percent", "minimum_percent", "maximum_percent", "buy_as_needed", "reward_cents"] },
   careTasks: { table: "care_tasks", key: "id", columns: ["id", "schedule_id", "animal_id", "task_type", "title", "details", "due_date", "missed_at", "missed_by_member_id", "missed_by_name"] },
   husbandryEvents: { table: "husbandry_events", key: "id", columns: ["id", "task_id", "animal_id", "task_type", "title", "notes", "due_date", "occurred_at", "actor_role", "completed_by_member_id", "completed_by_name", "voided_at", "voided_by_member_id", "voided_by_name", "void_reason", "edited_at", "edited_by_member_id", "edited_by_name", "reward_cents"] },
   husbandryEventRevisions: { table: "husbandry_event_revisions", key: "id", columns: ["id", "event_id", "changed_at", "changed_by_member_id", "changed_by_name", "previous_json"] },

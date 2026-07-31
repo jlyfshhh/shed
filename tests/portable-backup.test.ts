@@ -8,8 +8,9 @@ import {
   remapMemberReferences,
 } from "../lib/portable-backup.ts";
 
-test("schema 9 carries allowance, missed-task, payout, and care-baseline data", () => {
-  assert.equal(BACKUP_SCHEMA_VERSION, 9);
+test("schema 10 carries feeder size, allowance, missed-task, payout, and care-baseline data", () => {
+  assert.equal(BACKUP_SCHEMA_VERSION, 10);
+  assert.ok(PORTABLE_RESOURCES.careSchedules.columns.includes("prey_size_class"));
   assert.ok(PORTABLE_RESOURCES.careSchedules.columns.includes("reward_cents"));
   assert.ok(PORTABLE_RESOURCES.careTasks.columns.includes("missed_at"));
   assert.ok(PORTABLE_RESOURCES.husbandryEvents.columns.includes("reward_cents"));

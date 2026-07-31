@@ -32,10 +32,10 @@ export async function GET(request: Request) {
       db.prepare("SELECT id, name FROM animals ORDER BY name").all<ForecastAnimal>(),
       db.prepare("SELECT animal_id AS animalId, recorded_on AS recordedOn, weight_grams AS weightGrams FROM weight_events ORDER BY animal_id, recorded_on").all<ForecastWeight>(),
       db.prepare("SELECT id, prey_species AS preySpecies, size_class AS sizeClass, weight_grams AS weightGrams FROM feeder_inventory WHERE status = 'available' ORDER BY weight_grams, id").all<AvailableFeeder>(),
-      db.prepare("SELECT id, animal_id AS animalId, task_type AS taskType, title, details, frequency, interval_days AS intervalDays, weekdays_json AS weekdaysJson, day_of_month AS dayOfMonth, start_date AS startDate, end_date AS endDate, prey_species AS preySpecies, COALESCE(prey_description, prey_species) AS preyDescription, target_percent AS targetPercent, minimum_percent AS minimumPercent, maximum_percent AS maximumPercent, buy_as_needed AS buyAsNeeded FROM care_schedules WHERE active = 1 AND task_type = 'feeding' AND prey_species IS NOT NULL").all<ProfileRow>(),
+      db.prepare("SELECT id, animal_id AS animalId, task_type AS taskType, title, details, frequency, interval_days AS intervalDays, weekdays_json AS weekdaysJson, day_of_month AS dayOfMonth, start_date AS startDate, end_date AS endDate, prey_species AS preySpecies, COALESCE(prey_description, prey_species) AS preyDescription, prey_size_class AS preySizeClass, target_percent AS targetPercent, minimum_percent AS minimumPercent, maximum_percent AS maximumPercent, buy_as_needed AS buyAsNeeded FROM care_schedules WHERE active = 1 AND task_type = 'feeding' AND prey_species IS NOT NULL").all<ProfileRow>(),
     ]);
     const profiles: FeedingProfile[] = profileRows.results.map((row) => ({
-      animalId: row.animalId, preySpecies: row.preySpecies, preyDescription: row.preyDescription,
+      animalId: row.animalId, preySpecies: row.preySpecies, preyDescription: row.preyDescription, preySizeClass: row.preySizeClass,
       targetPercent: row.targetPercent, minimumPercent: row.minimumPercent, maximumPercent: row.maximumPercent,
       buyAsNeeded: Boolean(row.buyAsNeeded),
       schedule: { id: row.id, animalId: row.animalId, taskType: row.taskType, title: row.title, details: row.details, frequency: row.frequency, intervalDays: row.intervalDays, weekdaysJson: row.weekdaysJson, dayOfMonth: row.dayOfMonth, startDate: row.startDate, endDate: row.endDate },

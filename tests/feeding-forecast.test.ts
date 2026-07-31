@@ -3,7 +3,7 @@ import test from "node:test";
 import { buildFeederForecast, predictWeight } from "../lib/feeding-forecast.ts";
 
 const interval = (id: string, animalId: string, days: number, startDate: string, targetPercent: number) => ({
-  animalId, preySpecies: "rat", preyDescription: "rat", targetPercent, minimumPercent: targetPercent - 0.01, maximumPercent: targetPercent + 0.01, buyAsNeeded: false,
+  animalId, preySpecies: "rat", preyDescription: "rat", preySizeClass: null, targetPercent, minimumPercent: targetPercent - 0.01, maximumPercent: targetPercent + 0.01, buyAsNeeded: false,
   schedule: { id, animalId, taskType: "feeding", title: "Feed", details: "", frequency: "interval" as const, intervalDays: days, weekdaysJson: null, dayOfMonth: null, startDate, endDate: null },
 });
 const profiles = [
@@ -12,7 +12,7 @@ const profiles = [
   interval("cal", "calypso", 14, "2026-07-19", .055),
   { ...interval("ody", "odysseus", 1, "2026-08-01", .05), schedule: { ...interval("ody", "odysseus", 1, "2026-08-01", .05).schedule, frequency: "monthly" as const, intervalDays: null, dayOfMonth: 1 } },
   interval("apollo", "apollo", 14, "2026-07-19", .10),
-  ...[["rhino", 7], ["taco", 30]].map(([animalId, days]) => ({ animalId: String(animalId), preySpecies: "mouse", preyDescription: "pinky mouse", targetPercent: null, minimumPercent: null, maximumPercent: null, buyAsNeeded: true, schedule: { id: String(animalId), animalId: String(animalId), taskType: "feeding", title: "Feed", details: "", frequency: "interval" as const, intervalDays: Number(days), weekdaysJson: null, dayOfMonth: null, startDate: "2026-07-19", endDate: null } })),
+  ...[["rhino", 7], ["taco", 30]].map(([animalId, days]) => ({ animalId: String(animalId), preySpecies: "mouse", preyDescription: "pinky mouse", preySizeClass: null, targetPercent: null, minimumPercent: null, maximumPercent: null, buyAsNeeded: true, schedule: { id: String(animalId), animalId: String(animalId), taskType: "feeding", title: "Feed", details: "", frequency: "interval" as const, intervalDays: Number(days), weekdaysJson: null, dayOfMonth: null, startDate: "2026-07-19", endDate: null } })),
 ];
 profiles[profiles.length - 1].schedule = { ...profiles[profiles.length - 1].schedule, frequency: "monthly", intervalDays: null, dayOfMonth: 1 };
 
@@ -89,4 +89,38 @@ test("forecast warns when no close-enough rat remains", () => {
   });
   assert.equal(forecast.orderNeeded, true);
   assert.ok(forecast.alerts.some((alert) => alert.code === "feeder-shortage" && alert.dueBy === "2026-08-01"));
+});
+
+test("fixed-size mouse plans allocate matching inventory once and warn when it runs out", () => {
+  const mouseProfiles = [
+    {
+      animalId: "rhino", preySpecies: "mouse", preyDescription: "large pinky mouse", preySizeClass: "large pinky",
+      targetPercent: null, minimumPercent: null, maximumPercent: null, buyAsNeeded: false,
+      schedule: { id: "rhino-fixed", animalId: "rhino", taskType: "feeding", title: "Feed", details: "", frequency: "interval" as const, intervalDays: 7, weekdaysJson: null, dayOfMonth: null, startDate: "2026-07-19", endDate: null },
+    },
+    {
+      animalId: "sriracha", preySpecies: "mouse", preyDescription: "hopper mouse", preySizeClass: "hopper",
+      targetPercent: null, minimumPercent: null, maximumPercent: null, buyAsNeeded: false,
+      schedule: { id: "sriracha-fixed", animalId: "sriracha", taskType: "feeding", title: "Feed", details: "", frequency: "interval" as const, intervalDays: 14, weekdaysJson: null, dayOfMonth: null, startDate: "2026-08-02", endDate: null },
+    },
+  ];
+  const forecast = buildFeederForecast({
+    today: "2026-07-31",
+    horizonDays: 20,
+    animals,
+    weights,
+    availableFeeders: [
+      { id: "pinky-1", preySpecies: "mouse", sizeClass: "Large Pinky", weightGrams: 3 },
+      { id: "hopper-1", preySpecies: "MOUSE", sizeClass: "hopper", weightGrams: 9 },
+      { id: "wrong-species", preySpecies: "rat", sizeClass: "hopper", weightGrams: 9 },
+    ],
+    profiles: mouseProfiles,
+  });
+
+  const rhinoEvents = forecast.events.filter((event) => event.animalId === "rhino");
+  assert.equal(rhinoEvents[0].allocatedFeeder?.id, "pinky-1");
+  assert.equal(rhinoEvents[0].status, "covered");
+  assert.equal(rhinoEvents[1].status, "shortage");
+  assert.equal(forecast.nextFeedings.find((event) => event.animalId === "sriracha")?.allocatedFeeder?.id, "hopper-1");
+  assert.ok(forecast.alerts.some((alert) => alert.message.includes("large pinky mouse")));
 });

@@ -44,8 +44,10 @@ Supported frequencies:
 - `once`
 
 Optional feeder forecasting fields on feeding schedules are `preySpecies`,
-`preyDescription`, `targetPercent`, `minimumPercent`, `maximumPercent`, and
-`buyAsNeeded`. Percent values are decimals: 5% is `0.05`.
+`preyDescription`, `preySizeClass`, `targetPercent`, `minimumPercent`,
+`maximumPercent`, and `buyAsNeeded`. `preySizeClass` matches a tracked inventory
+size such as `hopper` or `large pinky`; leave it blank for percentage-based sizing.
+Percent values are decimals: 5% is `0.05`.
 
 ## Animal profile
 
@@ -55,7 +57,7 @@ history, legacy event notes, and full auditable event history.
 
 ## Backups and restore
 
-- `GET /api/export?format=json` returns schema version 9 with all portable husbandry
+- `GET /api/export?format=json` returns schema version 10 with all portable husbandry
   tables, task rewards, payout history, missed-task state, and portable app settings
   (including the care baseline). Household access-code hashes are deliberately excluded.
 - `GET /api/export?format=csv` provides a flat open-format copy.

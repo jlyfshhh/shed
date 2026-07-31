@@ -22,6 +22,7 @@ export type FeedingProfile = {
   animalId: string;
   preySpecies: string;
   preyDescription: string;
+  preySizeClass: string | null;
   targetPercent: number | null;
   minimumPercent: number | null;
   maximumPercent: number | null;
@@ -35,6 +36,7 @@ export type FeederForecastEvent = {
   feedingDate: string;
   preySpecies: string;
   preyDescription: string;
+  preySizeClass: string | null;
   latestWeightGrams: number | null;
   predictedWeightGrams: number | null;
   weightTrendGramsPerDay: number | null;
@@ -90,20 +92,17 @@ export function buildFeederForecast(options: {
       || left.animalName.localeCompare(right.animalName),
   );
 
-  const remaining = options.availableFeeders
-    .filter((feeder) => feeder.preySpecies === "rat")
-    .map((feeder) => ({ ...feeder }));
+  const remaining = options.availableFeeders.map((feeder) => ({ ...feeder }));
   for (const event of events) {
-    if (event.status !== "shortage" || event.preySpecies !== "rat") continue;
+    if (event.status !== "shortage") continue;
     const candidates = remaining
       .map((feeder, index) => ({ feeder, index }))
-      .filter(({ feeder }) =>
-        feeder.weightGrams >= (event.minimumPreyGrams ?? Number.POSITIVE_INFINITY)
-        && feeder.weightGrams <= (event.maximumPreyGrams ?? Number.NEGATIVE_INFINITY),
-      )
+      .filter(({ feeder }) => feederMatchesEvent(feeder, event))
       .sort((left, right) =>
-        Math.abs(left.feeder.weightGrams - (event.targetPreyGrams ?? 0))
-          - Math.abs(right.feeder.weightGrams - (event.targetPreyGrams ?? 0))
+        event.targetPreyGrams === null
+          ? left.feeder.weightGrams - right.feeder.weightGrams
+          : Math.abs(left.feeder.weightGrams - event.targetPreyGrams)
+            - Math.abs(right.feeder.weightGrams - event.targetPreyGrams)
         || left.feeder.weightGrams - right.feeder.weightGrams,
       );
     const selected = candidates[0];
@@ -150,6 +149,7 @@ function forecastEvent(
       feedingDate,
       preySpecies: profile.preySpecies,
       preyDescription: profile.preyDescription,
+      preySizeClass: profile.preySizeClass,
       latestWeightGrams: weights.at(-1)?.weightGrams ?? null,
       predictedWeightGrams: null,
       weightTrendGramsPerDay: null,
@@ -162,6 +162,46 @@ function forecastEvent(
     };
   }
 
+  if (profile.preySizeClass) {
+    return {
+      animalId: animal.id,
+      animalName: animal.name,
+      feedingDate,
+      preySpecies: profile.preySpecies,
+      preyDescription: profile.preyDescription,
+      preySizeClass: profile.preySizeClass,
+      latestWeightGrams: weights.at(-1)?.weightGrams ?? null,
+      predictedWeightGrams: null,
+      weightTrendGramsPerDay: null,
+      weightTrendConfidence: "none",
+      targetPreyGrams: null,
+      minimumPreyGrams: null,
+      maximumPreyGrams: null,
+      allocatedFeeder: null,
+      status: "shortage",
+    };
+  }
+
+  if (profile.targetPercent === null) {
+    return {
+      animalId: animal.id,
+      animalName: animal.name,
+      feedingDate,
+      preySpecies: profile.preySpecies,
+      preyDescription: profile.preyDescription,
+      preySizeClass: null,
+      latestWeightGrams: weights.at(-1)?.weightGrams ?? null,
+      predictedWeightGrams: null,
+      weightTrendGramsPerDay: null,
+      weightTrendConfidence: "none",
+      targetPreyGrams: null,
+      minimumPreyGrams: null,
+      maximumPreyGrams: null,
+      allocatedFeeder: null,
+      status: "inventory-untracked",
+    };
+  }
+
   const prediction = predictWeight(weights, feedingDate);
   if (!prediction) {
     return {
@@ -169,7 +209,8 @@ function forecastEvent(
       animalName: animal.name,
       feedingDate,
       preySpecies: profile.preySpecies,
-      preyDescription: "rat",
+      preyDescription: profile.preyDescription,
+      preySizeClass: null,
       latestWeightGrams: null,
       predictedWeightGrams: null,
       weightTrendGramsPerDay: null,
@@ -187,7 +228,8 @@ function forecastEvent(
     animalName: animal.name,
     feedingDate,
     preySpecies: profile.preySpecies,
-    preyDescription: "rat",
+    preyDescription: profile.preyDescription,
+    preySizeClass: null,
     latestWeightGrams: prediction.latestWeightGrams,
     predictedWeightGrams: prediction.predictedWeightGrams,
     weightTrendGramsPerDay: prediction.trendGramsPerDay,
@@ -196,8 +238,21 @@ function forecastEvent(
     minimumPreyGrams: Math.ceil(prediction.predictedWeightGrams * (profile.minimumPercent ?? profile.targetPercent ?? 0)),
     maximumPreyGrams: Math.floor(prediction.predictedWeightGrams * (profile.maximumPercent ?? profile.targetPercent ?? 0)),
     allocatedFeeder: null,
-    status: profile.preySpecies === "rat" ? "shortage" : "inventory-untracked",
+    status: "shortage",
   };
+}
+
+function feederMatchesEvent(feeder: AvailableFeeder, event: FeederForecastEvent): boolean {
+  if (normalizeLabel(feeder.preySpecies) !== normalizeLabel(event.preySpecies)) return false;
+  if (event.preySizeClass) {
+    return normalizeLabel(feeder.sizeClass) === normalizeLabel(event.preySizeClass);
+  }
+  return feeder.weightGrams >= (event.minimumPreyGrams ?? Number.POSITIVE_INFINITY)
+    && feeder.weightGrams <= (event.maximumPreyGrams ?? Number.NEGATIVE_INFINITY);
+}
+
+function normalizeLabel(value: string): string {
+  return value.trim().toLocaleLowerCase().replace(/\s+/g, " ");
 }
 
 export function predictWeight(weights: ForecastWeight[], targetDate: string) {
@@ -246,13 +301,16 @@ function buildAlerts(events: FeederForecastEvent[]): FeederForecastAlert[] {
   const alerts: FeederForecastAlert[] = [];
   for (const event of events) {
     if (event.status === "shortage") {
+      const requirement = event.preySizeClass
+        ? `${event.preySizeClass} ${event.preySpecies}`
+        : `${event.minimumPreyGrams}–${event.maximumPreyGrams} g ${event.preySpecies}`;
       alerts.push({
         code: "feeder-shortage",
         severity: "warning",
         animalId: event.animalId,
         animalName: event.animalName,
         dueBy: event.feedingDate,
-        message: `No available ${event.minimumPreyGrams}–${event.maximumPreyGrams} g rat is close enough for ${event.animalName}'s ${event.feedingDate} feeding.`,
+        message: `No available ${requirement} is close enough for ${event.animalName}'s ${event.feedingDate} feeding.`,
       });
     } else if (event.status === "weight-missing" && !alerts.some((alert) => alert.code === "missing-weight" && alert.animalId === event.animalId)) {
       alerts.push({

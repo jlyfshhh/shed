@@ -34,7 +34,7 @@ export const careSchedules = sqliteTable("care_schedules", {
   details: text("details").notNull().default(""), frequency: text("frequency").notNull(), intervalDays: integer("interval_days"),
   weekdaysJson: text("weekdays_json"), dayOfMonth: integer("day_of_month"), startDate: text("start_date").notNull(), endDate: text("end_date"),
   active: integer("active", { mode: "boolean" }).notNull().default(true), createdAt: text("created_at").notNull(), updatedAt: text("updated_at").notNull(),
-  preySpecies: text("prey_species"), preyDescription: text("prey_description"), targetPercent: real("target_percent"),
+  preySpecies: text("prey_species"), preyDescription: text("prey_description"), preySizeClass: text("prey_size_class"), targetPercent: real("target_percent"),
   minimumPercent: real("minimum_percent"), maximumPercent: real("maximum_percent"), buyAsNeeded: integer("buy_as_needed", { mode: "boolean" }).notNull().default(false),
   rewardCents: integer("reward_cents"),
 });
