@@ -35,6 +35,10 @@ yarn-error.log*
 .dev.vars
 .dev.vars.*
 
+# runtime data + dated backups (private household databases — never commit)
+/data/
+/backups/
+
 # vercel
 .vercel
 
