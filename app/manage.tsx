@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { equipmentAgeLabel } from "@/lib/equipment-age";
 
 // ── Shared types ─────────────────────────────────────────────────────────────
 export type Role = "Owner" | "Zookeeper";
@@ -29,6 +30,15 @@ type CatalogKey = keyof Catalog;
 
 const str = (value: unknown): string => (value === null || value === undefined ? "" : String(value));
 const bool = (value: unknown): boolean => value === 1 || value === true || value === "1";
+const linkedAppUrl = (port: number, sharedHabitatId: string): string => {
+  const url = new URL(window.location.href);
+  url.port = String(port);
+  url.pathname = "/";
+  url.search = "";
+  url.hash = "";
+  url.searchParams.set("sharedHabitat", sharedHabitatId);
+  return url.toString();
+};
 
 const weekdayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -80,6 +90,8 @@ const isFeeding = (values: Record<string, string>) => values.taskType?.toLowerCa
 
 const animalName = (catalog: Catalog, id: unknown) =>
   str(catalog.animals.find((a) => a.id === id)?.name) || "Unassigned";
+const enclosureName = (catalog: Catalog, id: unknown) =>
+  str(catalog.enclosures.find((enclosure) => enclosure.id === id)?.name) || "Unassigned";
 
 const resourceDefs: ResourceDef[] = [
   {
@@ -164,11 +176,10 @@ const resourceDefs: ResourceDef[] = [
       { key: "model", column: "model", label: "Model", type: "text" },
       { key: "animalId", column: "animal_id", label: "For animal", type: "animalRef", optional: true },
       { key: "enclosureId", column: "enclosure_id", label: "In enclosure", type: "enclosureRef", optional: true },
-      { key: "installedOn", column: "installed_on", label: "Installed on", type: "date" },
-      { key: "replaceOn", column: "replace_on", label: "Replace on", type: "date", help: "e.g. UVB bulb replacement date" },
+      { key: "installedOn", column: "installed_on", label: "Installed on", type: "date", help: "Set this to track how long the item has been in use." },
       { key: "notes", column: "notes", label: "Notes", type: "textarea" },
     ],
-    summary: (row, catalog) => ({ title: str(row.name), sub: `${str(row.category) || "Equipment"}${row.animal_id ? ` · ${animalName(catalog, row.animal_id)}` : ""}`, archived: !bool(row.active) }),
+    summary: (row, catalog) => ({ title: str(row.name), sub: `${str(row.category) || "Equipment"}${row.animal_id ? ` · ${animalName(catalog, row.animal_id)}` : row.enclosure_id ? ` · ${enclosureName(catalog, row.enclosure_id)}` : ""}${row.installed_on ? ` · since ${str(row.installed_on)}` : ""}`, archived: !bool(row.active) }),
   },
   {
     key: "weight", catalog: "weights", singular: "weight", plural: "Weights", action: "Delete",
@@ -619,14 +630,14 @@ export function ManageConsole({ onClose, onChanged, toast, initialResource = "an
 // ── Animal profile (baseball card) ─────────────────────────────────────────────
 type HusbandryScore = { percent: number | null; done: number; accountable: number; since: string; windowDays: number };
 type AnimalProfileData = {
-  animal: Row & { enclosureName?: string | null };
+  animal: Row & { enclosureName?: string | null; sharedHabitatId?: string | null };
   husbandryScore?: HusbandryScore;
   weightHistory: Array<{ id: string; recordedOn: string; weightGrams: number }>;
   notes: Array<{ id: string; category: string; title: string; body: string; pinned: number; createdBy: string; updatedAt: string }>;
-  equipment: Array<{ id: string; category: string; name: string; brand: string | null; replaceOn: string | null; active: number }>;
+  equipment: Array<{ id: string; category: string; name: string; brand: string | null; installedOn: string | null; inUseDays: number | null; scope: "animal" | "enclosure"; active: number }>;
   schedules: Array<{ id: string; title: string; taskType: string; frequency: string; active: number }>;
   tasks: Array<{ id: string; title: string; dueDate: string; complete: number; completedBy: string | null }>;
-  history: Array<{ id: string; title: string; taskType: string; occurredAt: string; completedBy: string; notes: string | null; voidedAt: string | null; voidReason: string | null }>;
+  history: Array<{ id: string; title: string; taskType: string; occurredAt: string; completedBy: string; notes: string | null; voidedAt: string | null; voidReason: string | null; feederSpecies: string | null; feederSizeClass: string | null; feederWeightGrams: number | null }>;
 };
 
 export function AnimalProfile({ animalId, onClose }: { animalId: string; onClose: () => void }) {
@@ -706,6 +717,7 @@ export function AnimalProfile({ animalId, onClose }: { animalId: string; onClose
                   {animal.enclosureName ? <span>{str(animal.enclosureName)}</span> : null}
                   {animal.location ? <span>{str(animal.location)}</span> : null}
                   {animal.weightGrams ? <span>{str(animal.weightGrams)} g</span> : null}
+                  {animal.sharedHabitatId ? <a href={linkedAppUrl(3001, str(animal.sharedHabitatId))}>Open linked tank in Clarity ↗</a> : null}
                 </div>
               </div>
               {data.husbandryScore && (
@@ -759,7 +771,10 @@ export function AnimalProfile({ animalId, onClose }: { animalId: string; onClose
               <section className="profile-section">
                 <h3>Equipment</h3>
                 <div className="profile-rows">
-                  {data.equipment.filter((e) => e.active).map((e) => <div key={e.id}><b>{e.name}</b><small>{e.category}{e.replaceOn ? ` · replace ${e.replaceOn}` : ""}</small></div>)}
+                  {data.equipment.filter((e) => e.active).map((e) => {
+                    const age = equipmentAgeLabel(e.inUseDays);
+                    return <div key={e.id}><b>{e.name}</b><small>{e.category}{e.brand ? ` · ${e.brand}` : ""} · {e.scope}{age ? ` · ${age}` : " · install date unknown"}</small></div>;
+                  })}
                 </div>
               </section>
             )}
@@ -782,7 +797,7 @@ export function AnimalProfile({ animalId, onClose }: { animalId: string; onClose
                       <span className="history-dot" />
                       <p>
                         <b>{event.title}</b>{event.voidedAt ? <i> · corrected</i> : ""}
-                        <small>{event.completedBy} · {relativeTime(event.occurredAt)}{event.notes ? ` · ${event.notes}` : ""}{event.voidReason ? ` · ${event.voidReason}` : ""}</small>
+                        <small>{event.completedBy} · {relativeTime(event.occurredAt)}{event.feederWeightGrams ? ` · ${event.feederWeightGrams} g ${event.feederSizeClass ?? ""} ${event.feederSpecies ?? "feeder"}` : ""}{event.notes ? ` · ${event.notes}` : ""}{event.voidReason ? ` · ${event.voidReason}` : ""}</small>
                       </p>
                     </div>
                   ))}
@@ -797,6 +812,60 @@ export function AnimalProfile({ animalId, onClose }: { animalId: string; onClose
 }
 
 // ── Feeder forecast (read-only) ────────────────────────────────────────────────
+export function BulkFeederIntake({ onClose, onSaved }: { onClose: () => void; onSaved: (message: string) => void }) {
+  const [preySpecies, setPreySpecies] = useState("rat");
+  const [sizeClass, setSizeClass] = useState("small");
+  const [weights, setWeights] = useState("");
+  const [addedOn, setAddedOn] = useState(() => new Date().toISOString().slice(0, 10));
+  const [notes, setNotes] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const parsedWeights = weights.trim() ? weights.trim().split(/[\s,;]+/).filter(Boolean) : [];
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setError(null);
+    const values = parsedWeights.map(Number);
+    if (!values.length) { setError("Paste at least one feeder weight."); return; }
+    if (values.some((value) => !Number.isInteger(value) || value < 1)) {
+      setError("Every weight must be a whole number of grams.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const response = await fetch("/api/feeders/bulk", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ preySpecies, sizeClass, weightsGrams: values, addedOn, notes }),
+      });
+      const payload = (await response.json()) as { error?: string; count?: number };
+      if (!response.ok) throw new Error(payload.error ?? "Couldn’t add the feeders.");
+      onSaved(`Added ${payload.count ?? values.length} ${sizeClass} ${preySpecies}${values.length === 1 ? "" : "s"}.`);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Couldn’t add the feeders.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="sheet-backdrop" role="dialog" aria-modal="true" aria-label="Bulk add feeders" onClick={onClose}>
+      <div className="sheet" onClick={(event) => event.stopPropagation()}>
+        <header className="sheet-head"><h2>Bulk add weighed feeders</h2><button className="sheet-close" onClick={onClose} aria-label="Close">✕</button></header>
+        <form className="sheet-body" onSubmit={submit}>
+          <label className="field"><span>Prey species *</span><input value={preySpecies} onChange={(event) => setPreySpecies(event.target.value)} placeholder="rat or mouse" /></label>
+          <label className="field"><span>Size class *</span><input value={sizeClass} onChange={(event) => setSizeClass(event.target.value)} placeholder="small, hopper, large pinky…" /></label>
+          <label className="field"><span>Added on</span><input type="date" value={addedOn} onChange={(event) => setAddedOn(event.target.value)} /></label>
+          <label className="field"><span>Batch note</span><input value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="optional vendor or shipment note" /></label>
+          <label className="field field-wide"><span>Individual weights in grams *</span><textarea rows={8} value={weights} onChange={(event) => setWeights(event.target.value)} placeholder={"40 42 41 59 43\nPaste spaces, commas, or one weight per line."} /><small>{parsedWeights.length ? `${parsedWeights.length} feeder${parsedWeights.length === 1 ? "" : "s"} ready to add` : "One inventory record will be created for each weight."}</small></label>
+          {error && <p className="form-error field-wide" role="alert">{error}</p>}
+          <div className="sheet-actions field-wide"><button type="button" className="ghost" onClick={onClose}>Cancel</button><button disabled={busy}>{busy ? "Adding…" : `Add ${parsedWeights.length || ""} feeder${parsedWeights.length === 1 ? "" : "s"}`}</button></div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 type ForecastFeeder = { id: string; preySpecies: string; sizeClass: string | null; weightGrams: number };
 type ForecastEvent = {
   animalId: string; animalName: string; feedingDate: string;

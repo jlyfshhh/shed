@@ -112,6 +112,12 @@ export async function PATCH(request: Request) {
     await db.prepare(`UPDATE ${configs[resource].table} SET ${assignments.join(", ")} WHERE id = ?`).bind(...Object.values(normalized), id).run();
     if (resource === "schedule") await db.prepare("DELETE FROM care_tasks WHERE schedule_id = ? AND due_date >= ? AND id NOT IN (SELECT task_id FROM husbandry_events WHERE task_id IS NOT NULL)").bind(id, dateInTimeZone()).run();
     if (resource === "weight") await refreshAnimalWeight(db, String(normalized.animalId ?? existing.animal_id));
+    if (resource === "feeder" && normalized.status === "available") {
+      await db.batch([
+        db.prepare("UPDATE feeder_inventory SET consumed_at = NULL, animal_id = NULL, husbandry_event_id = NULL WHERE id = ?").bind(id),
+        db.prepare("UPDATE feeding_assignments SET status = 'released' WHERE feeder_id = ? AND status = 'consumed'").bind(id),
+      ]);
+    }
     return Response.json({ saved: true, id }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) { return failure(error); }
 }

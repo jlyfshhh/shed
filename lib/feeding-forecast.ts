@@ -31,6 +31,7 @@ export type FeedingProfile = {
 };
 
 export type FeederForecastEvent = {
+  scheduleId: string;
   animalId: string;
   animalName: string;
   feedingDate: string;
@@ -64,9 +65,11 @@ export function buildFeederForecast(options: {
   weights: ForecastWeight[];
   availableFeeders: AvailableFeeder[];
   profiles: FeedingProfile[];
+  excludedFeedings?: Iterable<string>;
 }) {
   const horizonDays = Math.min(Math.max(Math.trunc(options.horizonDays), 1), 180);
   const animalById = new Map(options.animals.map((animal) => [animal.id, animal]));
+  const excludedFeedings = new Set(options.excludedFeedings ?? []);
   const weightsByAnimal = new Map<string, ForecastWeight[]>();
   for (const weight of options.weights) {
     weightsByAnimal.set(weight.animalId, [
@@ -81,7 +84,9 @@ export function buildFeederForecast(options: {
   const events = options.profiles.flatMap((profile) => {
     const animal = animalById.get(profile.animalId);
     if (!animal) return [];
-    return feedingDates(profile, options.today, horizonDays).map((feedingDate) =>
+    return feedingDates(profile, options.today, horizonDays)
+      .filter((feedingDate) => !excludedFeedings.has(`${profile.schedule.id}:${feedingDate}`))
+      .map((feedingDate) =>
       forecastEvent(profile, animal, feedingDate, weightsByAnimal.get(profile.animalId) ?? []),
     );
   });
@@ -127,7 +132,9 @@ export function buildFeederForecast(options: {
 
 function feedingDates(profile: FeedingProfile, today: string, horizonDays: number): string[] {
   const dates: string[] = [];
-  for (let offset = 1; offset <= horizonDays; offset += 1) {
+  // Include today: a feeder forecast is also the source of truth for the care
+  // task that is currently on the dashboard, not only future shopping needs.
+  for (let offset = 0; offset <= horizonDays; offset += 1) {
     const date = addDays(today, offset);
     if (scheduleIsDue(profile.schedule, date)) {
       dates.push(date);
@@ -144,6 +151,7 @@ function forecastEvent(
 ): FeederForecastEvent {
   if (profile.buyAsNeeded) {
     return {
+      scheduleId: profile.schedule.id,
       animalId: animal.id,
       animalName: animal.name,
       feedingDate,
@@ -164,6 +172,7 @@ function forecastEvent(
 
   if (profile.preySizeClass) {
     return {
+      scheduleId: profile.schedule.id,
       animalId: animal.id,
       animalName: animal.name,
       feedingDate,
@@ -184,6 +193,7 @@ function forecastEvent(
 
   if (profile.targetPercent === null) {
     return {
+      scheduleId: profile.schedule.id,
       animalId: animal.id,
       animalName: animal.name,
       feedingDate,
@@ -205,6 +215,7 @@ function forecastEvent(
   const prediction = predictWeight(weights, feedingDate);
   if (!prediction) {
     return {
+      scheduleId: profile.schedule.id,
       animalId: animal.id,
       animalName: animal.name,
       feedingDate,
@@ -224,6 +235,7 @@ function forecastEvent(
   }
 
   return {
+    scheduleId: profile.schedule.id,
     animalId: animal.id,
     animalName: animal.name,
     feedingDate,

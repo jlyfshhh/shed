@@ -39,6 +39,8 @@ export async function ensureDatabase(targetDate?: string) {
     db.prepare("CREATE TABLE IF NOT EXISTS feeding_assignments (id TEXT PRIMARY KEY, animal_id TEXT NOT NULL, feeder_id TEXT NOT NULL, planned_for TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'planned', created_at TEXT NOT NULL, consumed_at TEXT, husbandry_event_id TEXT)"),
     db.prepare("CREATE INDEX IF NOT EXISTS feeding_assignments_animal_date_idx ON feeding_assignments(animal_id, planned_for)"),
     db.prepare("CREATE INDEX IF NOT EXISTS feeding_assignments_feeder_idx ON feeding_assignments(feeder_id)"),
+    db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS feeding_assignments_consumed_feeder_unique ON feeding_assignments(feeder_id) WHERE status = 'consumed'"),
+    db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS feeding_assignments_consumed_event_unique ON feeding_assignments(husbandry_event_id) WHERE status = 'consumed'"),
   ]);
 
   await addMissingColumns(db, "animals", [

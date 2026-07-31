@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { AnimalProfile, FeederForecast, GettingStartedGuide, ManageConsole, RestorePanel, SetupGate, type FeederForecastData, type ResourceKey, type SetupSummary } from "./manage";
+import { AnimalProfile, BulkFeederIntake, FeederForecast, GettingStartedGuide, ManageConsole, RestorePanel, SetupGate, type FeederForecastData, type ResourceKey, type SetupSummary } from "./manage";
 
 type Role = "Owner" | "Zookeeper";
 type Viewer = { id: string; displayName: string; role: Role; earningEnabled?: boolean; balanceCents?: number | null };
@@ -37,11 +37,13 @@ type ContributionReport = {
 type Tab = "today" | "animals" | "trends" | "more";
 type Task = {
   id: string;
+  taskType: string;
   animalId: string;
   animalName: string;
   species: string;
   title: string;
   details: string;
+  feedingGuidance: string | null;
   dueDate: string;
   complete: boolean;
   completedByMemberId: string | null;
@@ -55,6 +57,7 @@ type Animal = {
   location: string;
   weightGrams: number | null;
   weightDate: string | null;
+  sharedHabitatId: string | null;
 };
 type RecentEvent = {
   id: string;
@@ -106,6 +109,8 @@ const shortDate = (date: string) =>
     new Date(`${date}T12:00:00`),
   );
 
+const taskDetails = (task: Task) => task.feedingGuidance ?? task.details;
+
 const timeAgo = (value: string) => {
   const then = new Date(value).getTime();
   const minutes = Math.max(0, Math.round((Date.now() - then) / 60000));
@@ -129,6 +134,7 @@ export default function HusbandryApp() {
   const [guideOpen, setGuideOpen] = useState(false);
   const [profileId, setProfileId] = useState<string | null>(null);
   const [forecastOpen, setForecastOpen] = useState(false);
+  const [bulkFeedersOpen, setBulkFeedersOpen] = useState(false);
   const [forecast, setForecast] = useState<{ orderNeeded: boolean; warnings: number } | null>(null);
 
   const notify = (message: string) => {
@@ -212,6 +218,21 @@ export default function HusbandryApp() {
     // Mount-only: loadSession/refresh are stable for the component's lifetime.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!data?.animals.length) return;
+    const sharedHabitatId = new URLSearchParams(window.location.search).get("sharedHabitat");
+    if (!sharedHabitatId) return;
+    const linkedAnimal = data.animals.find((animal) => animal.sharedHabitatId === sharedHabitatId);
+    if (!linkedAnimal) return;
+    const timer = window.setTimeout(() => {
+      setProfileId(linkedAnimal.id);
+      const url = new URL(window.location.href);
+      url.searchParams.delete("sharedHabitat");
+      window.history.replaceState({}, "", url);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [data?.animals]);
 
   const loadMembers = async () => {
     setMembersError(null);
@@ -435,12 +456,14 @@ export default function HusbandryApp() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ taskId: task.id, dueDate: task.dueDate, actorRole: viewer?.role ?? "Owner" }),
       });
-      if (!response.ok) throw new Error("Unable to save");
+      const payload = (await response.json()) as { error?: string; allocatedFeeder?: { weightGrams: number; sizeClass: string; preySpecies: string } | null };
+      if (!response.ok) throw new Error(payload.error ?? "Unable to save");
       await refresh();
-      setToast(`${task.animalName}: ${task.title} recorded${viewer ? ` by ${viewer.displayName}` : ""}`);
+      const feeder = payload.allocatedFeeder;
+      setToast(`${task.animalName}: ${task.title} recorded${feeder ? ` · ${feeder.weightGrams} g ${feeder.sizeClass} ${feeder.preySpecies} used` : ""}${viewer ? ` by ${viewer.displayName}` : ""}`);
       window.setTimeout(() => setToast(null), 2800);
-    } catch {
-      setToast("That update didn’t save. Please try again.");
+    } catch (saveError) {
+      setToast(saveError instanceof Error ? saveError.message : "That update didn’t save. Please try again.");
     } finally {
       setBusyTask(null);
     }
@@ -448,7 +471,7 @@ export default function HusbandryApp() {
 
   const undoTask = async (task: Task) => {
     if (!window.confirm(
-      `Mark “${task.title}” for ${task.animalName} as not done?\n\nThis returns it to today’s list and removes the completion and allowance credit from ${task.completedBy ?? "the recorded keeper"}. The correction stays in history.`,
+      `Mark “${task.title}” for ${task.animalName} as not done?\n\nThis returns it to today’s list and removes the completion and allowance credit from ${task.completedBy ?? "the recorded keeper"}. The correction stays in history.${task.taskType === "feeding" ? " The assigned feeder remains consumed so you can safely correct who completed the task; restore it in Manage → Feeders only if it was not actually used." : ""}`,
     )) return;
     setBusyTask(task.id);
     try {
@@ -642,7 +665,7 @@ export default function HusbandryApp() {
                     <article className="task-card overdue" key={task.id}>
                       <div className="animal-badge" aria-hidden="true">{task.animalName.slice(0, 1)}</div>
                       <div className="task-copy">
-                        <span>{task.species} · due {shortDate(task.dueDate)}</span><h3>{task.animalName}</h3><p><b>{task.title}</b> · {task.details}</p>
+                        <span>{task.species} · due {shortDate(task.dueDate)}</span><h3>{task.animalName}</h3><p><b>{task.title}</b>{taskDetails(task) ? ` · ${taskDetails(task)}` : ""}</p>
                       </div>
                       <div className="overdue-actions">
                         <button className="complete-button" disabled={busyTask === task.id} onClick={() => completeTask(task)}>{busyTask === task.id ? "Saving…" : "Mark done"}<span>✓</span></button>
@@ -660,7 +683,7 @@ export default function HusbandryApp() {
                 <article className="task-card" key={task.id}>
                   <div className="animal-badge" aria-hidden="true">{task.animalName.slice(0, 1)}</div>
                   <div className="task-copy">
-                    <span>{task.species}</span><h3>{task.animalName}</h3><p><b>{task.title}</b> · {task.details}</p>
+                    <span>{task.species}</span><h3>{task.animalName}</h3><p><b>{task.title}</b>{taskDetails(task) ? ` · ${taskDetails(task)}` : ""}</p>
                   </div>
                   <button className="complete-button" disabled={busyTask === task.id} onClick={() => completeTask(task)}>
                     {busyTask === task.id ? "Saving…" : "Mark done"}<span>✓</span>
@@ -767,6 +790,7 @@ export default function HusbandryApp() {
               <article className={`settings-card ${isOwner ? "" : "locked"}`}><span className="settings-icon">?</span><h2>Getting started</h2><p>Follow the setup checklist and learn where recurring care, one-time history, notes, equipment, and weights belong.</p><button disabled={!isOwner} onClick={() => setGuideOpen(true)}>{isOwner ? "Open guide" : "Head Keeper access required"}</button></article>
               <article className={`settings-card ${isOwner ? "" : "locked"}`}><span className="settings-icon">☷</span><h2>Manage records</h2><p>Add and edit animals, enclosures, care plans, notes, equipment, weights, feeders, and history.</p><button disabled={!isOwner} onClick={() => openManager()}>{isOwner ? "Open manager" : "Head Keeper access required"}</button></article>
               <article className="settings-card"><span className="settings-icon">◷</span><h2>Feeding forecast</h2><p>Upcoming feeds by animal, which feeder in stock covers each, shortage dates, and when to reorder.</p><button onClick={() => setForecastOpen(true)}>Open forecast</button></article>
+              <article className={`settings-card ${isOwner ? "" : "locked"}`}><span className="settings-icon">＋</span><h2>Bulk add feeders</h2><p>Paste a shipment of individual gram weights into inventory at once.</p><button disabled={!isOwner} onClick={() => setBulkFeedersOpen(true)}>{isOwner ? "Add weighed feeders" : "Head Keeper access required"}</button></article>
               {isOwner && (
                 <article className="settings-card"><span className="settings-icon">↥</span><h2>Your data, always portable</h2><p>Download a complete open-format copy any time — stable identifiers, ISO dates, numeric gram values.</p><div className="export-actions"><a href="/api/export?format=json">Download JSON</a><a href="/api/export?format=csv">Download CSV</a></div></article>
               )}
@@ -951,6 +975,7 @@ export default function HusbandryApp() {
       )}
       {profileId && <AnimalProfile animalId={profileId} onClose={() => setProfileId(null)} />}
       {forecastOpen && <FeederForecast onClose={() => { setForecastOpen(false); void loadForecast().catch(() => undefined); }} />}
+      {bulkFeedersOpen && isOwner && <BulkFeederIntake onClose={() => setBulkFeedersOpen(false)} onSaved={(message) => { setBulkFeedersOpen(false); notify(message); void refresh().catch(() => undefined); void loadForecast().catch(() => undefined); }} />}
     </div>
   );
 }

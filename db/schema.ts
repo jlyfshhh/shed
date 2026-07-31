@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const animals = sqliteTable("animals", {
@@ -145,6 +146,8 @@ export const feedingAssignments = sqliteTable("feeding_assignments", {
 }, (table) => [
   index("feeding_assignments_animal_date_idx").on(table.animalId, table.plannedFor),
   index("feeding_assignments_feeder_idx").on(table.feederId),
+  uniqueIndex("feeding_assignments_consumed_feeder_unique").on(table.feederId).where(sql`${table.status} = 'consumed'`),
+  uniqueIndex("feeding_assignments_consumed_event_unique").on(table.husbandryEventId).where(sql`${table.status} = 'consumed'`),
 ]);
 
 // Task earnings ("allowance") — added by Claude 2026-07-21 while Codex was out.

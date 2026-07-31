@@ -3,6 +3,7 @@ import { dateInTimeZone } from "@/lib/date";
 import { isoDaysAgo } from "@/lib/care-schedule";
 import { getCareStartDate } from "@/lib/care-settings";
 import { householdAuthRequired, memberFromRequest } from "@/lib/household-auth";
+import { equipmentAgeDays } from "@/lib/equipment-age";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +24,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
 
     const { id } = await context.params;
     const animal = await db.prepare(
-      "SELECT a.id, a.name, a.species, a.group_name AS 'group', a.location, a.weight_grams AS weightGrams, a.weight_date AS weightDate, a.scientific_name AS scientificName, a.morph, a.sex, a.birth_date AS birthDate, a.acquired_date AS acquiredDate, a.source, a.notes, a.active, a.enclosure_id AS enclosureId, e.name AS enclosureName FROM animals a LEFT JOIN enclosures e ON e.id = a.enclosure_id WHERE a.id = ?",
+      "SELECT a.id, a.name, a.species, a.group_name AS 'group', a.location, a.weight_grams AS weightGrams, a.weight_date AS weightDate, a.scientific_name AS scientificName, a.morph, a.sex, a.birth_date AS birthDate, a.acquired_date AS acquiredDate, a.source, a.notes, a.active, a.enclosure_id AS enclosureId, e.name AS enclosureName, e.shared_habitat_id AS sharedHabitatId FROM animals a LEFT JOIN enclosures e ON e.id = a.enclosure_id WHERE a.id = ?",
     ).bind(id).first();
     if (!animal) {
       return Response.json({ error: "Animal not found" }, { status: 404, headers: { "Cache-Control": "no-store" } });
@@ -34,22 +35,26 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         "SELECT id, recorded_on AS recordedOn, weight_grams AS weightGrams FROM weight_events WHERE animal_id = ? ORDER BY recorded_on DESC",
       ).bind(id).all(),
       db.prepare(
-        "SELECT id, task_id AS taskId, task_type AS taskType, title, notes, due_date AS dueDate, occurred_at AS occurredAt, actor_role AS actorRole, completed_by_member_id AS completedByMemberId, COALESCE(completed_by_name, actor_role) AS completedBy, voided_at AS voidedAt, voided_by_member_id AS voidedByMemberId, voided_by_name AS voidedBy, void_reason AS voidReason FROM husbandry_events WHERE animal_id = ? ORDER BY COALESCE(voided_at, occurred_at) DESC",
+        "SELECT e.id, e.task_id AS taskId, e.task_type AS taskType, e.title, e.notes, e.due_date AS dueDate, e.occurred_at AS occurredAt, e.actor_role AS actorRole, e.completed_by_member_id AS completedByMemberId, COALESCE(e.completed_by_name, e.actor_role) AS completedBy, e.voided_at AS voidedAt, e.voided_by_member_id AS voidedByMemberId, e.voided_by_name AS voidedBy, e.void_reason AS voidReason, f.id AS feederId, f.prey_species AS feederSpecies, f.size_class AS feederSizeClass, f.weight_grams AS feederWeightGrams FROM husbandry_events e LEFT JOIN feeding_assignments fa ON fa.husbandry_event_id = e.id AND fa.status = 'consumed' LEFT JOIN feeder_inventory f ON f.id = fa.feeder_id WHERE e.animal_id = ? ORDER BY COALESCE(e.voided_at, e.occurred_at) DESC",
       ).bind(id).all(),
       db.prepare(
         "SELECT t.id, t.task_type AS taskType, t.title, t.details, t.due_date AS dueDate, CASE WHEN e.id IS NULL THEN 0 ELSE 1 END AS complete, e.id AS completionEventId, COALESCE(e.completed_by_name, e.actor_role) AS completedBy FROM care_tasks t LEFT JOIN husbandry_events e ON e.task_id = t.id AND e.due_date = t.due_date AND e.voided_at IS NULL WHERE t.animal_id = ? ORDER BY t.due_date DESC, t.title",
       ).bind(id).all(),
       db.prepare("SELECT id, category, title, body, pinned, created_at AS createdAt, updated_at AS updatedAt, created_by_name AS createdBy FROM animal_notes WHERE animal_id = ? ORDER BY pinned DESC, updated_at DESC").bind(id).all(),
-      db.prepare("SELECT id, category, name, brand, model, installed_on AS installedOn, replace_on AS replaceOn, active, notes FROM equipment WHERE animal_id = ? ORDER BY active DESC, name").bind(id).all(),
+      db.prepare("SELECT q.id, q.category, q.name, q.brand, q.model, q.installed_on AS installedOn, q.active, q.notes, CASE WHEN q.animal_id = ? THEN 'animal' ELSE 'enclosure' END AS scope FROM equipment q WHERE q.animal_id = ? OR q.enclosure_id = (SELECT enclosure_id FROM animals WHERE id = ?) ORDER BY q.active DESC, q.name").bind(id, id, id).all(),
       db.prepare("SELECT id, task_type AS taskType, title, details, frequency, interval_days AS intervalDays, weekdays_json AS weekdaysJson, day_of_month AS dayOfMonth, start_date AS startDate, end_date AS endDate, active FROM care_schedules WHERE animal_id = ? ORDER BY active DESC, title").bind(id).all(),
       db.prepare("SELECT e.* FROM enclosures e JOIN animals a ON a.enclosure_id = e.id WHERE a.id = ?").bind(id).first(),
     ]);
 
+    const today = dateInTimeZone();
+    const equipmentWithAge = (equipment.results as Array<Record<string, unknown> & { installedOn?: string | null }>).map((item) => ({
+      ...item,
+      inUseDays: equipmentAgeDays(item.installedOn, today),
+    }));
     const history = events.results as Array<{ taskType: string; notes?: string | null; voidedAt?: string | null }>;
     const activeEvents = history.filter((event) => !event.voidedAt);
 
     // Husbandry score over the rolling window (clamped to the fresh-start baseline).
-    const today = dateInTimeZone();
     const careStartDate = await getCareStartDate(db);
     const windowStart = isoDaysAgo(today, SCORE_WINDOW_DAYS - 1);
     const scoreSince = careStartDate && careStartDate > windowStart ? careStartDate : windowStart;
@@ -79,7 +84,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       weightHistory: weights.results,
       notes: notes.results,
       legacyEventNotes: activeEvents.filter((event) => Boolean(event.notes?.trim())),
-      equipment: equipment.results,
+      equipment: equipmentWithAge,
       enclosure,
       schedules: schedules.results,
       enclosureHistory: activeEvents.filter((event) => event.taskType === "enclosure"),

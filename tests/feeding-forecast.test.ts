@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildFeederForecast, predictWeight } from "../lib/feeding-forecast.ts";
+import { feederGuidance } from "../lib/feeder-guidance.ts";
 
 const interval = (id: string, animalId: string, days: number, startDate: string, targetPercent: number) => ({
   animalId, preySpecies: "rat", preyDescription: "rat", preySizeClass: null, targetPercent, minimumPercent: targetPercent - 0.01, maximumPercent: targetPercent + 0.01, buyAsNeeded: false,
@@ -54,7 +55,7 @@ test("weight trend projects the latest measurement to the feeding date", () => {
 
 test("forecast returns next dates, allocates each rat once, and schedules buy-as-needed mice", () => {
   const forecast = buildFeederForecast({
-    today: "2026-07-19",
+    today: "2026-07-20",
     horizonDays: 20,
     animals,
     weights,
@@ -80,7 +81,7 @@ test("forecast returns next dates, allocates each rat once, and schedules buy-as
 
 test("forecast warns when no close-enough rat remains", () => {
   const forecast = buildFeederForecast({
-    today: "2026-07-19",
+    today: "2026-07-20",
     horizonDays: 20,
     animals,
     weights,
@@ -123,4 +124,39 @@ test("fixed-size mouse plans allocate matching inventory once and warn when it r
   assert.equal(rhinoEvents[1].status, "shortage");
   assert.equal(forecast.nextFeedings.find((event) => event.animalId === "sriracha")?.allocatedFeeder?.id, "hopper-1");
   assert.ok(forecast.alerts.some((alert) => alert.message.includes("large pinky mouse")));
+});
+
+test("today's feeding is included and produces glanceable task guidance", () => {
+  const forecast = buildFeederForecast({
+    today: "2026-08-02",
+    horizonDays: 1,
+    animals,
+    weights,
+    availableFeeders: [
+      { id: "rat-42", preySpecies: "rat", sizeClass: "small", weightGrams: 42 },
+    ],
+    profiles: [interval("ach-today", "achilles", 14, "2026-08-02", .10)],
+  });
+
+  const event = forecast.events[0];
+  assert.equal(event.feedingDate, "2026-08-02");
+  assert.equal(event.scheduleId, "ach-today");
+  assert.equal(event.allocatedFeeder?.id, "rat-42");
+  assert.match(feederGuidance(event), /^Target \d+–\d+ g rat · 42 g small rat ready$/);
+});
+
+test("completed schedule dates are excluded so their consumed feeders are not allocated again", () => {
+  const forecast = buildFeederForecast({
+    today: "2026-08-02",
+    horizonDays: 15,
+    animals,
+    weights,
+    availableFeeders: [{ id: "rat-next", preySpecies: "rat", sizeClass: "small", weightGrams: 42 }],
+    profiles: [interval("ach-completed", "achilles", 14, "2026-08-02", .10)],
+    excludedFeedings: ["ach-completed:2026-08-02"],
+  });
+
+  assert.equal(forecast.events.length, 1);
+  assert.equal(forecast.events[0].feedingDate, "2026-08-16");
+  assert.equal(forecast.events[0].allocatedFeeder?.id, "rat-next");
 });

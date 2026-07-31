@@ -1,0 +1,2 @@
+CREATE UNIQUE INDEX `feeding_assignments_consumed_feeder_unique` ON `feeding_assignments` (`feeder_id`) WHERE "feeding_assignments"."status" = 'consumed';--> statement-breakpoint
+CREATE UNIQUE INDEX `feeding_assignments_consumed_event_unique` ON `feeding_assignments` (`husbandry_event_id`) WHERE "feeding_assignments"."status" = 'consumed';

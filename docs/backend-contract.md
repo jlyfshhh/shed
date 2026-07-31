@@ -49,11 +49,41 @@ Optional feeder forecasting fields on feeding schedules are `preySpecies`,
 size such as `hopper` or `large pinky`; leave it blank for percentage-based sizing.
 Percent values are decimals: 5% is `0.05`.
 
+`GET /api/feeders/forecast` includes feedings due today as well as upcoming dates.
+Each event includes `scheduleId`, allowing the dashboard to match a forecast to the
+exact materialized care task. Feeding tasks returned by `GET /api/dashboard` gain a
+nullable `feedingGuidance` field. It contains glanceable live guidance such as the
+target weight range and allocated feeder, or a shortage/missing-weight message;
+the saved care-plan `details` field remains unchanged.
+
+`POST /api/feeders/bulk` is Owner-only and accepts
+`{ preySpecies, sizeClass, weightsGrams, addedOn?, notes? }`. It creates one feeder
+inventory row for every individual whole-gram weight (maximum 500 per request).
+
+Completing an inventory-tracked feeding atomically creates the husbandry event,
+links its forecast-selected feeder in `feeding_assignments`, and marks that feeder
+consumed. A tracked feeding with no suitable available feeder returns HTTP 409 instead
+of recording an unlinked completion. Plans marked `buyAsNeeded` remain intentionally
+untracked. Undo keeps the feeder consumed so completion attribution can be corrected
+without double-allocating it; explicitly returning that feeder to `available` in Manage
+releases its assignment when the feeder was not actually used.
+
 ## Animal profile
 
 `GET /api/animals/:id` returns the structured animal profile, current enclosure,
 weights, dedicated notes, equipment, schedules, tasks, feeding history, enclosure
 history, legacy event notes, and full auditable event history.
+Active equipment assigned either directly to the animal or to its enclosure is included
+with `installedOn`, `scope`, and the derived `inUseDays`. Shared enclosure/habitat IDs
+are exposed so Shed and Clarity can deep-link to one another with
+`?sharedHabitat=<id>`.
+
+## Sign-in throttling
+
+`POST /api/auth/login` allows up to 10 failed household-code attempts in 10 minutes,
+then returns HTTP 429 with `Retry-After` for a 15-minute cooldown. A successful login
+clears the in-memory household throttle. This is intentionally process-local for the
+single-container home-server deployment.
 
 ## Backups and restore
 
@@ -96,5 +126,6 @@ adds a reward to their (derived) balance.
   payout (defaults to the full balance) and clears the owed balance.
 - `POST /api/tasks/complete` returns `rewardCents` and the member's `balanceCents`.
 - `/api/manage` schedule resource accepts `rewardCents`.
-- New tables/columns are applied by `db/runtime.ts` (self-migrating). A formal drizzle
-  migration still needs `npm run db:generate` against the updated `db/schema.ts`.
+- New tables/columns are applied by `db/runtime.ts` (self-migrating). Formal migrations
+  through `drizzle/0011_neat_korath.sql` also include the transactional feeder-assignment
+  uniqueness guards.
