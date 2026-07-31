@@ -135,6 +135,7 @@ const resourceDefs: ResourceDef[] = [
       { key: "rewardCents", column: "reward_cents", label: "Reward per task (cents)", type: "number", help: "Blank = household default. e.g. 25 = 25¢, 50 = 50¢" },
       { key: "preySpecies", column: "prey_species", label: "Prey species", type: "text", showIf: isFeeding, help: "e.g. rat, mouse" },
       { key: "preyDescription", column: "prey_description", label: "Prey description", type: "text", showIf: isFeeding },
+      { key: "preySizeClass", column: "prey_size_class", label: "Tracked prey size", type: "text", showIf: isFeeding, help: "Exact inventory size class, e.g. hopper or large pinky. Leave blank when sizing by body-weight percentage." },
       { key: "targetPercent", column: "target_percent", label: "Target % of body weight", type: "number", step: "0.001", showIf: isFeeding, help: "Decimal: 5% = 0.05" },
       { key: "minimumPercent", column: "minimum_percent", label: "Minimum %", type: "number", step: "0.001", showIf: isFeeding, help: "Decimal 0–1" },
       { key: "maximumPercent", column: "maximum_percent", label: "Maximum %", type: "number", step: "0.001", showIf: isFeeding, help: "Decimal 0–1" },
@@ -790,6 +791,129 @@ export function AnimalProfile({ animalId, onClose }: { animalId: string; onClose
             </section>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ── Feeder forecast (read-only) ────────────────────────────────────────────────
+type ForecastFeeder = { id: string; preySpecies: string; sizeClass: string | null; weightGrams: number };
+type ForecastEvent = {
+  animalId: string; animalName: string; feedingDate: string;
+  preySpecies: string; preyDescription: string; preySizeClass: string | null;
+  latestWeightGrams: number | null; predictedWeightGrams: number | null;
+  weightTrendGramsPerDay: number | null; weightTrendConfidence: "none" | "low" | "medium" | "high";
+  targetPreyGrams: number | null; minimumPreyGrams: number | null; maximumPreyGrams: number | null;
+  allocatedFeeder: ForecastFeeder | null;
+  status: "covered" | "shortage" | "buy-as-needed" | "inventory-untracked" | "weight-missing";
+};
+type ForecastAlert = { code: string; severity: "warning" | "info"; animalId?: string; animalName?: string; dueBy?: string; message: string };
+export type FeederForecastData = {
+  generatedFor: string; horizonDays: number; throughDate: string; orderNeeded: boolean;
+  nextFeedings: ForecastEvent[]; events: ForecastEvent[]; alerts: ForecastAlert[];
+};
+
+const forecastStatusLabel: Record<ForecastEvent["status"], string> = {
+  covered: "In stock", shortage: "Short", "buy-as-needed": "Buy as needed",
+  "inventory-untracked": "Not tracked", "weight-missing": "Needs weight",
+};
+
+const forecastDate = (iso: string) =>
+  new Date(`${iso}T00:00:00`).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+
+function ForecastRow({ event }: { event: ForecastEvent }) {
+  const covered = event.status === "covered" && event.allocatedFeeder;
+  return (
+    <div className={`forecast-row status-${event.status}`}>
+      <div className="forecast-when"><b>{forecastDate(event.feedingDate)}</b><small>{event.animalName}</small></div>
+      <div className="forecast-what">
+        <span>{event.preyDescription}</span>
+        {event.targetPreyGrams != null && <small>~{Math.round(event.targetPreyGrams)} g target</small>}
+      </div>
+      {covered
+        ? <span className="forecast-badge covered">{Math.round(event.allocatedFeeder!.weightGrams)} g ready</span>
+        : <span className={`forecast-badge ${event.status}`}>{forecastStatusLabel[event.status]}</span>}
+    </div>
+  );
+}
+
+export function FeederForecast({ onClose }: { onClose: () => void }) {
+  const [data, setData] = useState<FeederForecastData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = async () => {
+    try {
+      const response = await fetch("/api/feeders/forecast", { cache: "no-store" });
+      if (response.status === 401) { setError("Sign in to Shed to see the feeder forecast."); return; }
+      if (!response.ok) throw new Error("Couldn’t load the feeder forecast.");
+      setData((await response.json()) as FeederForecastData);
+      setError(null);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Couldn’t load the feeder forecast.");
+    }
+  };
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  return (
+    <div className="overlay" role="dialog" aria-modal="true" aria-label="Feeder forecast">
+      <header className="overlay-head">
+        <div><b>Feeding forecast</b><span>{data ? `Feeder needs · next ${data.horizonDays} days` : "Upcoming feeds & feeder stock"}</span></div>
+        <button className="sheet-close" onClick={onClose} aria-label="Close forecast">✕</button>
+      </header>
+      <div className="overlay-body">
+        {error && <p className="form-error" role="alert">{error}</p>}
+        {!data && !error ? (
+          <p className="member-note">Loading…</p>
+        ) : data ? (
+          <div className="forecast">
+            <div className={`forecast-banner ${data.orderNeeded ? "warn" : "ok"}`}>
+              <b>{data.orderNeeded ? "Reorder feeders soon" : "Inventory covers the forecast"}</b>
+              <span>
+                {data.orderNeeded
+                  ? "Some scheduled feeds aren’t covered by current inventory — see below."
+                  : `Every scheduled feed through ${forecastDate(data.throughDate)} has a feeder ready.`}
+              </span>
+            </div>
+
+            {data.alerts.length > 0 && (
+              <section className="profile-section">
+                <h3>Attention</h3>
+                <div className="forecast-alerts">
+                  {data.alerts.map((alert, index) => (
+                    <div key={`${alert.code}-${alert.animalId ?? "all"}-${alert.dueBy ?? ""}-${index}`} className={`forecast-alert ${alert.severity}`}>
+                      <span>{alert.message}</span>
+                      {alert.dueBy && <small>by {forecastDate(alert.dueBy)}</small>}
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            <section className="profile-section">
+              <h3>Next feed per animal</h3>
+              {data.nextFeedings.length ? (
+                <div className="forecast-list">
+                  {data.nextFeedings.map((event) => <ForecastRow key={event.animalId} event={event} />)}
+                </div>
+              ) : (
+                <p className="member-note">No feeding plans with a prey type are set up yet. Add a feeding schedule and set its prey to forecast feeder needs.</p>
+              )}
+            </section>
+
+            {data.events.length > data.nextFeedings.length && (
+              <details className="report-details forecast-full">
+                <summary>Full schedule · {data.events.length} feeds through {forecastDate(data.throughDate)}</summary>
+                <div className="forecast-list">
+                  {data.events.map((event, index) => <ForecastRow key={`${event.animalId}-${event.feedingDate}-${index}`} event={event} />)}
+                </div>
+              </details>
+            )}
+          </div>
+        ) : null}
       </div>
     </div>
   );

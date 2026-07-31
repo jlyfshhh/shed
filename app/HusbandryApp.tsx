@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { AnimalProfile, GettingStartedGuide, ManageConsole, RestorePanel, SetupGate, type ResourceKey, type SetupSummary } from "./manage";
+import { AnimalProfile, FeederForecast, GettingStartedGuide, ManageConsole, RestorePanel, SetupGate, type FeederForecastData, type ResourceKey, type SetupSummary } from "./manage";
 
 type Role = "Owner" | "Zookeeper";
 type Viewer = { id: string; displayName: string; role: Role; earningEnabled?: boolean; balanceCents?: number | null };
@@ -128,6 +128,8 @@ export default function HusbandryApp() {
   const [manageStart, setManageStart] = useState<ResourceKey>("animal");
   const [guideOpen, setGuideOpen] = useState(false);
   const [profileId, setProfileId] = useState<string | null>(null);
+  const [forecastOpen, setForecastOpen] = useState(false);
+  const [forecast, setForecast] = useState<{ orderNeeded: boolean; warnings: number } | null>(null);
 
   const notify = (message: string) => {
     setToast(message);
@@ -182,12 +184,25 @@ export default function HusbandryApp() {
     setData(await response.json());
   };
 
+  // Lightweight forecast summary for the Today reorder nudge; the full panel refetches on open.
+  const loadForecast = async () => {
+    try {
+      const response = await fetch("/api/feeders/forecast?horizon=30", { cache: "no-store" });
+      if (!response.ok) { setForecast(null); return; }
+      const payload = (await response.json()) as FeederForecastData;
+      setForecast({ orderNeeded: payload.orderNeeded, warnings: payload.alerts.filter((alert) => alert.severity === "warning").length });
+    } catch {
+      setForecast(null);
+    }
+  };
+
   useEffect(() => {
     // Deferred a tick so the effect body itself never sets state
     // (react-hooks/set-state-in-effect); polling keeps it fresh after that.
     const initial = window.setTimeout(() => {
       loadSession().catch(() => undefined);
       refresh().catch(() => setToast("Couldn’t load the habitat collection yet."));
+      loadForecast().catch(() => undefined);
     }, 0);
     const timer = window.setInterval(() => refresh().catch(() => undefined), 15000);
     return () => {
@@ -608,6 +623,17 @@ export default function HusbandryApp() {
               <b>{completionPercent}%</b>
             </article>
 
+            {(signedIn || !authRequired) && forecast && (forecast.orderNeeded || forecast.warnings > 0) && (
+              <button className="feeder-nudge" onClick={() => setForecastOpen(true)}>
+                <span className="feeder-nudge-icon" aria-hidden="true">⊘</span>
+                <div>
+                  <b>{forecast.orderNeeded ? "Reorder feeders soon" : "Feeder forecast needs a look"}</b>
+                  <small>{forecast.warnings > 0 ? `${forecast.warnings} thing${forecast.warnings === 1 ? "" : "s"} need attention` : "Some upcoming feeds aren’t covered"} · tap to review</small>
+                </div>
+                <span className="feeder-nudge-go" aria-hidden="true">›</span>
+              </button>
+            )}
+
             {overdue.length > 0 && (
               <>
                 <div className="section-title compact"><h2>Overdue</h2><div className="section-actions"><span>{overdue.length} from earlier days</span><button disabled={busyTask === "__all__"} onClick={startFresh}>{busyTask === "__all__" ? "Clearing…" : "Start fresh from today"}</button></div></div>
@@ -740,6 +766,7 @@ export default function HusbandryApp() {
             <div className="settings-grid">
               <article className={`settings-card ${isOwner ? "" : "locked"}`}><span className="settings-icon">?</span><h2>Getting started</h2><p>Follow the setup checklist and learn where recurring care, one-time history, notes, equipment, and weights belong.</p><button disabled={!isOwner} onClick={() => setGuideOpen(true)}>{isOwner ? "Open guide" : "Head Keeper access required"}</button></article>
               <article className={`settings-card ${isOwner ? "" : "locked"}`}><span className="settings-icon">☷</span><h2>Manage records</h2><p>Add and edit animals, enclosures, care plans, notes, equipment, weights, feeders, and history.</p><button disabled={!isOwner} onClick={() => openManager()}>{isOwner ? "Open manager" : "Head Keeper access required"}</button></article>
+              <article className="settings-card"><span className="settings-icon">◷</span><h2>Feeding forecast</h2><p>Upcoming feeds by animal, which feeder in stock covers each, shortage dates, and when to reorder.</p><button onClick={() => setForecastOpen(true)}>Open forecast</button></article>
               {isOwner && (
                 <article className="settings-card"><span className="settings-icon">↥</span><h2>Your data, always portable</h2><p>Download a complete open-format copy any time — stable identifiers, ISO dates, numeric gram values.</p><div className="export-actions"><a href="/api/export?format=json">Download JSON</a><a href="/api/export?format=csv">Download CSV</a></div></article>
               )}
@@ -909,7 +936,7 @@ export default function HusbandryApp() {
       {manageOpen && isOwner && (
         <ManageConsole
           onClose={() => setManageOpen(false)}
-          onChanged={() => void refresh().catch(() => undefined)}
+          onChanged={() => { void refresh().catch(() => undefined); void loadForecast().catch(() => undefined); }}
           toast={notify}
           initialResource={manageStart}
         />
@@ -923,6 +950,7 @@ export default function HusbandryApp() {
         />
       )}
       {profileId && <AnimalProfile animalId={profileId} onClose={() => setProfileId(null)} />}
+      {forecastOpen && <FeederForecast onClose={() => { setForecastOpen(false); void loadForecast().catch(() => undefined); }} />}
     </div>
   );
 }
