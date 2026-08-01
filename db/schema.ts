@@ -20,6 +20,7 @@ export const animals = sqliteTable("animals", {
   enclosureId: text("enclosure_id"),
   createdAt: text("created_at"),
   updatedAt: text("updated_at"),
+  earningEnabled: integer("earning_enabled", { mode: "boolean" }).notNull().default(true),
 });
 
 export const enclosures = sqliteTable("enclosures", {

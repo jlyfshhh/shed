@@ -66,6 +66,7 @@ type Field = {
   type: FieldType;
   required?: boolean;
   options?: string[];
+  default?: boolean; // initial value for boolean fields on a new record
   help?: string;
   step?: string;
   optional?: boolean; // ref selects that allow "none"
@@ -109,6 +110,7 @@ const resourceDefs: ResourceDef[] = [
       { key: "acquiredDate", column: "acquired_date", label: "Acquired date", type: "date" },
       { key: "source", column: "source", label: "Source / breeder", type: "text" },
       { key: "notes", column: "notes", label: "Notes", type: "textarea" },
+      { key: "earningEnabled", column: "earning_enabled", label: "Earns allowance", type: "boolean", default: true, help: "On by default. Turn off for a child’s own pet so completing its tasks doesn’t pay allowance." },
     ],
     summary: (row) => ({ title: str(row.name), sub: `${str(row.species)}${row.morph ? ` · ${str(row.morph)}` : ""}`, archived: !bool(row.active) }),
   },
@@ -306,7 +308,7 @@ function toFormValues(def: ResourceDef, row: Row | null): Record<string, string>
     if (!row) {
       // New record: booleans off, plain selects default to their first option so
       // the control always shows a valid value (ref selects stay on "none").
-      values[field.key] = field.type === "boolean" ? "false"
+      values[field.key] = field.type === "boolean" ? (field.default ? "true" : "false")
         : field.type === "select" && field.options?.length ? field.options[0]
         : "";
       continue;

@@ -32,8 +32,8 @@ export async function POST(request: Request) {
     }
 
     const task = await db.prepare(
-      "SELECT t.id, t.schedule_id AS scheduleId, t.animal_id AS animalId, t.task_type AS taskType, t.title, t.details, s.reward_cents AS scheduleReward, s.prey_species AS preySpecies, COALESCE(s.buy_as_needed, 0) AS buyAsNeeded FROM care_tasks t LEFT JOIN care_schedules s ON s.id = t.schedule_id WHERE t.id=? AND t.due_date=?",
-    ).bind(payload.taskId, payload.dueDate).first<{ id: string; scheduleId: string | null; animalId: string; taskType: string; title: string; details: string; scheduleReward: number | null; preySpecies: string | null; buyAsNeeded: number }>();
+      "SELECT t.id, t.schedule_id AS scheduleId, t.animal_id AS animalId, t.task_type AS taskType, t.title, t.details, s.reward_cents AS scheduleReward, s.prey_species AS preySpecies, COALESCE(s.buy_as_needed, 0) AS buyAsNeeded, COALESCE(a.earning_enabled, 1) AS animalEarningEnabled FROM care_tasks t LEFT JOIN care_schedules s ON s.id = t.schedule_id LEFT JOIN animals a ON a.id = t.animal_id WHERE t.id=? AND t.due_date=?",
+    ).bind(payload.taskId, payload.dueDate).first<{ id: string; scheduleId: string | null; animalId: string; taskType: string; title: string; details: string; scheduleReward: number | null; preySpecies: string | null; buyAsNeeded: number; animalEarningEnabled: number }>();
     if (!task) return Response.json({ error: "Task not found" }, { status: 404, headers: noStore });
 
     const existing = await db.prepare(
@@ -69,9 +69,11 @@ export async function POST(request: Request) {
     }
 
     // Earnings: capture the reward as a snapshot on the completion event, so later
-    // changes to the plan/default never rewrite past earnings. Non-earning or
-    // anonymous completions earn 0.
-    const earningEnabled = Boolean(member?.earningEnabled);
+    // changes to the plan/default never rewrite past earnings. Earns only when the
+    // keeper earns AND the animal is set to pay allowance (a child's own pet can be
+    // switched off). Non-earning or anonymous completions earn 0.
+    const animalEarns = task.animalEarningEnabled !== 0;
+    const earningEnabled = Boolean(member?.earningEnabled) && animalEarns;
     const rewardCents = earningEnabled
       ? rewardForCompletion(true, task.scheduleReward, await getDefaultRewardCents(db))
       : 0;

@@ -13,7 +13,7 @@ const configs: Record<Resource, Config> = {
     name: { column: "name" }, species: { column: "species" }, group: { column: "group_name" }, location: { column: "location" },
     scientificName: { column: "scientific_name" }, morph: { column: "morph" }, sex: { column: "sex" }, birthDate: { column: "birth_date", kind: "date" },
     acquiredDate: { column: "acquired_date", kind: "date" }, source: { column: "source" }, notes: { column: "notes" }, active: { column: "active", kind: "boolean" },
-    enclosureId: { column: "enclosure_id" }, updatedAt: { column: "updated_at" }, createdAt: { column: "created_at" },
+    enclosureId: { column: "enclosure_id" }, earningEnabled: { column: "earning_enabled", kind: "boolean" }, updatedAt: { column: "updated_at" }, createdAt: { column: "created_at" },
   } },
   enclosure: { table: "enclosures", required: ["name"], softDelete: true, fields: {
     name: { column: "name" }, enclosureType: { column: "enclosure_type" }, manufacturer: { column: "manufacturer" }, model: { column: "model" },
