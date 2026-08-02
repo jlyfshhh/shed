@@ -456,12 +456,17 @@ export default function HusbandryApp() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ taskId: task.id, dueDate: task.dueDate, actorRole: viewer?.role ?? "Owner" }),
       });
-      const payload = (await response.json()) as { error?: string; allocatedFeeder?: { weightGrams: number; sizeClass: string; preySpecies: string } | null };
+      const payload = (await response.json()) as { error?: string; allocatedFeeder?: { weightGrams: number; sizeClass: string; preySpecies: string } | null; feederShortage?: string | null };
       if (!response.ok) throw new Error(payload.error ?? "Unable to save");
       await refresh();
       const feeder = payload.allocatedFeeder;
-      setToast(`${task.animalName}: ${task.title} recorded${feeder ? ` · ${feeder.weightGrams} g ${feeder.sizeClass} ${feeder.preySpecies} used` : ""}${viewer ? ` by ${viewer.displayName}` : ""}`);
-      window.setTimeout(() => setToast(null), 2800);
+      const feederNote = feeder
+        ? ` · ${feeder.weightGrams} g ${feeder.sizeClass} ${feeder.preySpecies} used`
+        : payload.feederShortage
+          ? " · no feeder deducted — add it in Manage → Feeders if you used stock"
+          : "";
+      setToast(`${task.animalName}: ${task.title} recorded${feederNote}${viewer ? ` by ${viewer.displayName}` : ""}`);
+      window.setTimeout(() => setToast(null), payload.feederShortage ? 5200 : 2800);
     } catch (saveError) {
       setToast(saveError instanceof Error ? saveError.message : "That update didn’t save. Please try again.");
     } finally {

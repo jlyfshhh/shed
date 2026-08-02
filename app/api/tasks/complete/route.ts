@@ -54,18 +54,20 @@ export async function POST(request: Request) {
       sizeClass: retainedAssignment.sizeClass,
       weightGrams: retainedAssignment.weightGrams,
     } : null;
+    // Feeder inventory is best-effort bookkeeping, never a gate. The animal was
+    // actually fed, so the husbandry record has to be recordable even when the
+    // freezer does not match the plan — store-bought prey, an untracked feeder,
+    // or a shortage. Deduct stock when something matches; otherwise record the
+    // care and report that nothing was deducted so the keeper can reconcile.
+    let feederShortage: string | null = null;
     if (task.preySpecies && !task.buyAsNeeded && task.scheduleId && !allocatedFeeder) {
       const forecast = await loadFeederForecast(db, payload.dueDate, 1);
       const feeding = forecast.events.find((event) => event.scheduleId === task.scheduleId && event.feedingDate === payload.dueDate);
-      if (!feeding || !feeding.allocatedFeeder) {
-        return Response.json({
-          error: feeding
-            ? `${feederGuidance(feeding)}. Add or correct feeder inventory before completing this feeding.`
-            : "Shed could not match this feeding plan to feeder inventory.",
-          code: "feeder-required",
-        }, { status: 409, headers: noStore });
+      if (feeding?.allocatedFeeder) {
+        allocatedFeeder = feeding.allocatedFeeder;
+      } else {
+        feederShortage = feeding ? feederGuidance(feeding) : "no matching feeder in stock";
       }
-      allocatedFeeder = feeding.allocatedFeeder;
     }
 
     // Earnings: capture the reward as a snapshot on the completion event, so later
@@ -106,7 +108,7 @@ export async function POST(request: Request) {
 
     const completion = await completionForTask(db, task.id, payload.dueDate);
     const balanceCents = member?.id && earningEnabled ? (await memberBalance(db, member.id)).balanceCents : null;
-    return Response.json({ saved: true, completion, rewardCents, balanceCents, allocatedFeeder }, { headers: noStore });
+    return Response.json({ saved: true, completion, rewardCents, balanceCents, allocatedFeeder, feederShortage }, { headers: noStore });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Unable to record task" }, { status: 500, headers: noStore });
   }
