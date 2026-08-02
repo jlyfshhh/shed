@@ -10,6 +10,9 @@ test("generic schedules support daily, weekly, interval, monthly, and one-time r
   assert.equal(scheduleIsDue({ ...base, frequency: "weekly", weekdaysJson: "[6]" }, "2026-07-25"), true);
   assert.equal(scheduleIsDue({ ...base, frequency: "interval", intervalDays: 14 }, "2026-07-15"), true);
   assert.equal(scheduleIsDue({ ...base, frequency: "monthly", dayOfMonth: 20 }, "2026-08-20"), true);
+  assert.equal(scheduleIsDue({ ...base, frequency: "monthly", dayOfMonth: 1, weekdaysJson: "[6]" }, "2026-08-01"), true);
+  assert.equal(scheduleIsDue({ ...base, frequency: "monthly", dayOfMonth: 1, weekdaysJson: "[6]" }, "2026-08-08"), false);
+  assert.equal(scheduleIsDue({ ...base, frequency: "monthly", dayOfMonth: 2, weekdaysJson: "[6]" }, "2026-08-08"), true);
   assert.equal(scheduleIsDue({ ...base, frequency: "once", startDate: "2026-07-20" }, "2026-07-21"), false);
 });
 

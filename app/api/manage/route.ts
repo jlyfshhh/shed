@@ -176,8 +176,18 @@ function validateSchedule(data: Record<string, string | number | null>) {
   const frequency = data.frequency;
   if (frequency && !["daily", "weekly", "interval", "monthly", "once"].includes(String(frequency))) throw new Error("Unsupported schedule frequency");
   if (frequency === "interval" && Number(data.intervalDays ?? 0) < 1) throw new Error("Interval schedules need intervalDays");
-  if (frequency === "monthly" && (Number(data.dayOfMonth) < 1 || Number(data.dayOfMonth) > 31)) throw new Error("Monthly schedules need a day from 1–31");
-  if (data.weekdaysJson) { const parsed = JSON.parse(String(data.weekdaysJson)); if (!Array.isArray(parsed) || parsed.some((day) => !Number.isInteger(day) || day < 0 || day > 6)) throw new Error("weekdaysJson must contain weekday numbers 0–6"); }
+  let weekdays: number[] = [];
+  if (data.weekdaysJson) {
+    const parsed = JSON.parse(String(data.weekdaysJson));
+    if (!Array.isArray(parsed) || parsed.some((day) => !Number.isInteger(day) || day < 0 || day > 6)) throw new Error("weekdaysJson must contain weekday numbers 0–6");
+    weekdays = parsed;
+  }
+  if (frequency === "monthly") {
+    const value = Number(data.dayOfMonth);
+    if (weekdays.length > 1) throw new Error("Monthly weekday schedules must choose one weekday");
+    if (weekdays.length && (value < 1 || value > 5)) throw new Error("Monthly weekday schedules need an occurrence from 1–5");
+    if (!weekdays.length && (value < 1 || value > 31)) throw new Error("Monthly schedules need a day from 1–31");
+  }
   for (const key of ["targetPercent", "minimumPercent", "maximumPercent"]) if (data[key] !== undefined && data[key] !== null && Number(data[key]) > 1) throw new Error(`${key} must be a decimal from 0 to 1`);
 }
 

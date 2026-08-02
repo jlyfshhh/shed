@@ -22,7 +22,14 @@ export function scheduleIsDue(schedule: CareScheduleRow, date: string): boolean 
     const days = schedule.intervalDays ?? 0;
     return days > 0 && daysBetween(schedule.startDate, date) % days === 0;
   }
-  if (schedule.frequency === "monthly") return Number(date.slice(8, 10)) === schedule.dayOfMonth;
+  if (schedule.frequency === "monthly") {
+    const weekdays = parseWeekdays(schedule.weekdaysJson);
+    if (!weekdays.length) return Number(date.slice(8, 10)) === schedule.dayOfMonth;
+    const day = Number(date.slice(8, 10));
+    const weekday = new Date(`${date}T12:00:00Z`).getUTCDay();
+    const occurrence = Math.floor((day - 1) / 7) + 1;
+    return weekdays.includes(weekday) && occurrence === schedule.dayOfMonth;
+  }
   if (schedule.frequency === "weekly") {
     const weekdays = parseWeekdays(schedule.weekdaysJson);
     return weekdays.includes(new Date(`${date}T12:00:00Z`).getUTCDay());

@@ -141,9 +141,9 @@ const resourceDefs: ResourceDef[] = [
       { key: "taskType", column: "task_type", label: "Task type", type: "text", required: true, help: "feeding, misting, water, cleaning…" },
       { key: "details", column: "details", label: "Details", type: "text", help: "Short note shown on the task, e.g. “Every 2 weeks”" },
       { key: "frequency", column: "frequency", label: "Frequency", type: "select", options: frequencyOptions, required: true },
-      { key: "weekdaysJson", column: "weekdays_json", label: "Days of week", type: "weekdays", showIf: (v) => v.frequency === "weekly" },
+      { key: "weekdaysJson", column: "weekdays_json", label: "Days of week", type: "weekdays", showIf: (v) => v.frequency === "weekly" || v.frequency === "monthly", help: "For monthly care, choose one weekday to schedule its first, second, third, fourth, or fifth occurrence." },
       { key: "intervalDays", column: "interval_days", label: "Every N days", type: "number", showIf: (v) => v.frequency === "interval", help: "1 = daily, 2 = every other day" },
-      { key: "dayOfMonth", column: "day_of_month", label: "Day of month", type: "number", showIf: (v) => v.frequency === "monthly", help: "1–31" },
+      { key: "dayOfMonth", column: "day_of_month", label: "Day / occurrence in month", type: "number", showIf: (v) => v.frequency === "monthly", help: "With no weekday selected: calendar day 1–31. With a weekday selected: 1 = first, 2 = second … 5 = fifth." },
       { key: "startDate", column: "start_date", label: "Start date", type: "date", required: true },
       { key: "endDate", column: "end_date", label: "End date", type: "date", help: "Optional — leave blank to run indefinitely" },
       { key: "rewardCents", column: "reward_cents", label: "Reward per task (cents)", type: "number", help: "Blank = household default. e.g. 25 = 25¢, 50 = 50¢" },
@@ -227,7 +227,17 @@ function describeFrequency(row: Row): string {
     } catch { return "Weekly"; }
   }
   if (frequency === "interval") return `Every ${str(row.interval_days)} days`;
-  if (frequency === "monthly") return `Monthly · day ${str(row.day_of_month)}`;
+  if (frequency === "monthly") {
+    try {
+      const days = JSON.parse(str(row.weekdays_json) || "[]") as number[];
+      if (days.length === 1) {
+        const occurrence = Number(row.day_of_month);
+        const suffix = occurrence === 1 ? "st" : occurrence === 2 ? "nd" : occurrence === 3 ? "rd" : "th";
+        return `Monthly · ${occurrence}${suffix} ${weekdayNames[days[0]]}`;
+      }
+    } catch { /* fall through to fixed calendar day */ }
+    return `Monthly · day ${str(row.day_of_month)}`;
+  }
   if (frequency === "once") return "One time";
   return "Daily";
 }
