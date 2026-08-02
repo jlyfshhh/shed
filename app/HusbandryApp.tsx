@@ -626,7 +626,7 @@ export default function HusbandryApp() {
           <section className="page today-page">
             <div className="eyebrow">{formatDate(data.date)}</div>
             <div className="page-heading">
-              <div><h1>Today’s care</h1><p>{pending.length ? `${pending.length} things still need a keeper.` : "Everything is tucked in for today."}</p></div>
+              <div><h1>Today’s care</h1><p>{pending.length ? (pending.length === 1 ? "1 thing still needs a keeper." : `${pending.length} things still need a keeper.`) : "Everything is tucked in for today."}</p></div>
               {isOwner && <button className="quiet-button" onClick={() => openManager()}>Manage records</button>}
             </div>
 
