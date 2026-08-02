@@ -28,7 +28,7 @@ Open **More → Getting started** at any time. The in-app checklist tracks these
 
 Open **Manage records → Enclosures → New enclosure**. Give the physical habitat a recognizable name, then add any useful dimensions, manufacturer, location, substrate, and notes.
 
-An enclosure is optional, so you can add an animal first and connect it later. Mixed terrestrial/aquatic habitats can use a shared habitat ID to link the same physical setup with Clarity.
+An enclosure is optional, so you can add an animal first and connect it later.
 
 ### Add an animal or community habitat
 

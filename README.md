@@ -42,20 +42,22 @@ Re-run the same command any time to update Shed **without touching your database
 
 **Requirements:** Docker with the Compose plugin, `git`, and a machine that stays on.
 
-For one chooser that can install Bask, Shed, Clarity, or any combination, use
-the **[Animal Room installer](https://github.com/jlyfshhh/animal-room)**.
+For one chooser that can install Bask, Shed, or both with their combined room
+dashboard, use the **[Haven installer](https://github.com/jlyfshhh/animal-room)**.
 
-## The animal-room family
+## Shed + Bask = Haven
 
-Shed is one of three companion projects for keepers:
+Shed can run by itself, or alongside Bask:
 
 | | Project | What it watches |
 |---|---|---|
 | ☀️ | **[Bask](https://github.com/jlyfshhh/bask)** | The environment — live temperature & humidity from Bluetooth sensors, on a wall display |
 | 🐍 | **Shed** *(this repo)* | The care — feeding, weights, enclosure work, schedules, and history for terrestrial animals |
-| 💧 | **[Clarity](https://github.com/jlyfshhh/clarity)** | The water — aquarium & pond tests, maintenance, and livestock |
+| 🌿 | **Haven** | The combined room view — enclosure status and today's remaining care in one glance |
 
-Mixed habitats use a stable **`shared_habitat_id`**, so a paludarium or turtle tank can appear in both Shed and Clarity without pretending terrestrial and aquatic care are the same thing.
+Haven is not a third database. It is the secure, read-only room dashboard that
+appears when Bask and Shed are installed together. The apps remain separate, so
+either can still work independently and each keeps its own portable data.
 
 ## What's inside
 
@@ -76,7 +78,7 @@ Mixed habitats use a stable **`shared_habitat_id`**, so a paludarium or turtle t
 - Append-only husbandry events preserve care history; corrections are retained, never silently deleted.
 - JSON and CSV exports keep migration straightforward — your data is never trapped.
 - Everything lives in a single self-hosted SQLite database with dated backups.
-- Shed and Clarity remain separate services so one app cannot take down the other.
+- Shed and Bask remain separate services so one app cannot take down the other.
 
 ## Managing your install
 

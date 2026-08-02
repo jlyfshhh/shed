@@ -27,8 +27,11 @@ mkdir -p data backups
 if [ ! -f .env ]; then
   umask 077
   token="$(openssl rand -hex 24 2>/dev/null || head -c 48 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+  display_token="$(openssl rand -hex 24 2>/dev/null || head -c 48 /dev/urandom | od -An -tx1 | tr -d ' \n')"
   cp .env.example .env
-  sed -i.bak "s/SHED_AUTH_REQUIRED=false/SHED_AUTH_REQUIRED=true/; s/replace-with-a-different-long-random-secret/$token/" .env
+  sed -i.bak \
+    "s/SHED_AUTH_REQUIRED=false/SHED_AUTH_REQUIRED=true/; s/replace-with-a-different-long-random-secret/$token/; s/replace-with-a-separate-long-random-secret/$display_token/" \
+    .env
   rm -f .env.bak
 fi
 
