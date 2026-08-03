@@ -400,5 +400,20 @@ button.primary:disabled { opacity: .6; cursor: wait; }
   .mobile-nav { position: fixed; display: grid; grid-template-columns: repeat(4,1fr); left: 10px; right: 10px; bottom: 10px; z-index: 10; padding: 7px; background: rgba(33,55,46,.96); border-radius: 19px; box-shadow: 0 15px 40px rgba(20,38,29,.24); backdrop-filter: blur(10px); }.mobile-nav button { border: 0; color: #aab9af; background: transparent; border-radius: 13px; padding: 7px 3px 6px; display: grid; justify-items: center; gap: 2px; cursor: pointer; }.mobile-nav button b { font-size: 17px; line-height: 1; }.mobile-nav button span { font-size: 10px; }.mobile-nav button.active { background: rgba(219,231,181,.14); color: white; }
 }
 
+/* Keep the floating dock, the toast, and the header clear of the iPhone
+   home indicator and display cutout. With viewport-fit=cover the page now
+   extends into those areas, so every fixed edge needs the inset added. */
+@media (max-width: 900px) {
+  .topbar { height: auto; min-height: 72px; padding-top: env(safe-area-inset-top, 0px); }
+  .mobile-nav {
+    left: max(10px, env(safe-area-inset-left, 0px));
+    right: max(10px, env(safe-area-inset-right, 0px));
+    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  }
+  /* Clear the dock (about 61px tall) plus its offset. */
+  .page { padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
+  .toast { bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
+}
+
 @media (max-width: 420px) { .animal-grid { grid-template-columns: 1fr; }.animal-card { min-height: 150px; }.completed-list > div { grid-template-columns: auto auto minmax(0, 1fr) auto; }.page-heading h1 { font-size: 36px; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; } }

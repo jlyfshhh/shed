@@ -4,6 +4,9 @@ import "./globals.css";
 
 export const viewport: Viewport = {
   themeColor: "#21372e",
+  // Draw into the display cutout and home-indicator areas so the CSS can
+  // position the mobile dock with env(safe-area-inset-*) instead of guessing.
+  viewportFit: "cover",
 };
 
 export async function generateMetadata(): Promise<Metadata> {
