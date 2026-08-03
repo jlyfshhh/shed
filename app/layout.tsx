@@ -1,13 +1,10 @@
-import type { Metadata, Viewport } from "next";
+import type { Metadata } from "next";
 import { headers } from "next/headers";
 import "./globals.css";
 
-export const viewport: Viewport = {
-  themeColor: "#21372e",
-  // Draw into the display cutout and home-indicator areas so the CSS can
-  // position the mobile dock with env(safe-area-inset-*) instead of guessing.
-  viewportFit: "cover",
-};
+// The viewport tag is written by hand in the layout below: this runtime drops
+// viewportFit from the metadata export, and we need viewport-fit=cover for the
+// safe-area insets that keep the mobile dock off the home indicator.
 
 export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();
@@ -29,6 +26,10 @@ export async function generateMetadata(): Promise<Metadata> {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+        <meta name="theme-color" content="#21372e" />
+      </head>
       <body>{children}</body>
     </html>
   );
