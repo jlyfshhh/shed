@@ -65,11 +65,12 @@ either can still work independently and each keeps its own portable data.
 - **Household accounts** — a Head Keeper who manages everything, and Keepers who record care from their own phones. Every completed task is credited to the person who did it, with a per-member contribution report.
 - **Full record management** — add and edit animals (with morph, sex, scientific name, enclosure, source, and notes), enclosures, care plans, husbandry notes, equipment, weights, and feeder inventory, all from the app.
 - **Animal profiles** — a per-animal card with weight history, care plans, equipment, notes, and full auditable event history.
+- **Lighting plans** — preserve Light My Reptile targets, exported plan sheets, installed-fixture placement, and measured UVI/lux/temperature history on each enclosure.
 - **Editable care plans** — daily, weekly, every-N-day, monthly, and one-time routines per animal.
 - **Feeder tracking & forecasting** — weighed feeder inventory plus meal forecasting from growth trends.
 - **Weight trends** in grams.
 - **Correctable history** — fix a mistaken entry without erasing the record; corrections stay auditable.
-- **Backups you control** — JSON and CSV exports, in-app restore (merge or replace), and dated SQLite snapshots.
+- **Backups you control** — JSON and CSV exports, in-app restore (merge or replace), dated SQLite snapshots, and portable lighting-plan attachments.
 - **Responsive** phone and desktop layouts.
 
 ## Data principles

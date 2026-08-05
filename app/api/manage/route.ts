@@ -3,9 +3,9 @@ import { dateInTimeZone, isIsoDate } from "@/lib/date";
 import { requireHouseholdMember } from "@/lib/household-auth";
 import { normalizedEmptyValue } from "@/lib/manage-values";
 
-type Resource = "animal" | "enclosure" | "schedule" | "note" | "equipment" | "weight" | "event" | "feeder";
+type Resource = "animal" | "enclosure" | "schedule" | "note" | "equipment" | "weight" | "event" | "feeder" | "lightingPlan" | "lightingFixture" | "lightingMeasurement";
 type Payload = { resource?: Resource; id?: string; data?: Record<string, unknown>; reason?: string };
-type Field = { column: string; kind?: "text" | "number" | "boolean" | "date" };
+type Field = { column: string; kind?: "text" | "number" | "boolean" | "date" | "datetime" };
 type Config = { table: string; fields: Record<string, Field>; required: string[]; softDelete?: boolean };
 
 const configs: Record<Resource, Config> = {
@@ -51,6 +51,24 @@ const configs: Record<Resource, Config> = {
     preySpecies: { column: "prey_species" }, sizeClass: { column: "size_class" }, weightGrams: { column: "weight_grams", kind: "number" }, status: { column: "status" },
     addedOn: { column: "added_on", kind: "date" }, notes: { column: "notes" },
   } },
+  lightingPlan: { table: "lighting_plans", required: ["enclosureId", "name", "plannedOn"], softDelete: true, fields: {
+    enclosureId: { column: "enclosure_id" }, name: { column: "name" }, species: { column: "species" }, sourceName: { column: "source_name" }, sourceUrl: { column: "source_url" },
+    sourceVersion: { column: "source_version" }, plannedOn: { column: "planned_on", kind: "date" }, reviewedOn: { column: "reviewed_on", kind: "date" }, mountingMode: { column: "mounting_mode" },
+    meshLossPercent: { column: "mesh_loss_percent", kind: "number" }, baskingHeight: { column: "basking_height", kind: "number" }, heightUnit: { column: "height_unit" },
+    targetUviMin: { column: "target_uvi_min", kind: "number" }, targetUviMax: { column: "target_uvi_max", kind: "number" }, targetLuxMin: { column: "target_lux_min", kind: "number" },
+    targetLuxMax: { column: "target_lux_max", kind: "number" }, targetPowerDensityMin: { column: "target_power_density_min", kind: "number" }, targetPowerDensityMax: { column: "target_power_density_max", kind: "number" },
+    planSheetKey: { column: "plan_sheet_key" }, planSheetName: { column: "plan_sheet_name" }, planSheetType: { column: "plan_sheet_type" }, notes: { column: "notes" },
+    active: { column: "active", kind: "boolean" }, createdAt: { column: "created_at" }, updatedAt: { column: "updated_at" },
+  } },
+  lightingFixture: { table: "lighting_plan_fixtures", required: ["planId", "equipmentId", "role"], fields: {
+    planId: { column: "plan_id" }, equipmentId: { column: "equipment_id" }, role: { column: "role" }, positionCm: { column: "position_cm", kind: "number" },
+    mountingHeightCm: { column: "mounting_height_cm", kind: "number" }, quantity: { column: "quantity", kind: "number" }, notes: { column: "notes" }, createdAt: { column: "created_at" }, updatedAt: { column: "updated_at" },
+  } },
+  lightingMeasurement: { table: "lighting_measurements", required: ["planId", "metric", "value", "unit", "measuredAt"], fields: {
+    planId: { column: "plan_id" }, metric: { column: "metric" }, value: { column: "value", kind: "number" }, unit: { column: "unit" }, measuredAt: { column: "measured_at", kind: "datetime" },
+    position: { column: "position" }, height: { column: "height", kind: "number" }, heightUnit: { column: "height_unit" }, instrument: { column: "instrument" }, notes: { column: "notes" },
+    measuredByMemberId: { column: "measured_by_member_id" }, measuredByName: { column: "measured_by_name" }, createdAt: { column: "created_at" },
+  } },
 };
 
 export async function GET(request: Request) {
@@ -58,13 +76,16 @@ export async function GET(request: Request) {
     const db = await ensureDatabase();
     const auth = await requireHouseholdMember(request, db, ["Owner"]);
     if (auth.response) return auth.response;
-    const [animals, enclosures, schedules, notes, equipment, weights, events, feeders] = await Promise.all([
+    const [animals, enclosures, schedules, notes, equipment, weights, events, feeders, lightingPlans, lightingFixtures, lightingMeasurements] = await Promise.all([
       db.prepare("SELECT * FROM animals ORDER BY active DESC, name").all(), db.prepare("SELECT * FROM enclosures ORDER BY active DESC, name").all(),
       db.prepare("SELECT * FROM care_schedules ORDER BY active DESC, title").all(), db.prepare("SELECT * FROM animal_notes ORDER BY pinned DESC, updated_at DESC").all(),
       db.prepare("SELECT * FROM equipment ORDER BY active DESC, name").all(), db.prepare("SELECT * FROM weight_events ORDER BY recorded_on DESC").all(),
       db.prepare("SELECT * FROM husbandry_events ORDER BY occurred_at DESC LIMIT 500").all(), db.prepare("SELECT * FROM feeder_inventory ORDER BY status, prey_species, size_class, weight_grams").all(),
+      db.prepare("SELECT * FROM lighting_plans ORDER BY active DESC, planned_on DESC, name").all(),
+      db.prepare("SELECT * FROM lighting_plan_fixtures ORDER BY plan_id, role").all(),
+      db.prepare("SELECT * FROM lighting_measurements ORDER BY measured_at DESC LIMIT 1000").all(),
     ]);
-    return Response.json({ animals: animals.results, enclosures: enclosures.results, schedules: schedules.results, notes: notes.results, equipment: equipment.results, weights: weights.results, events: events.results, feeders: feeders.results }, { headers: { "Cache-Control": "no-store" } });
+    return Response.json({ animals: animals.results, enclosures: enclosures.results, schedules: schedules.results, notes: notes.results, equipment: equipment.results, weights: weights.results, events: events.results, feeders: feeders.results, lightingPlans: lightingPlans.results, lightingFixtures: lightingFixtures.results, lightingMeasurements: lightingMeasurements.results }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) { return failure(error); }
 }
 
@@ -84,6 +105,10 @@ export async function POST(request: Request) {
     const values = [id, ...Object.values(normalized)];
     await db.prepare(`INSERT INTO ${configs[resource].table} (${columns.join(", ")}) VALUES (${columns.map(() => "?").join(", ")})`).bind(...values).run();
     if (resource === "weight") await refreshAnimalWeight(db, String(normalized.animalId));
+    if (resource === "lightingPlan") await queueLightingVerification(db, String(normalized.enclosureId), String(normalized.name));
+    if (resource === "lightingFixture") await touchAndQueueLightingVerificationForPlan(db, String(normalized.planId), now);
+    if (resource === "equipment" && isLightingEquipment(String(normalized.category ?? ""))) await touchAndQueueLightingVerificationForEquipment(db, normalized, now);
+    if (resource === "lightingMeasurement") await completeLightingVerification(db, String(normalized.planId), auth.member!.id, auth.member!.displayName, String(normalized.metric), Number(normalized.value), String(normalized.unit), String(normalized.measuredAt));
     return Response.json({ saved: true, id }, { status: 201, headers: { "Cache-Control": "no-store" } });
   } catch (error) { return failure(error); }
 }
@@ -100,7 +125,7 @@ export async function PATCH(request: Request) {
     if (!existing) return Response.json({ error: "Record not found" }, { status: 404 });
     const data = { ...(payload.data ?? {}) };
     const now = new Date().toISOString();
-    if (["animal", "enclosure", "schedule", "note", "equipment"].includes(resource)) data.updatedAt = now;
+    if (["animal", "enclosure", "schedule", "note", "equipment", "lightingPlan", "lightingFixture"].includes(resource)) data.updatedAt = now;
     if (resource === "event") {
       await db.prepare("INSERT INTO husbandry_event_revisions (id, event_id, changed_at, changed_by_member_id, changed_by_name, previous_json) VALUES (?, ?, ?, ?, ?, ?)")
         .bind(crypto.randomUUID(), id, now, auth.member!.id, auth.member!.displayName, JSON.stringify(existing)).run();
@@ -112,6 +137,9 @@ export async function PATCH(request: Request) {
     await db.prepare(`UPDATE ${configs[resource].table} SET ${assignments.join(", ")} WHERE id = ?`).bind(...Object.values(normalized), id).run();
     if (resource === "schedule") await db.prepare("DELETE FROM care_tasks WHERE schedule_id = ? AND due_date >= ? AND id NOT IN (SELECT task_id FROM husbandry_events WHERE task_id IS NOT NULL)").bind(id, dateInTimeZone()).run();
     if (resource === "weight") await refreshAnimalWeight(db, String(normalized.animalId ?? existing.animal_id));
+    if (resource === "lightingPlan") await queueLightingVerification(db, String(normalized.enclosureId ?? existing.enclosure_id), String(normalized.name ?? existing.name));
+    if (resource === "lightingFixture") await touchAndQueueLightingVerificationForPlan(db, String(normalized.planId ?? existing.plan_id), now);
+    if (resource === "equipment" && equipmentLightingFieldsChanged(normalized) && isLightingEquipment(String(normalized.category ?? existing.category ?? ""))) await touchAndQueueLightingVerificationForEquipment(db, { ...existing, ...normalized }, now);
     if (resource === "feeder" && normalized.status === "available") {
       await db.batch([
         db.prepare("UPDATE feeder_inventory SET consumed_at = NULL, animal_id = NULL, husbandry_event_id = NULL WHERE id = ?").bind(id),
@@ -140,6 +168,7 @@ export async function DELETE(request: Request) {
       const existing = await db.prepare(`SELECT * FROM ${configs[resource].table} WHERE id = ?`).bind(id).first<Record<string, unknown>>();
       await db.prepare(`DELETE FROM ${configs[resource].table} WHERE id = ?`).bind(id).run();
       if (resource === "weight" && existing) await refreshAnimalWeight(db, String(existing.animal_id));
+      if (resource === "lightingFixture" && existing) await touchAndQueueLightingVerificationForPlan(db, String(existing.plan_id), new Date().toISOString());
     }
     return Response.json({ saved: true, id }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) { return failure(error); }
@@ -154,6 +183,9 @@ function applyCreateDefaults(resource: Resource, data: Record<string, unknown>, 
   if (resource === "weight") Object.assign(data, { recordedByMemberId: memberId, recordedByName: memberName, createdAt: now });
   if (resource === "event") Object.assign(data, { occurredAt: data.occurredAt ?? now, actorRole: "Owner", completedByMemberId: memberId, completedByName: memberName });
   if (resource === "feeder") Object.assign(data, { status: data.status ?? "available", addedOn: data.addedOn ?? dateInTimeZone() });
+  if (resource === "lightingPlan") Object.assign(data, { sourceName: data.sourceName ?? "Light My Reptile", sourceUrl: data.sourceUrl ?? "https://lightmyreptile.com/", heightUnit: data.heightUnit ?? "cm", active: true, createdAt: now, updatedAt: now });
+  if (resource === "lightingFixture") Object.assign(data, { quantity: data.quantity ?? 1, createdAt: now, updatedAt: now });
+  if (resource === "lightingMeasurement") Object.assign(data, { heightUnit: data.heightUnit ?? "cm", measuredByMemberId: memberId, measuredByName: memberName, createdAt: now });
 }
 
 function normalize(resource: Resource, data: Record<string, unknown>, creating: boolean) {
@@ -166,9 +198,12 @@ function normalize(resource: Resource, data: Record<string, unknown>, creating: 
     if (field.kind === "boolean") output[key] = value ? 1 : 0;
     else if (field.kind === "number") { const number = Number(value); if (!Number.isFinite(number) || number < 0) throw new Error(`${key} must be a positive number`); output[key] = number; }
     else if (field.kind === "date") { const text = String(value); if (!isIsoDate(text)) throw new Error(`${key} must use YYYY-MM-DD`); output[key] = text; }
+    else if (field.kind === "datetime") { const text = String(value); if (Number.isNaN(Date.parse(text))) throw new Error(`${key} must be a valid date and time`); output[key] = new Date(text).toISOString(); }
     else output[key] = cleanText(value, key === "notes" || key === "body" || key === "details" ? 5000 : 200) ?? "";
   }
   if (resource === "schedule") validateSchedule(output);
+  if (resource === "lightingPlan") validateLightingPlan(output);
+  if (resource === "lightingFixture" && Object.hasOwn(output, "quantity") && (!Number.isInteger(Number(output.quantity)) || Number(output.quantity) < 1)) throw new Error("quantity must be a whole number of at least 1");
   return output;
 }
 
@@ -191,9 +226,61 @@ function validateSchedule(data: Record<string, string | number | null>) {
   for (const key of ["targetPercent", "minimumPercent", "maximumPercent"]) if (data[key] !== undefined && data[key] !== null && Number(data[key]) > 1) throw new Error(`${key} must be a decimal from 0 to 1`);
 }
 
+function validateLightingPlan(data: Record<string, string | number | null>) {
+  if (data.meshLossPercent != null && Number(data.meshLossPercent) > 100) throw new Error("meshLossPercent cannot exceed 100");
+  for (const [minimum, maximum, label] of [
+    ["targetUviMin", "targetUviMax", "UVI"], ["targetLuxMin", "targetLuxMax", "lux"], ["targetPowerDensityMin", "targetPowerDensityMax", "power density"],
+  ] as const) if (data[minimum] != null && data[maximum] != null && Number(data[minimum]) > Number(data[maximum])) throw new Error(`${label} minimum cannot exceed its maximum`);
+  if (data.sourceUrl) {
+    const url = new URL(String(data.sourceUrl));
+    if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error("sourceUrl must be an http or https address");
+  }
+}
+
 async function refreshAnimalWeight(db: D1Database, animalId: string) {
   const latest = await db.prepare("SELECT weight_grams AS weightGrams, recorded_on AS recordedOn FROM weight_events WHERE animal_id = ? ORDER BY recorded_on DESC, rowid DESC LIMIT 1").bind(animalId).first<{ weightGrams: number; recordedOn: string }>();
   await db.prepare("UPDATE animals SET weight_grams = ?, weight_date = ?, updated_at = ? WHERE id = ?").bind(latest?.weightGrams ?? null, latest?.recordedOn ?? null, new Date().toISOString(), animalId).run();
+}
+
+const lightingCategories = /(^|\b)(uvb|light|lighting|led|heat|basking|lamp|fixture)(\b|$)/i;
+function isLightingEquipment(category: string) { return lightingCategories.test(category); }
+function equipmentLightingFieldsChanged(data: Record<string, string | number | null>) {
+  return ["name", "brand", "model", "installedOn", "animalId", "enclosureId", "category"].some((key) => Object.hasOwn(data, key));
+}
+
+async function touchAndQueueLightingVerificationForEquipment(db: D1Database, data: Record<string, unknown>, now: string) {
+  const animalId = String(data.animalId ?? data.animal_id ?? "");
+  let enclosureId = String(data.enclosureId ?? data.enclosure_id ?? "");
+  if (!enclosureId && animalId) enclosureId = String((await db.prepare("SELECT enclosure_id AS enclosureId FROM animals WHERE id = ?").bind(animalId).first<{ enclosureId: string }>())?.enclosureId ?? "");
+  if (enclosureId) {
+    await db.prepare("UPDATE lighting_plans SET updated_at = ? WHERE enclosure_id = ? AND active = 1").bind(now, enclosureId).run();
+    await queueLightingVerification(db, enclosureId, "lighting equipment");
+  }
+}
+
+async function touchAndQueueLightingVerificationForPlan(db: D1Database, planId: string, now: string) {
+  await db.prepare("UPDATE lighting_plans SET updated_at = ? WHERE id = ?").bind(now, planId).run();
+  const plan = await db.prepare("SELECT enclosure_id AS enclosureId, name FROM lighting_plans WHERE id = ?").bind(planId).first<{ enclosureId: string; name: string }>();
+  if (plan) await queueLightingVerification(db, plan.enclosureId, plan.name);
+}
+
+async function queueLightingVerification(db: D1Database, enclosureId: string, planName: string) {
+  if (!enclosureId) return;
+  const dueDate = dateInTimeZone();
+  const residents = await db.prepare("SELECT id FROM animals WHERE enclosure_id = ? AND active = 1").bind(enclosureId).all<{ id: string }>();
+  for (const resident of residents.results) {
+    const pending = await db.prepare("SELECT t.id FROM care_tasks t LEFT JOIN husbandry_events e ON e.task_id = t.id AND e.voided_at IS NULL WHERE t.animal_id = ? AND t.task_type = 'lighting' AND t.title = 'Verify lighting' AND e.id IS NULL LIMIT 1").bind(resident.id).first();
+    if (!pending) await db.prepare("INSERT INTO care_tasks (id, animal_id, task_type, title, details, due_date) VALUES (?, ?, 'lighting', 'Verify lighting', ?, ?)")
+      .bind(crypto.randomUUID(), resident.id, `Measure the basking zone after the ${planName} update. Record UVI first, then lux or temperature when available.`, dueDate).run();
+  }
+}
+
+async function completeLightingVerification(db: D1Database, planId: string, memberId: string, memberName: string, metric: string, value: number, unit: string, occurredAt: string) {
+  const plan = await db.prepare("SELECT enclosure_id AS enclosureId FROM lighting_plans WHERE id = ?").bind(planId).first<{ enclosureId: string }>();
+  if (!plan) return;
+  const tasks = await db.prepare("SELECT t.id, t.animal_id AS animalId, t.due_date AS dueDate FROM care_tasks t JOIN animals a ON a.id = t.animal_id LEFT JOIN husbandry_events e ON e.task_id = t.id AND e.voided_at IS NULL WHERE a.enclosure_id = ? AND t.task_type = 'lighting' AND t.title = 'Verify lighting' AND e.id IS NULL").bind(plan.enclosureId).all<{ id: string; animalId: string; dueDate: string }>();
+  for (const task of tasks.results) await db.prepare("INSERT OR IGNORE INTO husbandry_events (id, task_id, animal_id, task_type, title, notes, due_date, occurred_at, actor_role, completed_by_member_id, completed_by_name) VALUES (?, ?, ?, 'lighting', 'Verify lighting', ?, ?, ?, 'Owner', ?, ?)")
+    .bind(crypto.randomUUID(), task.id, task.animalId, `${metric}: ${value} ${unit}`, task.dueDate, occurredAt, memberId, memberName).run();
 }
 
 function requireResource(value: Resource | undefined): Resource { if (!value || !configs[value]) throw new Error("A supported resource is required"); return value; }

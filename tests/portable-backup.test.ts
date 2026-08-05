@@ -8,8 +8,8 @@ import {
   remapMemberReferences,
 } from "../lib/portable-backup.ts";
 
-test("schema 10 carries feeder size, allowance, missed-task, payout, and care-baseline data", () => {
-  assert.equal(BACKUP_SCHEMA_VERSION, 10);
+test("schema 11 carries feeders, allowance, lighting, payouts, and care-baseline data", () => {
+  assert.equal(BACKUP_SCHEMA_VERSION, 11);
   assert.ok(PORTABLE_RESOURCES.careSchedules.columns.includes("prey_size_class"));
   assert.ok(PORTABLE_RESOURCES.careSchedules.columns.includes("reward_cents"));
   assert.ok(PORTABLE_RESOURCES.careTasks.columns.includes("missed_at"));
@@ -17,6 +17,9 @@ test("schema 10 carries feeder size, allowance, missed-task, payout, and care-ba
   assert.deepEqual(PORTABLE_RESOURCES.rewardPayouts.columns, [
     "id", "member_id", "amount_cents", "note", "paid_at", "paid_by_member_id", "paid_by_name",
   ]);
+  assert.ok(PORTABLE_RESOURCES.lightingPlans.columns.includes("plan_sheet_key"));
+  assert.ok(PORTABLE_RESOURCES.lightingPlanFixtures.columns.includes("equipment_id"));
+  assert.ok(PORTABLE_RESOURCES.lightingMeasurements.columns.includes("measured_by_member_id"));
   assert.deepEqual(PORTABLE_APP_SETTING_KEYS, ["default_reward_cents", "care_start_date"]);
 });
 

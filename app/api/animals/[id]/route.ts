@@ -4,6 +4,7 @@ import { isoDaysAgo } from "@/lib/care-schedule";
 import { getCareStartDate } from "@/lib/care-settings";
 import { householdAuthRequired, memberFromRequest } from "@/lib/household-auth";
 import { equipmentAgeDays } from "@/lib/equipment-age";
+import { lightingPlanStatus } from "@/lib/lighting-plan";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +31,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       return Response.json({ error: "Animal not found" }, { status: 404, headers: { "Cache-Control": "no-store" } });
     }
 
-    const [weights, events, tasks, notes, equipment, schedules, enclosure] = await Promise.all([
+    const [weights, events, tasks, notes, equipment, schedules, enclosure, lightingPlans, lightingFixtures, lightingMeasurements] = await Promise.all([
       db.prepare(
         "SELECT id, recorded_on AS recordedOn, weight_grams AS weightGrams FROM weight_events WHERE animal_id = ? ORDER BY recorded_on DESC",
       ).bind(id).all(),
@@ -44,6 +45,9 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       db.prepare("SELECT q.id, q.category, q.name, q.brand, q.model, q.installed_on AS installedOn, q.active, q.notes, CASE WHEN q.animal_id = ? THEN 'animal' ELSE 'enclosure' END AS scope FROM equipment q WHERE q.animal_id = ? OR q.enclosure_id = (SELECT enclosure_id FROM animals WHERE id = ?) ORDER BY q.active DESC, q.name").bind(id, id, id).all(),
       db.prepare("SELECT id, task_type AS taskType, title, details, frequency, interval_days AS intervalDays, weekdays_json AS weekdaysJson, day_of_month AS dayOfMonth, start_date AS startDate, end_date AS endDate, active FROM care_schedules WHERE animal_id = ? ORDER BY active DESC, title").bind(id).all(),
       db.prepare("SELECT e.* FROM enclosures e JOIN animals a ON a.enclosure_id = e.id WHERE a.id = ?").bind(id).first(),
+      db.prepare("SELECT p.id, p.enclosure_id AS enclosureId, p.name, p.species, p.source_name AS sourceName, p.source_url AS sourceUrl, p.source_version AS sourceVersion, p.planned_on AS plannedOn, p.reviewed_on AS reviewedOn, p.mounting_mode AS mountingMode, p.mesh_loss_percent AS meshLossPercent, p.basking_height AS baskingHeight, p.height_unit AS heightUnit, p.target_uvi_min AS targetUviMin, p.target_uvi_max AS targetUviMax, p.target_lux_min AS targetLuxMin, p.target_lux_max AS targetLuxMax, p.target_power_density_min AS targetPowerDensityMin, p.target_power_density_max AS targetPowerDensityMax, p.plan_sheet_name AS planSheetName, p.notes, p.updated_at AS updatedAt FROM lighting_plans p WHERE p.active = 1 AND p.enclosure_id = (SELECT enclosure_id FROM animals WHERE id = ?) ORDER BY p.planned_on DESC").bind(id).all(),
+      db.prepare("SELECT f.id, f.plan_id AS planId, f.equipment_id AS equipmentId, f.role, f.position_cm AS positionCm, f.mounting_height_cm AS mountingHeightCm, f.quantity, f.notes, q.name AS equipmentName, q.brand, q.model, q.installed_on AS installedOn, q.active FROM lighting_plan_fixtures f JOIN lighting_plans p ON p.id = f.plan_id JOIN equipment q ON q.id = f.equipment_id WHERE p.active = 1 AND p.enclosure_id = (SELECT enclosure_id FROM animals WHERE id = ?) ORDER BY f.role, q.name").bind(id).all(),
+      db.prepare("SELECT m.id, m.plan_id AS planId, m.metric, m.value, m.unit, m.measured_at AS measuredAt, m.position, m.height, m.height_unit AS heightUnit, m.instrument, m.notes, m.measured_by_name AS measuredBy FROM lighting_measurements m JOIN lighting_plans p ON p.id = m.plan_id WHERE p.active = 1 AND p.enclosure_id = (SELECT enclosure_id FROM animals WHERE id = ?) ORDER BY m.measured_at DESC").bind(id).all(),
     ]);
 
     const today = dateInTimeZone();
@@ -53,6 +57,19 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     }));
     const history = events.results as Array<{ taskType: string; notes?: string | null; voidedAt?: string | null }>;
     const activeEvents = history.filter((event) => !event.voidedAt);
+    const fixtureRows = lightingFixtures.results as Array<Record<string, unknown> & { planId: string }>;
+    const measurementRows = lightingMeasurements.results as Array<Record<string, unknown> & { planId: string; metric: string; value: number; measuredAt: string }>;
+    const lighting = (lightingPlans.results as Array<Record<string, unknown> & { id: string; targetUviMin?: number | null; targetUviMax?: number | null; updatedAt: string }>).map((plan) => {
+      const planMeasurements = measurementRows.filter((measurement) => measurement.planId === plan.id);
+      const latestUvi = planMeasurements.find((measurement) => measurement.metric.toLocaleLowerCase() === "uvi") ?? null;
+      return {
+        ...plan,
+        status: lightingPlanStatus({ targetUviMin: plan.targetUviMin, targetUviMax: plan.targetUviMax, planUpdatedAt: plan.updatedAt, latestUvi }),
+        fixtures: fixtureRows.filter((fixture) => fixture.planId === plan.id),
+        measurements: planMeasurements,
+        latestUvi,
+      };
+    });
 
     // Husbandry score over the rolling window (clamped to the fresh-start baseline).
     const careStartDate = await getCareStartDate(db);
@@ -85,6 +102,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       notes: notes.results,
       legacyEventNotes: activeEvents.filter((event) => Boolean(event.notes?.trim())),
       equipment: equipmentWithAge,
+      lighting,
       enclosure,
       schedules: schedules.results,
       enclosureHistory: activeEvents.filter((event) => event.taskType === "enclosure"),

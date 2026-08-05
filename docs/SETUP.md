@@ -60,10 +60,20 @@ On **Today**, choose **Mark done**. Shed records who completed it and keeps the 
 | **History** | One-time care or observations that already happened |
 | **Note** | Persistent reference information, husbandry notes, behavior, or acquisition details |
 | **Equipment** | Heating, UVB, lighting, filters, and replacement dates |
+| **Lighting plan** | A simulated enclosure lighting layout, its targets, linked installed lamps, plan sheet, and real meter readings |
 | **Weight** | Dated measurements in grams for trend tracking |
 | **Feeder** | Prey inventory, individual feeder weights, and forecasting |
 
 Click an animal on **Animals** to see its profile, including care plans, equipment, notes, weights, and husbandry history.
+
+### Add a Light My Reptile plan
+
+1. Open **Manage → Lighting plans**, add the enclosure and targets, and attach the exported PDF or image from [Light My Reptile](https://lightmyreptile.com/).
+2. Add each physical lamp under **Equipment**, including its installation date.
+3. Open **Manage → Plan fixtures** and connect those equipment records to the plan with their roles and positions.
+4. Record UVI, lux, surface-temperature, or power-density readings under **Lighting measurements**. Shed shows whether the latest UVI is verified, outside the target, or needs remeasurement.
+
+Changing a lighting plan, its linked fixtures, or lighting equipment adds a **Verify lighting** task for the enclosure’s residents. Recording a measurement completes that verification task. Simulated values are planning guidance; confirm important targets with appropriate meters in the completed enclosure.
 
 ## 5. Add household keepers
 
@@ -80,7 +90,7 @@ Every completed scheduled task is credited to the signed-in keeper. The Head Kee
 
 Your live data is stored in SQLite on your own server. For an easy portable copy, use **More → Your data, always portable** to download JSON or CSV.
 
-- **JSON** is the complete Shed backup and can be restored in the app.
+- **JSON** is the complete Shed backup and can be restored in the app, including attached lighting plan sheets.
 - **CSV** is convenient for spreadsheets and migration.
 - **Merge restore** adds or updates records while keeping current data.
 - **Replace restore** replaces husbandry data with the backup while preserving household sign-in.

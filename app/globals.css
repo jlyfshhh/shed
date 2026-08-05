@@ -276,6 +276,9 @@ button.primary:disabled { opacity: .6; cursor: wait; }
 .field input, .field textarea, .field select { border: 1px solid var(--line); background: var(--cream); border-radius: 10px; padding: 10px 12px; color: var(--ink); outline-color: var(--gold); width: 100%; }
 .field textarea { resize: vertical; }
 .field small { color: var(--muted); font-size: 11px; }
+.file-link { color: var(--moss); font-size: 13px; font-weight: 800; text-decoration: none; }
+.remove-file { display: flex; align-items: center; gap: 7px; color: #a14432; font-size: 12px; font-weight: 700; }
+.remove-file input { width: auto; }
 .toggle { display: flex; align-items: center; gap: 9px; }
 .toggle input { width: 20px; height: 20px; accent-color: var(--moss); }
 .toggle i { font-style: normal; font-size: 13px; color: var(--muted); }
@@ -364,6 +367,28 @@ button.primary:disabled { opacity: .6; cursor: wait; }
 .profile-note-card b { font-size: 14px; }
 .profile-note-card p { margin: 5px 0; font-size: 13px; color: var(--ink); line-height: 1.5; }
 .profile-note-card small { color: var(--muted); font-size: 11px; }
+.lighting-plans { display: grid; gap: 12px; }
+.lighting-plan { border: 1px solid var(--line); border-radius: 16px; padding: 16px; background: var(--paper); }
+.lighting-plan > header { display: flex; align-items: start; justify-content: space-between; gap: 14px; }
+.lighting-plan > header b { display: block; font-size: 17px; }
+.lighting-plan > header small { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; }
+.lighting-status { flex: 0 0 auto; padding: 5px 10px; border-radius: 999px; font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .05em; }
+.lighting-status.verified { background: #dcebdc; color: #2f7144; }
+.lighting-status.due, .lighting-status.plan-only { background: #fff0d7; color: #9a5d11; }
+.lighting-status.review { background: #fbe0d8; color: #a14432; }
+.lighting-targets { display: grid; grid-template-columns: repeat(auto-fit, minmax(105px, 1fr)); gap: 8px; margin: 14px 0; }
+.lighting-targets span { padding: 9px 11px; border-radius: 11px; background: #f2f3ed; }
+.lighting-targets small, .lighting-fixtures small { display: block; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; font-weight: 700; }
+.lighting-targets b { font-size: 14px; }
+.lighting-fixtures { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 12px; }
+.lighting-fixtures > span { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+.lighting-fixtures b { display: block; font-size: 12px; }
+.lighting-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.lighting-actions a { color: var(--moss); background: #edf2e9; border-radius: 999px; padding: 7px 11px; text-decoration: none; font-size: 12px; font-weight: 800; }
+.lighting-plan > p { margin: 12px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.lighting-plan details { margin-top: 13px; }
+.lighting-plan summary { color: var(--moss); font-size: 12px; font-weight: 800; cursor: pointer; }
+.lighting-plan details .profile-rows { margin-top: 9px; }
 .history-list { display: grid; gap: 2px; }
 .history-row { display: flex; gap: 12px; align-items: start; padding: 11px 0; border-bottom: 1px solid var(--line); }
 .history-row.voided { opacity: .55; }

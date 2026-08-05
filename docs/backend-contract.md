@@ -18,7 +18,7 @@ are server-authorized; hiding a control is never the authorization boundary.
 
 `GET /api/manage` returns the complete editable catalog:
 
-`{ animals, enclosures, schedules, notes, equipment, weights, events, feeders }`
+`{ animals, enclosures, schedules, notes, equipment, weights, events, feeders, lightingPlans, lightingFixtures, lightingMeasurements }`
 
 Mutations use the same endpoint:
 
@@ -27,7 +27,7 @@ Mutations use the same endpoint:
 - `DELETE /api/manage` — `{ resource, id, reason? }`
 
 Resources are `animal`, `enclosure`, `schedule`, `note`, `equipment`, `weight`,
-`event`, and `feeder`. Animals, enclosures, schedules, and equipment are archived
+`event`, `feeder`, `lightingPlan`, `lightingFixture`, and `lightingMeasurement`. Animals, enclosures, schedules, equipment, and lighting plans are archived
 instead of erased. Events are voided and retained. Editing an event writes its previous
 state to `husbandry_event_revisions`. Notes, unconsumed feeder rows, and mistaken weight
 rows may be deleted.
@@ -78,6 +78,8 @@ with `installedOn`, `scope`, and the derived `inUseDays`. Shared enclosure/habit
 are exposed so Shed and Clarity can deep-link to one another with
 `?sharedHabitat=<id>`.
 
+Active lighting plans for the animal's enclosure are returned in `lighting`. Each plan includes its fixture links, measurement history, latest UVI, and derived status (`plan-only`, `due`, `verified`, or `review`). Plan sheets are uploaded by the Owner at `POST /api/lighting/plans/:id/sheet`, viewed by signed-in household members with `GET`, and removed by the Owner with `DELETE`. Uploads accept PDF, PNG, JPEG, or WebP files up to 5 MB.
+
 ## Sign-in throttling
 
 `POST /api/auth/login` allows up to 10 failed household-code attempts in 10 minutes,
@@ -87,9 +89,9 @@ single-container home-server deployment.
 
 ## Backups and restore
 
-- `GET /api/export?format=json` returns schema version 10 with all portable husbandry
+- `GET /api/export?format=json` returns schema version 11 with all portable husbandry
   tables, task rewards, payout history, missed-task state, and portable app settings
-  (including the care baseline). Household access-code hashes are deliberately excluded.
+  (including the care baseline), lighting records, and base64-encoded plan-sheet attachments. Household access-code hashes are deliberately excluded.
 - `GET /api/export?format=csv` provides a flat open-format copy.
 - `POST /api/import` accepts `{ mode: "merge"|"replace", confirmation?, bundle }`.
   Replace mode requires `confirmation: "REPLACE"`. Restore never imports or changes

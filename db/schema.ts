@@ -66,6 +66,72 @@ export const equipment = sqliteTable("equipment", {
   active: integer("active", { mode: "boolean" }).notNull().default(true), notes: text("notes"), createdAt: text("created_at").notNull(), updatedAt: text("updated_at").notNull(),
 });
 
+export const lightingPlans = sqliteTable("lighting_plans", {
+  id: text("id").primaryKey(),
+  enclosureId: text("enclosure_id").notNull(),
+  name: text("name").notNull(),
+  species: text("species"),
+  sourceName: text("source_name").notNull().default("Light My Reptile"),
+  sourceUrl: text("source_url").notNull().default("https://lightmyreptile.com/"),
+  sourceVersion: text("source_version"),
+  plannedOn: text("planned_on").notNull(),
+  reviewedOn: text("reviewed_on"),
+  mountingMode: text("mounting_mode"),
+  meshLossPercent: real("mesh_loss_percent"),
+  baskingHeight: real("basking_height"),
+  heightUnit: text("height_unit").notNull().default("cm"),
+  targetUviMin: real("target_uvi_min"),
+  targetUviMax: real("target_uvi_max"),
+  targetLuxMin: real("target_lux_min"),
+  targetLuxMax: real("target_lux_max"),
+  targetPowerDensityMin: real("target_power_density_min"),
+  targetPowerDensityMax: real("target_power_density_max"),
+  planSheetKey: text("plan_sheet_key"),
+  planSheetName: text("plan_sheet_name"),
+  planSheetType: text("plan_sheet_type"),
+  notes: text("notes"),
+  active: integer("active", { mode: "boolean" }).notNull().default(true),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+}, (table) => [
+  index("lighting_plans_enclosure_active_idx").on(table.enclosureId, table.active),
+]);
+
+export const lightingPlanFixtures = sqliteTable("lighting_plan_fixtures", {
+  id: text("id").primaryKey(),
+  planId: text("plan_id").notNull(),
+  equipmentId: text("equipment_id").notNull(),
+  role: text("role").notNull(),
+  positionCm: real("position_cm"),
+  mountingHeightCm: real("mounting_height_cm"),
+  quantity: integer("quantity").notNull().default(1),
+  notes: text("notes"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+}, (table) => [
+  uniqueIndex("lighting_plan_fixtures_plan_equipment_unique").on(table.planId, table.equipmentId),
+  index("lighting_plan_fixtures_plan_idx").on(table.planId),
+]);
+
+export const lightingMeasurements = sqliteTable("lighting_measurements", {
+  id: text("id").primaryKey(),
+  planId: text("plan_id").notNull(),
+  metric: text("metric").notNull(),
+  value: real("value").notNull(),
+  unit: text("unit").notNull(),
+  measuredAt: text("measured_at").notNull(),
+  position: text("position"),
+  height: real("height"),
+  heightUnit: text("height_unit").notNull().default("cm"),
+  instrument: text("instrument"),
+  notes: text("notes"),
+  measuredByMemberId: text("measured_by_member_id"),
+  measuredByName: text("measured_by_name"),
+  createdAt: text("created_at").notNull(),
+}, (table) => [
+  index("lighting_measurements_plan_metric_date_idx").on(table.planId, table.metric, table.measuredAt),
+]);
+
 export const husbandryEvents = sqliteTable("husbandry_events", {
   id: text("id").primaryKey(),
   taskId: text("task_id"),

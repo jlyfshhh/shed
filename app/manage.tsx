@@ -17,8 +17,11 @@ type Catalog = {
   weights: Row[];
   events: Row[];
   feeders: Row[];
+  lightingPlans: Row[];
+  lightingFixtures: Row[];
+  lightingMeasurements: Row[];
 };
-export type ResourceKey = "animal" | "enclosure" | "schedule" | "note" | "equipment" | "weight" | "event" | "feeder";
+export type ResourceKey = "animal" | "enclosure" | "schedule" | "note" | "equipment" | "weight" | "event" | "feeder" | "lightingPlan" | "lightingFixture" | "lightingMeasurement";
 export type SetupSummary = {
   animalCount: number;
   enclosureCount: number;
@@ -58,7 +61,7 @@ const relativeTime = (value: string) => {
 };
 
 // ── Field configuration (mirrors app/api/manage/route.ts columns) ─────────────
-type FieldType = "text" | "textarea" | "number" | "date" | "datetime" | "boolean" | "select" | "weekdays" | "animalRef" | "enclosureRef";
+type FieldType = "text" | "textarea" | "number" | "date" | "datetime" | "boolean" | "select" | "weekdays" | "animalRef" | "enclosureRef" | "lightingPlanRef" | "equipmentRef";
 type Field = {
   key: string; // camelCase write key
   column: string; // snake_case read column
@@ -67,6 +70,7 @@ type Field = {
   required?: boolean;
   options?: string[];
   default?: boolean; // initial value for boolean fields on a new record
+  defaultValue?: string;
   help?: string;
   step?: string;
   optional?: boolean; // ref selects that allow "none"
@@ -93,6 +97,10 @@ const animalName = (catalog: Catalog, id: unknown) =>
   str(catalog.animals.find((a) => a.id === id)?.name) || "Unassigned";
 const enclosureName = (catalog: Catalog, id: unknown) =>
   str(catalog.enclosures.find((enclosure) => enclosure.id === id)?.name) || "Unassigned";
+const lightingPlanName = (catalog: Catalog, id: unknown) =>
+  str(catalog.lightingPlans.find((plan) => plan.id === id)?.name) || "Unknown plan";
+const equipmentName = (catalog: Catalog, id: unknown) =>
+  str(catalog.equipment.find((item) => item.id === id)?.name) || "Unknown equipment";
 
 const resourceDefs: ResourceDef[] = [
   {
@@ -182,6 +190,60 @@ const resourceDefs: ResourceDef[] = [
       { key: "notes", column: "notes", label: "Notes", type: "textarea" },
     ],
     summary: (row, catalog) => ({ title: str(row.name), sub: `${str(row.category) || "Equipment"}${row.animal_id ? ` · ${animalName(catalog, row.animal_id)}` : row.enclosure_id ? ` · ${enclosureName(catalog, row.enclosure_id)}` : ""}${row.installed_on ? ` · since ${str(row.installed_on)}` : ""}`, archived: !bool(row.active) }),
+  },
+  {
+    key: "lightingPlan", catalog: "lightingPlans", singular: "lighting plan", plural: "Lighting plans", action: "Archive",
+    fields: [
+      { key: "name", column: "name", label: "Plan name", type: "text", required: true, help: "e.g. Dracarys summer lighting plan" },
+      { key: "enclosureId", column: "enclosure_id", label: "Enclosure", type: "enclosureRef", required: true },
+      { key: "species", column: "species", label: "Species / community", type: "text" },
+      { key: "plannedOn", column: "planned_on", label: "Planned on", type: "date", required: true, defaultValue: new Date().toISOString().slice(0, 10) },
+      { key: "reviewedOn", column: "reviewed_on", label: "Last reviewed", type: "date" },
+      { key: "sourceName", column: "source_name", label: "Planning source", type: "text", defaultValue: "Light My Reptile" },
+      { key: "sourceUrl", column: "source_url", label: "Source URL", type: "text", defaultValue: "https://lightmyreptile.com/" },
+      { key: "sourceVersion", column: "source_version", label: "Simulator version", type: "text", help: "Record the version shown by the simulator so this plan remains reproducible." },
+      { key: "mountingMode", column: "mounting_mode", label: "Mounting", type: "select", options: ["", "above mesh", "internal", "mixed"] },
+      { key: "meshLossPercent", column: "mesh_loss_percent", label: "Mesh loss (%)", type: "number", step: "0.1" },
+      { key: "baskingHeight", column: "basking_height", label: "Basking surface below ceiling", type: "number", step: "0.1" },
+      { key: "heightUnit", column: "height_unit", label: "Height unit", type: "select", options: ["cm", "in"] },
+      { key: "targetUviMin", column: "target_uvi_min", label: "Target UVI minimum", type: "number", step: "0.01" },
+      { key: "targetUviMax", column: "target_uvi_max", label: "Target UVI maximum", type: "number", step: "0.01" },
+      { key: "targetLuxMin", column: "target_lux_min", label: "Target lux minimum", type: "number", step: "1" },
+      { key: "targetLuxMax", column: "target_lux_max", label: "Target lux maximum", type: "number", step: "1" },
+      { key: "targetPowerDensityMin", column: "target_power_density_min", label: "Power density minimum (W/m²)", type: "number", step: "0.1" },
+      { key: "targetPowerDensityMax", column: "target_power_density_max", label: "Power density maximum (W/m²)", type: "number", step: "0.1" },
+      { key: "notes", column: "notes", label: "Plan notes", type: "textarea", help: "Record the target zone, platform placement, and anything the exported sheet does not show." },
+    ],
+    summary: (row, catalog) => ({ title: str(row.name), sub: `${enclosureName(catalog, row.enclosure_id)}${row.source_version ? ` · ${str(row.source_name)} ${str(row.source_version)}` : ` · ${str(row.source_name)}`}${row.plan_sheet_name ? " · sheet attached" : ""}`, archived: !bool(row.active) }),
+  },
+  {
+    key: "lightingFixture", catalog: "lightingFixtures", singular: "plan fixture", plural: "Plan fixtures", action: "Delete",
+    fields: [
+      { key: "planId", column: "plan_id", label: "Lighting plan", type: "lightingPlanRef", required: true },
+      { key: "equipmentId", column: "equipment_id", label: "Installed equipment", type: "equipmentRef", required: true },
+      { key: "role", column: "role", label: "Role", type: "select", options: ["uvb", "heat", "daylight", "plant growth", "other"], required: true },
+      { key: "positionCm", column: "position_cm", label: "Position across enclosure (cm)", type: "number", step: "0.1" },
+      { key: "mountingHeightCm", column: "mounting_height_cm", label: "Mounting height (cm)", type: "number", step: "0.1" },
+      { key: "quantity", column: "quantity", label: "Quantity", type: "number", step: "1", defaultValue: "1" },
+      { key: "notes", column: "notes", label: "Placement notes", type: "textarea" },
+    ],
+    summary: (row, catalog) => ({ title: equipmentName(catalog, row.equipment_id), sub: `${lightingPlanName(catalog, row.plan_id)} · ${str(row.role)}${Number(row.quantity) > 1 ? ` × ${str(row.quantity)}` : ""}`, archived: false }),
+  },
+  {
+    key: "lightingMeasurement", catalog: "lightingMeasurements", singular: "lighting measurement", plural: "Lighting measurements", action: "Delete",
+    fields: [
+      { key: "planId", column: "plan_id", label: "Lighting plan", type: "lightingPlanRef", required: true },
+      { key: "metric", column: "metric", label: "Metric", type: "select", options: ["UVI", "lux", "surface temperature", "power density"], required: true },
+      { key: "value", column: "value", label: "Measured value", type: "number", step: "0.01", required: true },
+      { key: "unit", column: "unit", label: "Unit", type: "select", options: ["UVI", "lux", "°F", "°C", "W/m²"], required: true },
+      { key: "measuredAt", column: "measured_at", label: "Measured at", type: "datetime", required: true, defaultValue: new Date().toISOString().slice(0, 16) },
+      { key: "position", column: "position", label: "Measurement position", type: "text", help: "e.g. center of basking surface" },
+      { key: "height", column: "height", label: "Distance / height", type: "number", step: "0.1" },
+      { key: "heightUnit", column: "height_unit", label: "Height unit", type: "select", options: ["cm", "in"] },
+      { key: "instrument", column: "instrument", label: "Instrument", type: "text", help: "e.g. Solarmeter 6.5R" },
+      { key: "notes", column: "notes", label: "Notes", type: "textarea" },
+    ],
+    summary: (row, catalog) => ({ title: `${str(row.value)} ${str(row.unit)}`, sub: `${lightingPlanName(catalog, row.plan_id)} · ${str(row.metric)} · ${relativeTime(str(row.measured_at))}`, archived: false }),
   },
   {
     key: "weight", catalog: "weights", singular: "weight", plural: "Weights", action: "Delete",
@@ -319,8 +381,9 @@ function toFormValues(def: ResourceDef, row: Row | null): Record<string, string>
       // New record: booleans off, plain selects default to their first option so
       // the control always shows a valid value (ref selects stay on "none").
       values[field.key] = field.type === "boolean" ? (field.default ? "true" : "false")
-        : field.type === "select" && field.options?.length ? field.options[0]
-        : "";
+        : field.defaultValue ??
+        (field.type === "select" && field.options?.length ? field.options[0]
+        : "");
       continue;
     }
     const raw = row[field.column];
@@ -348,6 +411,8 @@ function ResourceForm({ def, catalog, editing, onClose, onSaved }: {
   const [values, setValues] = useState<Record<string, string>>(() => toFormValues(def, editing));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [planFile, setPlanFile] = useState<File | null>(null);
+  const [removePlanSheet, setRemovePlanSheet] = useState(false);
   const set = (key: string, value: string) => setValues((current) => ({ ...current, [key]: value }));
   const visibleFields = def.fields.filter((field) => !field.showIf || field.showIf(values));
 
@@ -377,8 +442,19 @@ function ResourceForm({ def, catalog, editing, onClose, onSaved }: {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ resource: def.key, id: editing ? str(editing.id) : undefined, data }),
       });
-      const payload = (await response.json()) as { error?: string };
+      const payload = (await response.json()) as { error?: string; id?: string };
       if (!response.ok) throw new Error(payload.error ?? "Couldn’t save.");
+      const savedId = payload.id ?? (editing ? str(editing.id) : "");
+      if (def.key === "lightingPlan" && savedId && planFile) {
+        const upload = new FormData();
+        upload.set("file", planFile);
+        const uploadResponse = await fetch(`/api/lighting/plans/${encodeURIComponent(savedId)}/sheet`, { method: "POST", body: upload });
+        const uploadPayload = (await uploadResponse.json()) as { error?: string };
+        if (!uploadResponse.ok) throw new Error(uploadPayload.error ?? "The plan was saved, but its plan sheet could not be attached.");
+      } else if (def.key === "lightingPlan" && savedId && removePlanSheet) {
+        const removeResponse = await fetch(`/api/lighting/plans/${encodeURIComponent(savedId)}/sheet`, { method: "DELETE" });
+        if (!removeResponse.ok) throw new Error("The plan was saved, but its old plan sheet could not be removed.");
+      }
       onSaved(`${editing ? "Updated" : "Added"} ${def.singular}.`);
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Couldn’t save.");
@@ -402,6 +478,15 @@ function ResourceForm({ def, catalog, editing, onClose, onSaved }: {
               {field.help && <small>{field.help}</small>}
             </label>
           ))}
+          {def.key === "lightingPlan" && (
+            <div className="field field-wide">
+              <span>Exported plan sheet</span>
+              {editing?.plan_sheet_name && !removePlanSheet ? <a className="file-link" href={`/api/lighting/plans/${encodeURIComponent(str(editing.id))}/sheet`} target="_blank" rel="noreferrer">Open {str(editing.plan_sheet_name)} ↗</a> : null}
+              <input type="file" accept="application/pdf,image/png,image/jpeg,image/webp" onChange={(event) => { setPlanFile(event.target.files?.[0] ?? null); setRemovePlanSheet(false); }} />
+              {editing?.plan_sheet_name && !planFile ? <label className="remove-file"><input type="checkbox" checked={removePlanSheet} onChange={(event) => setRemovePlanSheet(event.target.checked)} /> Remove the current attachment</label> : null}
+              <small>PDF or image, up to 5 MB. Export the sheet from Light My Reptile and keep it with the plan.</small>
+            </div>
+          )}
           {error && <p className="form-error field-wide" role="alert">{error}</p>}
           <div className="sheet-actions field-wide">
             <button type="button" className="ghost" onClick={onClose}>Cancel</button>
@@ -431,12 +516,12 @@ function FieldInput({ field, value, catalog, onChange }: {
       {(field.options ?? []).map((option) => <option key={option} value={option}>{option === "" ? "—" : option}</option>)}
     </select>
   );
-  if (field.type === "animalRef" || field.type === "enclosureRef") {
-    const rows = field.type === "animalRef" ? catalog.animals : catalog.enclosures;
+  if (field.type === "animalRef" || field.type === "enclosureRef" || field.type === "lightingPlanRef" || field.type === "equipmentRef") {
+    const rows = field.type === "animalRef" ? catalog.animals : field.type === "enclosureRef" ? catalog.enclosures : field.type === "lightingPlanRef" ? catalog.lightingPlans : catalog.equipment;
     return (
       <select value={value} onChange={(event) => onChange(event.target.value)}>
         <option value="">{field.optional ? "— none —" : "Select…"}</option>
-        {rows.filter((row) => bool(row.active) || row.id === value).map((row) => (
+        {rows.filter((row) => row.active === undefined || bool(row.active) || row.id === value).map((row) => (
           <option key={str(row.id)} value={str(row.id)}>{str(row.name)}{bool(row.active) ? "" : " (archived)"}</option>
         ))}
       </select>
@@ -629,7 +714,7 @@ export function ManageConsole({ onClose, onChanged, toast, initialResource = "an
       {editing && (
         <ResourceForm
           def={editing.def}
-          catalog={catalog ?? { animals: [], enclosures: [], schedules: [], notes: [], equipment: [], weights: [], events: [], feeders: [] }}
+          catalog={catalog ?? { animals: [], enclosures: [], schedules: [], notes: [], equipment: [], weights: [], events: [], feeders: [], lightingPlans: [], lightingFixtures: [], lightingMeasurements: [] }}
           editing={editing.row}
           onClose={() => setEditing(null)}
           onSaved={(message) => { setEditing(null); toast(message); void load(); onChanged(); }}
@@ -647,6 +732,15 @@ type AnimalProfileData = {
   weightHistory: Array<{ id: string; recordedOn: string; weightGrams: number }>;
   notes: Array<{ id: string; category: string; title: string; body: string; pinned: number; createdBy: string; updatedAt: string }>;
   equipment: Array<{ id: string; category: string; name: string; brand: string | null; installedOn: string | null; inUseDays: number | null; scope: "animal" | "enclosure"; active: number }>;
+  lighting: Array<{
+    id: string; name: string; sourceName: string; sourceUrl: string; sourceVersion: string | null; plannedOn: string; mountingMode: string | null;
+    meshLossPercent: number | null; baskingHeight: number | null; heightUnit: string; targetUviMin: number | null; targetUviMax: number | null;
+    targetLuxMin: number | null; targetLuxMax: number | null; targetPowerDensityMin: number | null; targetPowerDensityMax: number | null;
+    planSheetName: string | null; notes: string | null; status: "plan-only" | "due" | "verified" | "review";
+    latestUvi: { value: number; unit: string; measuredAt: string } | null;
+    fixtures: Array<{ id: string; role: string; equipmentName: string; brand: string | null; model: string | null; quantity: number; positionCm: number | null; mountingHeightCm: number | null }>;
+    measurements: Array<{ id: string; metric: string; value: number; unit: string; measuredAt: string; position: string | null; instrument: string | null; measuredBy: string | null }>;
+  }>;
   schedules: Array<{ id: string; title: string; taskType: string; frequency: string; active: number }>;
   tasks: Array<{ id: string; title: string; dueDate: string; complete: number; completedBy: string | null }>;
   history: Array<{ id: string; title: string; taskType: string; occurredAt: string; completedBy: string; notes: string | null; voidedAt: string | null; voidReason: string | null; feederSpecies: string | null; feederSizeClass: string | null; feederWeightGrams: number | null }>;
@@ -787,6 +881,38 @@ export function AnimalProfile({ animalId, onClose }: { animalId: string; onClose
                     const age = equipmentAgeLabel(e.inUseDays);
                     return <div key={e.id}><b>{e.name}</b><small>{e.category}{e.brand ? ` · ${e.brand}` : ""} · {e.scope}{age ? ` · ${age}` : " · install date unknown"}</small></div>;
                   })}
+                </div>
+              </section>
+            )}
+
+            {data.lighting.length > 0 && (
+              <section className="profile-section">
+                <h3>Lighting</h3>
+                <div className="lighting-plans">
+                  {data.lighting.map((plan) => (
+                    <article className="lighting-plan" key={plan.id}>
+                      <header>
+                        <div><b>{plan.name}</b><small>{plan.sourceName}{plan.sourceVersion ? ` · ${plan.sourceVersion}` : ""} · planned {plan.plannedOn}</small></div>
+                        <span className={`lighting-status ${plan.status}`}>{plan.status === "verified" ? "Verified" : plan.status === "review" ? "Needs review" : plan.status === "due" ? "Measure now" : "Plan only"}</span>
+                      </header>
+                      <div className="lighting-targets">
+                        {(plan.targetUviMin != null || plan.targetUviMax != null) && <span><small>Target UVI</small><b>{plan.targetUviMin ?? "—"}–{plan.targetUviMax ?? "—"}</b></span>}
+                        {plan.latestUvi && <span><small>Latest UVI</small><b>{plan.latestUvi.value}</b></span>}
+                        {(plan.targetLuxMin != null || plan.targetLuxMax != null) && <span><small>Target lux</small><b>{plan.targetLuxMin?.toLocaleString() ?? "—"}–{plan.targetLuxMax?.toLocaleString() ?? "—"}</b></span>}
+                        {(plan.targetPowerDensityMin != null || plan.targetPowerDensityMax != null) && <span><small>Power density</small><b>{plan.targetPowerDensityMin ?? "—"}–{plan.targetPowerDensityMax ?? "—"} W/m²</b></span>}
+                        {plan.baskingHeight != null && <span><small>Basking distance</small><b>{plan.baskingHeight} {plan.heightUnit}</b></span>}
+                        {plan.meshLossPercent != null && <span><small>Mesh loss</small><b>{plan.meshLossPercent}%</b></span>}
+                        {plan.mountingMode && <span><small>Mounting</small><b>{plan.mountingMode}</b></span>}
+                      </div>
+                      {plan.fixtures.length > 0 && <div className="lighting-fixtures">{plan.fixtures.map((fixture) => <span key={fixture.id}><b>{fixture.equipmentName}</b><small>{fixture.role}{fixture.quantity > 1 ? ` × ${fixture.quantity}` : ""}{fixture.positionCm != null ? ` · ${fixture.positionCm} cm position` : ""}</small></span>)}</div>}
+                      <div className="lighting-actions">
+                        <a href={plan.sourceUrl || "https://lightmyreptile.com/"} target="_blank" rel="noreferrer">Open planner ↗</a>
+                        {plan.planSheetName && <a href={`/api/lighting/plans/${encodeURIComponent(plan.id)}/sheet`} target="_blank" rel="noreferrer">Open plan sheet ↗</a>}
+                      </div>
+                      {plan.notes && <p>{plan.notes}</p>}
+                      {plan.measurements.length > 0 && <details><summary>Measurement history · {plan.measurements.length}</summary><div className="profile-rows">{plan.measurements.slice(0, 12).map((measurement) => <div key={measurement.id}><b>{measurement.value} {measurement.unit}</b><small>{measurement.metric} · {relativeTime(measurement.measuredAt)}{measurement.position ? ` · ${measurement.position}` : ""}</small></div>)}</div></details>}
+                    </article>
+                  ))}
                 </div>
               </section>
             )}
