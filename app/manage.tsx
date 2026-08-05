@@ -1149,6 +1149,8 @@ type ForecastAlert = { code: string; severity: "warning" | "info"; animalId?: st
 export type FeederForecastData = {
   generatedFor: string; horizonDays: number; throughDate: string; orderNeeded: boolean;
   nextFeedings: ForecastEvent[]; events: ForecastEvent[]; alerts: ForecastAlert[];
+  // Set while an order has been marked as placed and hasn't arrived yet.
+  reorderAcknowledged?: boolean;
 };
 
 const forecastStatusLabel: Record<ForecastEvent["status"], string> = {

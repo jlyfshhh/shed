@@ -144,7 +144,8 @@ export default function HusbandryApp() {
   const [profileId, setProfileId] = useState<string | null>(null);
   const [forecastOpen, setForecastOpen] = useState(false);
   const [bulkFeedersOpen, setBulkFeedersOpen] = useState(false);
-  const [forecast, setForecast] = useState<{ orderNeeded: boolean; warnings: number } | null>(null);
+  const [forecast, setForecast] = useState<{ orderNeeded: boolean; warnings: number; reorderAcknowledged?: boolean } | null>(null);
+  const [orderBusy, setOrderBusy] = useState(false);
 
   // The pre-paint script owns the attribute; read it rather than duplicating it
   // in state, so there is no hydration mismatch and no flash.
@@ -156,6 +157,21 @@ export default function HusbandryApp() {
     else document.documentElement.removeAttribute("data-theme");
     try { localStorage.setItem("shed-theme", next ? "dark" : "light"); } catch { /* private browsing */ }
     window.dispatchEvent(new Event(THEME_EVENT));
+  };
+
+  // Quiet the reorder nudge until the shipment lands (or 30 days pass).
+  const markOrderPlaced = async () => {
+    setOrderBusy(true);
+    try {
+      const response = await fetch("/api/feeders/order", { method: "POST" });
+      if (!response.ok) throw new Error("Couldn’t save that.");
+      await loadForecast();
+      notify("Feeder order noted — the reminder is back when it arrives.");
+    } catch (orderError) {
+      notify(orderError instanceof Error ? orderError.message : "Couldn’t save that.");
+    } finally {
+      setOrderBusy(false);
+    }
   };
 
   const notify = (message: string) => {
@@ -217,7 +233,11 @@ export default function HusbandryApp() {
       const response = await fetch("/api/feeders/forecast?horizon=30", { cache: "no-store" });
       if (!response.ok) { setForecast(null); return; }
       const payload = (await response.json()) as FeederForecastData;
-      setForecast({ orderNeeded: payload.orderNeeded, warnings: payload.alerts.filter((alert) => alert.severity === "warning").length });
+      setForecast({
+        orderNeeded: payload.orderNeeded,
+        warnings: payload.alerts.filter((alert) => alert.severity === "warning").length,
+        reorderAcknowledged: payload.reorderAcknowledged ?? false,
+      });
     } catch {
       setForecast(null);
     }
@@ -677,15 +697,22 @@ export default function HusbandryApp() {
               <b>{completionPercent}%</b>
             </article>
 
-            {(signedIn || !authRequired) && forecast && (forecast.orderNeeded || forecast.warnings > 0) && (
-              <button className="feeder-nudge" onClick={() => setForecastOpen(true)}>
-                <span className="feeder-nudge-icon" aria-hidden="true">⊘</span>
-                <div>
-                  <b>{forecast.orderNeeded ? "Reorder feeders soon" : "Feeder forecast needs a look"}</b>
-                  <small>{forecast.warnings > 0 ? `${forecast.warnings} thing${forecast.warnings === 1 ? "" : "s"} need attention` : "Some upcoming feeds aren’t covered"} · tap to review</small>
-                </div>
-                <span className="feeder-nudge-go" aria-hidden="true">›</span>
-              </button>
+            {(signedIn || !authRequired) && forecast && !forecast.reorderAcknowledged && (forecast.orderNeeded || forecast.warnings > 0) && (
+              <div className="feeder-nudge">
+                <button className="feeder-nudge-main" onClick={() => setForecastOpen(true)}>
+                  <span className="feeder-nudge-icon" aria-hidden="true">⊘</span>
+                  <div>
+                    <b>{forecast.orderNeeded ? "Reorder feeders soon" : "Feeder forecast needs a look"}</b>
+                    <small>{forecast.warnings > 0 ? `${forecast.warnings} thing${forecast.warnings === 1 ? "" : "s"} need attention` : "Some upcoming feeds aren’t covered"} · tap to review</small>
+                  </div>
+                  <span className="feeder-nudge-go" aria-hidden="true">›</span>
+                </button>
+                {isOwner && forecast.orderNeeded && (
+                  <button className="feeder-nudge-done" disabled={orderBusy} onClick={markOrderPlaced}>
+                    {orderBusy ? "Saving…" : "I’ve placed an order"}
+                  </button>
+                )}
+              </div>
             )}
 
             {overdue.length > 0 && (

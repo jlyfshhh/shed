@@ -58,7 +58,7 @@ export async function loadFeederForecast(
     },
   }));
 
-  return buildFeederForecast({
+  const forecast = buildFeederForecast({
     today,
     horizonDays,
     animals: animals.results,
@@ -67,6 +67,31 @@ export async function loadFeederForecast(
     profiles,
     excludedFeedings: completedFeedings.results.map((row) => `${row.scheduleId}:${row.dueDate}`),
   });
+
+  return { ...forecast, reorderAcknowledged: await reorderAcknowledged(db) };
+}
+
+/**
+ * True while the keeper has said an order is placed and it hasn't shown up yet.
+ * Clears itself when stock arrives (a feeder added after the order was marked)
+ * or after 30 days, so a forgotten or cancelled order starts nagging again.
+ */
+async function reorderAcknowledged(db: D1Database) {
+  const setting = await db
+    .prepare("SELECT value FROM app_settings WHERE key = 'feeder_order_placed_at'")
+    .first<{ value: string }>();
+  const placedAt = setting?.value;
+  if (!placedAt) return false;
+
+  const placed = Date.parse(placedAt);
+  if (!Number.isFinite(placed)) return false;
+  if (Date.now() - placed > 30 * 24 * 60 * 60 * 1000) return false;
+
+  const arrival = await db
+    .prepare("SELECT COUNT(*) AS n FROM feeder_inventory WHERE added_on > ?")
+    .bind(placedAt.slice(0, 10))
+    .first<{ n: number }>();
+  return (arrival?.n ?? 0) === 0;
 }
 
 function addDays(date: string, days: number) {
