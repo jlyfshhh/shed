@@ -68,14 +68,16 @@ Click an animal on **Animals** to see its profile, including care plans, equipme
 
 ### Add a Light My Reptile plan
 
-1. Build and finish the enclosure configuration at [Light My Reptile](https://lightmyreptile.com/), then choose **Link to this exact setup**.
-2. In Shed, open **Manage → Lighting plans → Import exact setup**. Paste the link, choose the enclosure, and preview it.
+1. In Shed, open **Manage → Lighting plans → + Import lighting setup**. If you have not built the setup yet, the sheet opens Light My Reptile in a new tab and walks you through it.
+2. At [Light My Reptile](https://lightmyreptile.com/), match the enclosure and lamps, tap **FINISH**, choose **Link to this exact setup**, and copy the link. Back in Shed, paste it, choose the enclosure, and preview it.
 3. Review every physical fixture. Current shared links use compact catalog references rather than readable product names, so match each fixture to equipment already in Shed or confirm its brand, model, and installation date. Shed will create and link new equipment records for you.
 4. Optionally copy the modeled UVI, lux, power-density result, target ranges, and simulator version shown by Light My Reptile. These calculated results are not embedded in the share link itself.
 5. Import the reviewed setup. Shed stores a permanent configuration snapshot and the original link. The animal profile’s **View or edit exact setup** button returns to that precise configuration later.
 6. Record real UVI, lux, surface-temperature, or power-density readings under **Lighting measurements**. Shed shows whether the latest UVI is verified, outside the target, or needs remeasurement.
 
-The imported snapshot stays unchanged even if Light My Reptile’s catalog or calculations are updated later. Opening the original link shows the current live planner, while Shed retains what was reviewed at import time. You can still create a lighting plan manually or attach an exported PDF/image when a share link is unavailable.
+The imported snapshot stays unchanged even if Light My Reptile’s catalog or calculations are updated later. Opening the original link shows the current live planner, while Shed retains what was reviewed at import time.
+
+Importing a share link is the only way to create a lighting plan, so every plan traces back to a specific reviewed configuration. Once a plan exists you can edit its details, attach a plan sheet, and record measurements against it.
 
 Changing a lighting plan, its linked fixtures, or lighting equipment adds a **Verify lighting** task for the enclosure’s residents. Recording a measurement completes that verification task. Simulated values are planning guidance; confirm important targets with appropriate meters in the completed enclosure.
 

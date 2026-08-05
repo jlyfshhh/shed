@@ -792,8 +792,11 @@ export function ManageConsole({ onClose, onChanged, toast, initialResource = "an
           <h2>{def.plural}</h2>
           <div>
             <label className="archived-toggle"><input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} />Show archived</label>
-            {active === "lightingPlan" && <button onClick={() => setImportingLighting(true)}>Import exact setup</button>}
-            <button className="primary" onClick={() => setEditing({ def, row: null })}>+ New {def.singular}</button>
+            {/* Lighting plans only ever come from a Light My Reptile import, so
+                that is the single way to add one. Existing plans stay editable. */}
+            {active === "lightingPlan"
+              ? <button className="primary" onClick={() => setImportingLighting(true)}>+ Import lighting setup</button>
+              : <button className="primary" onClick={() => setEditing({ def, row: null })}>+ New {def.singular}</button>}
           </div>
         </div>
 
@@ -801,7 +804,7 @@ export function ManageConsole({ onClose, onChanged, toast, initialResource = "an
         {!catalog ? (
           <p className="member-note">Loading…</p>
         ) : rows.length === 0 ? (
-          <div className="empty-card"><span>+</span><h3>No {def.plural.toLowerCase()} yet</h3><p>Add your first {def.singular} to get started.</p></div>
+          <div className="empty-card"><span>+</span><h3>No {def.plural.toLowerCase()} yet</h3><p>{active === "lightingPlan" ? "Import a Light My Reptile exact-setup link to add your first one." : `Add your first ${def.singular} to get started.`}</p></div>
         ) : (
           <div className="manage-list">
             {rows.map(({ row, meta }) => (
