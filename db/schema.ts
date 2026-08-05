@@ -63,6 +63,7 @@ export const animalNotes = sqliteTable("animal_notes", {
 export const equipment = sqliteTable("equipment", {
   id: text("id").primaryKey(), animalId: text("animal_id"), enclosureId: text("enclosure_id"), category: text("category").notNull().default("other"),
   name: text("name").notNull(), brand: text("brand"), model: text("model"), installedOn: text("installed_on"), replaceOn: text("replace_on"),
+  sourceName: text("source_name"), sourceRef: text("source_ref"),
   active: integer("active", { mode: "boolean" }).notNull().default(true), notes: text("notes"), createdAt: text("created_at").notNull(), updatedAt: text("updated_at").notNull(),
 });
 
@@ -89,6 +90,9 @@ export const lightingPlans = sqliteTable("lighting_plans", {
   planSheetKey: text("plan_sheet_key"),
   planSheetName: text("plan_sheet_name"),
   planSheetType: text("plan_sheet_type"),
+  sourceSnapshotJson: text("source_snapshot_json"),
+  importStatus: text("import_status"),
+  importedAt: text("imported_at"),
   notes: text("notes"),
   active: integer("active", { mode: "boolean" }).notNull().default(true),
   createdAt: text("created_at").notNull(),
@@ -105,6 +109,7 @@ export const lightingPlanFixtures = sqliteTable("lighting_plan_fixtures", {
   positionCm: real("position_cm"),
   mountingHeightCm: real("mounting_height_cm"),
   quantity: integer("quantity").notNull().default(1),
+  sourceRef: text("source_ref"),
   notes: text("notes"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),

@@ -36,6 +36,7 @@ const configs: Record<Resource, Config> = {
   equipment: { table: "equipment", required: ["name"], softDelete: true, fields: {
     animalId: { column: "animal_id" }, enclosureId: { column: "enclosure_id" }, category: { column: "category" }, name: { column: "name" }, brand: { column: "brand" }, model: { column: "model" },
     installedOn: { column: "installed_on", kind: "date" }, replaceOn: { column: "replace_on", kind: "date" }, active: { column: "active", kind: "boolean" }, notes: { column: "notes" },
+    sourceName: { column: "source_name" }, sourceRef: { column: "source_ref" },
     createdAt: { column: "created_at" }, updatedAt: { column: "updated_at" },
   } },
   weight: { table: "weight_events", required: ["animalId", "recordedOn", "weightGrams"], fields: {
@@ -57,12 +58,13 @@ const configs: Record<Resource, Config> = {
     meshLossPercent: { column: "mesh_loss_percent", kind: "number" }, baskingHeight: { column: "basking_height", kind: "number" }, heightUnit: { column: "height_unit" },
     targetUviMin: { column: "target_uvi_min", kind: "number" }, targetUviMax: { column: "target_uvi_max", kind: "number" }, targetLuxMin: { column: "target_lux_min", kind: "number" },
     targetLuxMax: { column: "target_lux_max", kind: "number" }, targetPowerDensityMin: { column: "target_power_density_min", kind: "number" }, targetPowerDensityMax: { column: "target_power_density_max", kind: "number" },
-    planSheetKey: { column: "plan_sheet_key" }, planSheetName: { column: "plan_sheet_name" }, planSheetType: { column: "plan_sheet_type" }, notes: { column: "notes" },
+    planSheetKey: { column: "plan_sheet_key" }, planSheetName: { column: "plan_sheet_name" }, planSheetType: { column: "plan_sheet_type" }, sourceSnapshotJson: { column: "source_snapshot_json" },
+    importStatus: { column: "import_status" }, importedAt: { column: "imported_at", kind: "datetime" }, notes: { column: "notes" },
     active: { column: "active", kind: "boolean" }, createdAt: { column: "created_at" }, updatedAt: { column: "updated_at" },
   } },
   lightingFixture: { table: "lighting_plan_fixtures", required: ["planId", "equipmentId", "role"], fields: {
     planId: { column: "plan_id" }, equipmentId: { column: "equipment_id" }, role: { column: "role" }, positionCm: { column: "position_cm", kind: "number" },
-    mountingHeightCm: { column: "mounting_height_cm", kind: "number" }, quantity: { column: "quantity", kind: "number" }, notes: { column: "notes" }, createdAt: { column: "created_at" }, updatedAt: { column: "updated_at" },
+    mountingHeightCm: { column: "mounting_height_cm", kind: "number" }, quantity: { column: "quantity", kind: "number" }, sourceRef: { column: "source_ref" }, notes: { column: "notes" }, createdAt: { column: "created_at" }, updatedAt: { column: "updated_at" },
   } },
   lightingMeasurement: { table: "lighting_measurements", required: ["planId", "metric", "value", "unit", "measuredAt"], fields: {
     planId: { column: "plan_id" }, metric: { column: "metric" }, value: { column: "value", kind: "number" }, unit: { column: "unit" }, measuredAt: { column: "measured_at", kind: "datetime" },
@@ -126,6 +128,7 @@ export async function PATCH(request: Request) {
     const data = { ...(payload.data ?? {}) };
     const now = new Date().toISOString();
     if (["animal", "enclosure", "schedule", "note", "equipment", "lightingPlan", "lightingFixture"].includes(resource)) data.updatedAt = now;
+    if (resource === "lightingPlan" && existing.import_status && !Object.hasOwn(data, "importStatus")) data.importStatus = "modified";
     if (resource === "event") {
       await db.prepare("INSERT INTO husbandry_event_revisions (id, event_id, changed_at, changed_by_member_id, changed_by_name, previous_json) VALUES (?, ?, ?, ?, ?, ?)")
         .bind(crypto.randomUUID(), id, now, auth.member!.id, auth.member!.displayName, JSON.stringify(existing)).run();

@@ -8,8 +8,8 @@ import {
   remapMemberReferences,
 } from "../lib/portable-backup.ts";
 
-test("schema 11 carries feeders, allowance, lighting, payouts, and care-baseline data", () => {
-  assert.equal(BACKUP_SCHEMA_VERSION, 11);
+test("schema 12 carries feeders, allowance, lighting imports, payouts, and care-baseline data", () => {
+  assert.equal(BACKUP_SCHEMA_VERSION, 12);
   assert.ok(PORTABLE_RESOURCES.careSchedules.columns.includes("prey_size_class"));
   assert.ok(PORTABLE_RESOURCES.careSchedules.columns.includes("reward_cents"));
   assert.ok(PORTABLE_RESOURCES.careTasks.columns.includes("missed_at"));
@@ -18,7 +18,10 @@ test("schema 11 carries feeders, allowance, lighting, payouts, and care-baseline
     "id", "member_id", "amount_cents", "note", "paid_at", "paid_by_member_id", "paid_by_name",
   ]);
   assert.ok(PORTABLE_RESOURCES.lightingPlans.columns.includes("plan_sheet_key"));
+  assert.ok(PORTABLE_RESOURCES.lightingPlans.columns.includes("source_snapshot_json"));
+  assert.ok(PORTABLE_RESOURCES.equipment.columns.includes("source_ref"));
   assert.ok(PORTABLE_RESOURCES.lightingPlanFixtures.columns.includes("equipment_id"));
+  assert.ok(PORTABLE_RESOURCES.lightingPlanFixtures.columns.includes("source_ref"));
   assert.ok(PORTABLE_RESOURCES.lightingMeasurements.columns.includes("measured_by_member_id"));
   assert.deepEqual(PORTABLE_APP_SETTING_KEYS, ["default_reward_cents", "care_start_date"]);
 });

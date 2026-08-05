@@ -30,6 +30,15 @@ export type SetupSummary = {
   keeperCount: number;
 };
 type CatalogKey = keyof Catalog;
+type LightingImportFixture = {
+  fixtureKey: string; sourceRef: string; sourceRefKind: "catalog-id" | "catalog-hash"; role: "uvb" | "heat" | "daylight";
+  enabled: boolean; positionCm: number; mountingMode: string; cageEnabled: boolean; cageBlockagePercent: number;
+};
+type LightingImportPreview = {
+  formatVersion: number; sourceUrl: string; unitSystem: "imperial" | "metric"; mountingMode: string; lightingLevel: string;
+  enclosure: { widthCm: number; depthCm: number; heightCm: number }; baskingDistanceCm: number; meshBlockagePercent: number;
+  animalName?: string; fixtures: LightingImportFixture[];
+};
 
 const str = (value: unknown): string => (value === null || value === undefined ? "" : String(value));
 const bool = (value: unknown): boolean => value === 1 || value === true || value === "1";
@@ -600,6 +609,95 @@ export function GettingStartedGuide({ summary, onOpenManager, onClose, onOpenHou
   );
 }
 
+function LightingImportSheet({ catalog, onClose, onSaved }: { catalog: Catalog; onClose: () => void; onSaved: (message: string) => void }) {
+  const [sourceUrl, setSourceUrl] = useState("");
+  const [enclosureId, setEnclosureId] = useState("");
+  const [planName, setPlanName] = useState("");
+  const [species, setSpecies] = useState("");
+  const [plannedOn, setPlannedOn] = useState(() => new Date().toISOString().slice(0, 10));
+  const [preview, setPreview] = useState<LightingImportPreview | null>(null);
+  const [warnings, setWarnings] = useState<string[]>([]);
+  const [fixtureValues, setFixtureValues] = useState<Record<string, { equipmentId: string; name: string; brand: string; model: string; installedOn: string; skip: boolean }>>({});
+  const [derived, setDerived] = useState<Record<string, string>>({});
+  const [updateDimensions, setUpdateDimensions] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const selectedEnclosure = catalog.enclosures.find((item) => str(item.id) === enclosureId);
+  const enclosureAnimalIds = new Set(catalog.animals.filter((animal) => str(animal.enclosure_id) === enclosureId).map((animal) => str(animal.id)));
+  const availableEquipment = catalog.equipment.filter((item) => bool(item.active) && (
+    str(item.enclosure_id) === enclosureId || enclosureAnimalIds.has(str(item.animal_id)) || (!item.enclosure_id && !item.animal_id)
+  ));
+  const setFixture = (key: string, field: string, value: string | boolean) => setFixtureValues((current) => ({
+    ...current,
+    [key]: { ...(current[key] ?? { equipmentId: "", name: "", brand: "", model: "", installedOn: "", skip: false }), [field]: value },
+  }));
+
+  const loadPreview = async () => {
+    setBusy(true); setError(null); setPreview(null);
+    try {
+      const response = await fetch("/api/lighting/import", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "preview", sourceUrl, enclosureId: enclosureId || undefined }) });
+      const payload = await response.json() as { preview?: LightingImportPreview; warnings?: string[]; error?: string };
+      if (!response.ok || !payload.preview) throw new Error(payload.error ?? "Couldn’t read this shared setup.");
+      setPreview(payload.preview); setWarnings(payload.warnings ?? []);
+      if (!planName) setPlanName(`${selectedEnclosure ? str(selectedEnclosure.name) : payload.preview.animalName || "Enclosure"} lighting plan`);
+      const next: typeof fixtureValues = {};
+      for (const fixture of payload.preview.fixtures.filter((item) => item.enabled)) next[fixture.fixtureKey] = { equipmentId: "", name: "", brand: "", model: "", installedOn: "", skip: false };
+      setFixtureValues(next);
+    } catch (previewError) { setError(previewError instanceof Error ? previewError.message : "Couldn’t read this shared setup."); }
+    finally { setBusy(false); }
+  };
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!preview || !enclosureId || !planName.trim()) { setError("Preview the link, then choose an enclosure and plan name."); return; }
+    const fixtures = preview.fixtures.filter((fixture) => fixture.enabled).map((fixture) => ({ fixtureKey: fixture.fixtureKey, ...fixtureValues[fixture.fixtureKey] }));
+    for (const fixture of fixtures) if (!fixture.skip && !fixture.equipmentId && !fixture.name.trim()) { setError(`Name or match the ${fixture.fixtureKey} fixture.`); return; }
+    const derivedPayload = Object.fromEntries(Object.entries(derived).map(([key, value]) => [key, value === "" ? undefined : key === "simulatorVersion" ? value : Number(value)]));
+    setBusy(true); setError(null);
+    try {
+      const response = await fetch("/api/lighting/import", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "import", sourceUrl, enclosureId, planName: planName.trim(), species: species.trim() || undefined, plannedOn, updateEnclosureDimensions: updateDimensions, fixtures, derived: derivedPayload }) });
+      const payload = await response.json() as { imported?: boolean; equipmentCount?: number; error?: string };
+      if (!response.ok || !payload.imported) throw new Error(payload.error ?? "Couldn’t import this setup.");
+      onSaved(`Imported the lighting plan and linked ${payload.equipmentCount ?? 0} fixtures.`);
+    } catch (importError) { setError(importError instanceof Error ? importError.message : "Couldn’t import this setup."); }
+    finally { setBusy(false); }
+  };
+
+  const inch = (cm: number) => Math.round(cm / 2.54 * 10) / 10;
+  return (
+    <div className="sheet-backdrop" role="dialog" aria-modal="true" aria-label="Import Light My Reptile setup" onClick={onClose}>
+      <div className="sheet lighting-import-sheet" onClick={(event) => event.stopPropagation()}>
+        <header className="sheet-head"><div><h2>Import lighting setup</h2><small>From a Light My Reptile exact-setup link</small></div><button className="sheet-close" onClick={onClose} aria-label="Close">✕</button></header>
+        <form className="sheet-body" onSubmit={submit}>
+          <label className="field field-wide"><span>Exact setup link *</span><input type="url" value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="https://lightmyreptile.com/#s=…" required /><small>In Light My Reptile, finish the setup and choose “Link to this exact setup.”</small></label>
+          <label className="field"><span>Enclosure *</span><select value={enclosureId} onChange={(event) => { setEnclosureId(event.target.value); setPreview(null); }}><option value="">Select…</option>{catalog.enclosures.filter((item) => bool(item.active)).map((item) => <option key={str(item.id)} value={str(item.id)}>{str(item.name)}</option>)}</select></label>
+          <div className="field preview-action"><span>Read configuration</span><button type="button" disabled={busy || !sourceUrl.trim()} onClick={() => void loadPreview()}>{busy && !preview ? "Reading…" : "Preview shared setup"}</button></div>
+          {preview && <div className="import-preview field-wide">
+            <header><div><b>{preview.enclosure.widthCm} × {preview.enclosure.depthCm} × {preview.enclosure.heightCm} cm</b><small>{inch(preview.enclosure.widthCm)} × {inch(preview.enclosure.depthCm)} × {inch(preview.enclosure.heightCm)} in · Level {preview.lightingLevel}</small></div><a href={preview.sourceUrl} target="_blank" rel="noreferrer">Open exact setup ↗</a></header>
+            <div><span><small>Mounting</small><b>{preview.mountingMode === "external" ? "Above mesh" : preview.mountingMode}</b></span><span><small>Mesh blockage</small><b>{preview.meshBlockagePercent}%</b></span><span><small>Basking distance</small><b>{inch(preview.baskingDistanceCm)} in</b></span><span><small>Share format</small><b>v{preview.formatVersion}</b></span></div>
+          </div>}
+          {warnings.length > 0 && <div className="import-warnings field-wide">{warnings.map((warning) => <p key={warning}>{warning}</p>)}</div>}
+          {preview && <>
+            <label className="field"><span>Plan name *</span><input value={planName} onChange={(event) => setPlanName(event.target.value)} required /></label>
+            <label className="field"><span>Species / community</span><input value={species} onChange={(event) => setSpecies(event.target.value)} /></label>
+            <label className="field"><span>Planned on</span><input type="date" value={plannedOn} onChange={(event) => setPlannedOn(event.target.value)} /></label>
+            <label className="field"><span>Simulator version</span><input value={derived.simulatorVersion ?? ""} onChange={(event) => setDerived((current) => ({ ...current, simulatorVersion: event.target.value }))} placeholder="e.g. v0.4.6" /></label>
+            <section className="fixture-review field-wide"><h3>Match installed equipment</h3><p>The link preserves exact catalog references, but current share links do not include readable product names. Open the setup above and confirm each physical fixture.</p>{preview.fixtures.filter((fixture) => fixture.enabled).map((fixture) => {
+              const value = fixtureValues[fixture.fixtureKey] ?? { equipmentId: "", name: "", brand: "", model: "", installedOn: "", skip: false };
+              return <article key={fixture.fixtureKey}><header><b>{fixture.role === "daylight" ? "LED / daylight" : fixture.role.toUpperCase()}</b><small>{fixture.positionCm} cm across · {fixture.sourceRef}</small></header><label><span>Use saved equipment</span><select value={value.equipmentId} onChange={(event) => setFixture(fixture.fixtureKey, "equipmentId", event.target.value)} disabled={value.skip}><option value="">Create a new equipment record</option>{availableEquipment.map((item) => <option key={str(item.id)} value={str(item.id)}>{str(item.name)}</option>)}</select></label>{!value.equipmentId && !value.skip && <><label><span>Product name *</span><input value={value.name} onChange={(event) => setFixture(fixture.fixtureKey, "name", event.target.value)} /></label><label><span>Brand</span><input value={value.brand} onChange={(event) => setFixture(fixture.fixtureKey, "brand", event.target.value)} /></label><label><span>Model</span><input value={value.model} onChange={(event) => setFixture(fixture.fixtureKey, "model", event.target.value)} /></label><label><span>Installed on</span><input type="date" value={value.installedOn} onChange={(event) => setFixture(fixture.fixtureKey, "installedOn", event.target.value)} /></label></>}<label className="skip-fixture"><input type="checkbox" checked={value.skip} onChange={(event) => setFixture(fixture.fixtureKey, "skip", event.target.checked)} /> Don’t add this fixture</label></article>;
+            })}</section>
+            <details className="derived-review field-wide"><summary>Record the modeled results shown by Light My Reptile (optional)</summary><div>{[["modeledUvi", "Modeled UVI"], ["targetUviMin", "Target UVI minimum"], ["targetUviMax", "Target UVI maximum"], ["modeledLux", "Modeled lux"], ["targetLuxMin", "Target lux minimum"], ["targetLuxMax", "Target lux maximum"], ["modeledPowerDensity", "Modeled W/m²"], ["targetPowerDensityMin", "Target W/m² minimum"], ["targetPowerDensityMax", "Target W/m² maximum"]].map(([key, label]) => <label key={key}><span>{label}</span><input type="number" step="0.01" min="0" value={derived[key] ?? ""} onChange={(event) => setDerived((current) => ({ ...current, [key]: event.target.value }))} /></label>)}</div></details>
+            <label className="field field-wide remove-file"><input type="checkbox" checked={updateDimensions} onChange={(event) => setUpdateDimensions(event.target.checked)} /> Update the saved enclosure dimensions to match this setup</label>
+          </>}
+          {error && <p className="form-error field-wide" role="alert">{error}</p>}
+          <div className="sheet-actions field-wide"><button type="button" className="ghost" onClick={onClose}>Cancel</button>{preview && <button disabled={busy}>{busy ? "Importing…" : "Import reviewed setup"}</button>}</div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ── Management console ─────────────────────────────────────────────────────────
 export function ManageConsole({ onClose, onChanged, toast, initialResource = "animal" }: {
   onClose: () => void;
@@ -611,6 +709,7 @@ export function ManageConsole({ onClose, onChanged, toast, initialResource = "an
   const [error, setError] = useState<string | null>(null);
   const [active, setActive] = useState<ResourceKey>(initialResource);
   const [editing, setEditing] = useState<{ def: ResourceDef; row: Row | null } | null>(null);
+  const [importingLighting, setImportingLighting] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -684,6 +783,7 @@ export function ManageConsole({ onClose, onChanged, toast, initialResource = "an
           <h2>{def.plural}</h2>
           <div>
             <label className="archived-toggle"><input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} />Show archived</label>
+            {active === "lightingPlan" && <button onClick={() => setImportingLighting(true)}>Import exact setup</button>}
             <button className="primary" onClick={() => setEditing({ def, row: null })}>+ New {def.singular}</button>
           </div>
         </div>
@@ -720,6 +820,7 @@ export function ManageConsole({ onClose, onChanged, toast, initialResource = "an
           onSaved={(message) => { setEditing(null); toast(message); void load(); onChanged(); }}
         />
       )}
+      {importingLighting && catalog && <LightingImportSheet catalog={catalog} onClose={() => setImportingLighting(false)} onSaved={(message) => { setImportingLighting(false); toast(message); void load(); onChanged(); }} />}
     </div>
   );
 }
@@ -736,7 +837,7 @@ type AnimalProfileData = {
     id: string; name: string; sourceName: string; sourceUrl: string; sourceVersion: string | null; plannedOn: string; mountingMode: string | null;
     meshLossPercent: number | null; baskingHeight: number | null; heightUnit: string; targetUviMin: number | null; targetUviMax: number | null;
     targetLuxMin: number | null; targetLuxMax: number | null; targetPowerDensityMin: number | null; targetPowerDensityMax: number | null;
-    planSheetName: string | null; notes: string | null; status: "plan-only" | "due" | "verified" | "review";
+    planSheetName: string | null; importStatus: string | null; importedAt: string | null; notes: string | null; status: "plan-only" | "due" | "verified" | "review";
     latestUvi: { value: number; unit: string; measuredAt: string } | null;
     fixtures: Array<{ id: string; role: string; equipmentName: string; brand: string | null; model: string | null; quantity: number; positionCm: number | null; mountingHeightCm: number | null }>;
     measurements: Array<{ id: string; metric: string; value: number; unit: string; measuredAt: string; position: string | null; instrument: string | null; measuredBy: string | null }>;
@@ -892,7 +993,7 @@ export function AnimalProfile({ animalId, onClose }: { animalId: string; onClose
                   {data.lighting.map((plan) => (
                     <article className="lighting-plan" key={plan.id}>
                       <header>
-                        <div><b>{plan.name}</b><small>{plan.sourceName}{plan.sourceVersion ? ` · ${plan.sourceVersion}` : ""} · planned {plan.plannedOn}</small></div>
+                        <div><b>{plan.name}</b><small>{plan.sourceName}{plan.sourceVersion ? ` · ${plan.sourceVersion}` : ""}{plan.importStatus === "reviewed" ? " · imported & reviewed" : plan.importStatus === "modified" ? " · imported snapshot + local changes" : ""} · planned {plan.plannedOn}</small></div>
                         <span className={`lighting-status ${plan.status}`}>{plan.status === "verified" ? "Verified" : plan.status === "review" ? "Needs review" : plan.status === "due" ? "Measure now" : "Plan only"}</span>
                       </header>
                       <div className="lighting-targets">
@@ -906,7 +1007,7 @@ export function AnimalProfile({ animalId, onClose }: { animalId: string; onClose
                       </div>
                       {plan.fixtures.length > 0 && <div className="lighting-fixtures">{plan.fixtures.map((fixture) => <span key={fixture.id}><b>{fixture.equipmentName}</b><small>{fixture.role}{fixture.quantity > 1 ? ` × ${fixture.quantity}` : ""}{fixture.positionCm != null ? ` · ${fixture.positionCm} cm position` : ""}</small></span>)}</div>}
                       <div className="lighting-actions">
-                        <a href={plan.sourceUrl || "https://lightmyreptile.com/"} target="_blank" rel="noreferrer">Open planner ↗</a>
+                        <a href={plan.sourceUrl || "https://lightmyreptile.com/"} target="_blank" rel="noreferrer">View or edit exact setup ↗</a>
                         {plan.planSheetName && <a href={`/api/lighting/plans/${encodeURIComponent(plan.id)}/sheet`} target="_blank" rel="noreferrer">Open plan sheet ↗</a>}
                       </div>
                       {plan.notes && <p>{plan.notes}</p>}

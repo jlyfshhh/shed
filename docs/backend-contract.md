@@ -80,6 +80,16 @@ are exposed so Shed and Clarity can deep-link to one another with
 
 Active lighting plans for the animal's enclosure are returned in `lighting`. Each plan includes its fixture links, measurement history, latest UVI, and derived status (`plan-only`, `due`, `verified`, or `review`). Plan sheets are uploaded by the Owner at `POST /api/lighting/plans/:id/sheet`, viewed by signed-in household members with `GET`, and removed by the Owner with `DELETE`. Uploads accept PDF, PNG, JPEG, or WebP files up to 5 MB.
 
+### Light My Reptile exact-setup import
+
+`POST /api/lighting/import` is Owner-only and never contacts Light My Reptile. It validates and decodes the versioned data embedded after `#s=` in an HTTPS `lightmyreptile.com` share URL.
+
+- Preview: `{ action: "preview", sourceUrl, enclosureId? }` returns `{ preview, warnings }`. The preview contains enclosure dimensions, mounting and mesh configuration, lighting level, fixture positions, compact source references, and the preserved canonical URL.
+- Import: `{ action: "import", sourceUrl, enclosureId, planName, species?, plannedOn?, updateEnclosureDimensions?, fixtures, derived? }` creates the lighting plan, its immutable source snapshot, new equipment requested during review, and fixture links in one D1 batch. Each enabled preview fixture must have a matching `fixtureKey` resolution using either `equipmentId`, a new equipment `name` (plus optional brand/model/installedOn), or explicit `skip: true`.
+- Optional `derived` fields are `simulatorVersion`, `modeledUvi`, `modeledLux`, `modeledPowerDensity`, and the existing target min/max fields. They are stored in the snapshot; target ranges also populate the lighting-plan columns. Modeled results are not written as real meter measurements.
+
+Share versions 1–4 are supported. Binary share versions use catalog hashes, not readable product names, and do not contain the planner’s calculated result panels. The UI must therefore preserve the exact link, show a review step, and never guess a product name. `source_snapshot_json`, `import_status`, and `imported_at` are portable-backup fields. Imported equipment and fixture links retain `source_ref`. The profile’s source URL should be labeled **View or edit exact setup**, not as a generic website link.
+
 ## Sign-in throttling
 
 `POST /api/auth/login` allows up to 10 failed household-code attempts in 10 minutes,
@@ -89,7 +99,7 @@ single-container home-server deployment.
 
 ## Backups and restore
 
-- `GET /api/export?format=json` returns schema version 11 with all portable husbandry
+- `GET /api/export?format=json` returns schema version 12 with all portable husbandry
   tables, task rewards, payout history, missed-task state, and portable app settings
   (including the care baseline), lighting records, and base64-encoded plan-sheet attachments. Household access-code hashes are deliberately excluded.
 - `GET /api/export?format=csv` provides a flat open-format copy.

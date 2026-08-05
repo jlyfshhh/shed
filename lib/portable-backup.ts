@@ -1,4 +1,4 @@
-export const BACKUP_SCHEMA_VERSION = 11;
+export const BACKUP_SCHEMA_VERSION = 12;
 
 export const PORTABLE_APP_SETTING_KEYS = ["default_reward_cents", "care_start_date"] as const;
 
@@ -16,9 +16,9 @@ export const PORTABLE_RESOURCES = {
   husbandryEvents: { table: "husbandry_events", key: "id", columns: ["id", "task_id", "animal_id", "task_type", "title", "notes", "due_date", "occurred_at", "actor_role", "completed_by_member_id", "completed_by_name", "voided_at", "voided_by_member_id", "voided_by_name", "void_reason", "edited_at", "edited_by_member_id", "edited_by_name", "reward_cents"] },
   husbandryEventRevisions: { table: "husbandry_event_revisions", key: "id", columns: ["id", "event_id", "changed_at", "changed_by_member_id", "changed_by_name", "previous_json"] },
   animalNotes: { table: "animal_notes", key: "id", columns: ["id", "animal_id", "enclosure_id", "category", "title", "body", "pinned", "created_at", "updated_at", "created_by_member_id", "created_by_name"] },
-  equipment: { table: "equipment", key: "id", columns: ["id", "animal_id", "enclosure_id", "category", "name", "brand", "model", "installed_on", "replace_on", "active", "notes", "created_at", "updated_at"] },
-  lightingPlans: { table: "lighting_plans", key: "id", columns: ["id", "enclosure_id", "name", "species", "source_name", "source_url", "source_version", "planned_on", "reviewed_on", "mounting_mode", "mesh_loss_percent", "basking_height", "height_unit", "target_uvi_min", "target_uvi_max", "target_lux_min", "target_lux_max", "target_power_density_min", "target_power_density_max", "plan_sheet_key", "plan_sheet_name", "plan_sheet_type", "notes", "active", "created_at", "updated_at"] },
-  lightingPlanFixtures: { table: "lighting_plan_fixtures", key: "id", columns: ["id", "plan_id", "equipment_id", "role", "position_cm", "mounting_height_cm", "quantity", "notes", "created_at", "updated_at"] },
+  equipment: { table: "equipment", key: "id", columns: ["id", "animal_id", "enclosure_id", "category", "name", "brand", "model", "installed_on", "replace_on", "source_name", "source_ref", "active", "notes", "created_at", "updated_at"] },
+  lightingPlans: { table: "lighting_plans", key: "id", columns: ["id", "enclosure_id", "name", "species", "source_name", "source_url", "source_version", "planned_on", "reviewed_on", "mounting_mode", "mesh_loss_percent", "basking_height", "height_unit", "target_uvi_min", "target_uvi_max", "target_lux_min", "target_lux_max", "target_power_density_min", "target_power_density_max", "plan_sheet_key", "plan_sheet_name", "plan_sheet_type", "source_snapshot_json", "import_status", "imported_at", "notes", "active", "created_at", "updated_at"] },
+  lightingPlanFixtures: { table: "lighting_plan_fixtures", key: "id", columns: ["id", "plan_id", "equipment_id", "role", "position_cm", "mounting_height_cm", "quantity", "source_ref", "notes", "created_at", "updated_at"] },
   lightingMeasurements: { table: "lighting_measurements", key: "id", columns: ["id", "plan_id", "metric", "value", "unit", "measured_at", "position", "height", "height_unit", "instrument", "notes", "measured_by_member_id", "measured_by_name", "created_at"] },
   weightEvents: { table: "weight_events", key: "id", columns: ["id", "animal_id", "recorded_on", "weight_grams", "notes", "recorded_by_member_id", "recorded_by_name", "created_at"] },
   feederInventory: { table: "feeder_inventory", key: "id", columns: ["id", "prey_species", "size_class", "weight_grams", "status", "added_on", "consumed_at", "animal_id", "husbandry_event_id", "notes"] },

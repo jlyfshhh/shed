@@ -68,10 +68,14 @@ Click an animal on **Animals** to see its profile, including care plans, equipme
 
 ### Add a Light My Reptile plan
 
-1. Open **Manage → Lighting plans**, add the enclosure and targets, and attach the exported PDF or image from [Light My Reptile](https://lightmyreptile.com/).
-2. Add each physical lamp under **Equipment**, including its installation date.
-3. Open **Manage → Plan fixtures** and connect those equipment records to the plan with their roles and positions.
-4. Record UVI, lux, surface-temperature, or power-density readings under **Lighting measurements**. Shed shows whether the latest UVI is verified, outside the target, or needs remeasurement.
+1. Build and finish the enclosure configuration at [Light My Reptile](https://lightmyreptile.com/), then choose **Link to this exact setup**.
+2. In Shed, open **Manage → Lighting plans → Import exact setup**. Paste the link, choose the enclosure, and preview it.
+3. Review every physical fixture. Current shared links use compact catalog references rather than readable product names, so match each fixture to equipment already in Shed or confirm its brand, model, and installation date. Shed will create and link new equipment records for you.
+4. Optionally copy the modeled UVI, lux, power-density result, target ranges, and simulator version shown by Light My Reptile. These calculated results are not embedded in the share link itself.
+5. Import the reviewed setup. Shed stores a permanent configuration snapshot and the original link. The animal profile’s **View or edit exact setup** button returns to that precise configuration later.
+6. Record real UVI, lux, surface-temperature, or power-density readings under **Lighting measurements**. Shed shows whether the latest UVI is verified, outside the target, or needs remeasurement.
+
+The imported snapshot stays unchanged even if Light My Reptile’s catalog or calculations are updated later. Opening the original link shows the current live planner, while Shed retains what was reviewed at import time. You can still create a lighting plan manually or attach an exported PDF/image when a share link is unavailable.
 
 Changing a lighting plan, its linked fixtures, or lighting equipment adds a **Verify lighting** task for the enclosure’s residents. Recording a measurement completes that verification task. Simulated values are planning guidance; confirm important targets with appropriate meters in the completed enclosure.
 
