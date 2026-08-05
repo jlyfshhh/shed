@@ -951,6 +951,30 @@ export default function HusbandryApp() {
               </article>
             )}
 
+            <footer className="about-footer">
+              <div className="about-brand">
+                <span className="mini-mark" aria-hidden="true" />
+                <div>
+                  <b>Shed</b>
+                  <span>Good care shows.</span>
+                </div>
+              </div>
+              <nav className="about-links" aria-label="Project links">
+                <a href="https://jlyfshhh.github.io/shed/" target="_blank" rel="noreferrer">Project page</a>
+                <a href="https://github.com/jlyfshhh/shed" target="_blank" rel="noreferrer">GitHub</a>
+                <a href="https://ko-fi.com/jlyfshhh" target="_blank" rel="noreferrer">🦗 Buy the animals crickets</a>
+              </nav>
+              <p className="about-credit">
+                Lighting plans import from{" "}
+                <a href="https://lightmyreptile.com/" target="_blank" rel="noreferrer">Light My Reptile</a>, an
+                independent reptile lighting planner. Thanks to its developer for the share-link format.
+              </p>
+              <p className="about-fine">
+                Free and open-source under the MIT license. A recordkeeping aid, not veterinary advice — verify
+                husbandry targets against trusted sources.
+              </p>
+            </footer>
+
           </section>
         )}
 

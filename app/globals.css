@@ -458,6 +458,19 @@ button.primary:disabled { opacity: .6; cursor: wait; }
   .mobile-nav { position: fixed; display: grid; grid-template-columns: repeat(4,1fr); left: 10px; right: 10px; bottom: 10px; z-index: 10; padding: 7px; background: rgba(33,55,46,.96); border-radius: 19px; box-shadow: 0 15px 40px rgba(20,38,29,.24); backdrop-filter: blur(10px); }.mobile-nav button { border: 0; color: #aab9af; background: transparent; border-radius: 13px; padding: 7px 3px 6px; display: grid; justify-items: center; gap: 2px; cursor: pointer; }.mobile-nav button b { font-size: 17px; line-height: 1; }.mobile-nav button span { font-size: 10px; }.mobile-nav button.active { background: rgba(219,231,181,.14); color: white; }
 }
 
+/* ── About / project footer on the More page ── */
+.about-footer { margin-top: 46px; padding-top: 26px; border-top: 1px solid var(--line); text-align: center; }
+.about-brand { display: inline-flex; align-items: center; gap: 11px; text-align: left; }
+.about-brand .mini-mark { width: 30px; height: 30px; opacity: .9; }
+.about-brand b { display: block; font-size: 16px; letter-spacing: -.02em; }
+.about-brand span { display: block; color: var(--muted); font-size: 11px; letter-spacing: .07em; text-transform: uppercase; margin-top: 1px; }
+.about-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 10px; margin: 17px 0 0; }
+.about-links a { border: 1px solid var(--line); background: var(--paper); border-radius: 999px; padding: 8px 15px; color: var(--moss); font-size: 12.5px; font-weight: 800; text-decoration: none; }
+.about-links a:hover { border-color: #f3c991; background: #fff4df; }
+.about-credit { max-width: 470px; margin: 20px auto 0; color: var(--muted); font-size: 12.5px; line-height: 1.6; }
+.about-credit a { color: var(--moss); font-weight: 700; }
+.about-fine { max-width: 470px; margin: 11px auto 0; color: var(--muted); font-size: 11.5px; line-height: 1.55; opacity: .82; }
+
 /* Keep the floating dock, the toast, and the header clear of the iPhone
    home indicator and display cutout. With viewport-fit=cover the page now
    extends into those areas, so every fixed edge needs the inset added. */
