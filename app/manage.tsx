@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { equipmentAgeLabel } from "@/lib/equipment-age";
 
 // ── Shared types ─────────────────────────────────────────────────────────────
@@ -708,11 +708,14 @@ function LightingImportSheet({ catalog, onClose, onSaved }: { catalog: Catalog; 
 }
 
 // ── Management console ─────────────────────────────────────────────────────────
-export function ManageConsole({ onClose, onChanged, toast, initialResource = "animal" }: {
+export function ManageConsole({ onClose, onChanged, toast, initialResource = "animal", initialEditId }: {
   onClose: () => void;
   onChanged: () => void;
   toast: (message: string) => void;
   initialResource?: ResourceKey;
+  // Open straight into one record's editor, so "Edit" on a profile lands on the
+  // form instead of dropping the keeper on a list to hunt through.
+  initialEditId?: string;
 }) {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -721,12 +724,23 @@ export function ManageConsole({ onClose, onChanged, toast, initialResource = "an
   const [importingLighting, setImportingLighting] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const jumped = useRef(false);
 
   const load = async () => {
     try {
       const response = await fetch("/api/manage", { cache: "no-store" });
       if (!response.ok) throw new Error("Couldn’t load your records.");
-      setCatalog((await response.json()) as Catalog);
+      const next = (await response.json()) as Catalog;
+      setCatalog(next);
+      // First load only: open straight into the record the caller asked to edit.
+      if (initialEditId && !jumped.current) {
+        const target = resourceDefs.find((entry) => entry.key === initialResource);
+        const row = target && next[target.catalog].find((entry) => str(entry.id) === initialEditId);
+        if (target && row) {
+          jumped.current = true;
+          setEditing({ def: target, row });
+        }
+      }
       setError(null);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Couldn’t load your records.");
@@ -739,6 +753,7 @@ export function ManageConsole({ onClose, onChanged, toast, initialResource = "an
   }, []);
 
   const def = resourceDefs.find((entry) => entry.key === active)!;
+
   const rows = useMemo(() => {
     if (!catalog) return [];
     const list = catalog[def.catalog];
@@ -859,7 +874,7 @@ type AnimalProfileData = {
   history: Array<{ id: string; title: string; taskType: string; occurredAt: string; completedBy: string; notes: string | null; voidedAt: string | null; voidReason: string | null; feederSpecies: string | null; feederSizeClass: string | null; feederWeightGrams: number | null }>;
 };
 
-export function AnimalProfile({ animalId, onClose }: { animalId: string; onClose: () => void }) {
+export function AnimalProfile({ animalId, onClose, onEdit }: { animalId: string; onClose: () => void; onEdit?: () => void }) {
   const [data, setData] = useState<AnimalProfileData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showWeight, setShowWeight] = useState(false);
@@ -918,7 +933,10 @@ export function AnimalProfile({ animalId, onClose }: { animalId: string; onClose
     <div className="overlay" role="dialog" aria-modal="true" aria-label="Animal profile">
       <header className="overlay-head">
         <div><b>{animal ? str(animal.name) : "Animal"}</b><span>{animal ? str(animal.species) : "Profile"}</span></div>
-        <button className="sheet-close" onClick={onClose} aria-label="Close profile">✕</button>
+        <div className="overlay-head-actions">
+          {onEdit && animal && <button className="profile-edit" onClick={onEdit}>Edit</button>}
+          <button className="sheet-close" onClick={onClose} aria-label="Close profile">✕</button>
+        </div>
       </header>
       <div className="overlay-body">
         {error && <p className="form-error" role="alert">{error}</p>}

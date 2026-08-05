@@ -131,6 +131,7 @@ export default function HusbandryApp() {
   // ── Management overlays (Head Keeper) ──
   const [manageOpen, setManageOpen] = useState(false);
   const [manageStart, setManageStart] = useState<ResourceKey>("animal");
+  const [manageEditId, setManageEditId] = useState<string | undefined>(undefined);
   const [guideOpen, setGuideOpen] = useState(false);
   const [profileId, setProfileId] = useState<string | null>(null);
   const [forecastOpen, setForecastOpen] = useState(false);
@@ -334,8 +335,9 @@ export default function HusbandryApp() {
     }
   };
 
-  const openManager = (resource: ResourceKey = "animal") => {
+  const openManager = (resource: ResourceKey = "animal", editId?: string) => {
     setManageStart(resource);
+    setManageEditId(editId);
     setManageOpen(true);
   };
 
@@ -988,10 +990,11 @@ export default function HusbandryApp() {
 
       {manageOpen && isOwner && (
         <ManageConsole
-          onClose={() => setManageOpen(false)}
+          onClose={() => { setManageOpen(false); setManageEditId(undefined); }}
           onChanged={() => { void refresh().catch(() => undefined); void loadForecast().catch(() => undefined); }}
           toast={notify}
           initialResource={manageStart}
+          initialEditId={manageEditId}
         />
       )}
       {guideOpen && data && (
@@ -1002,7 +1005,13 @@ export default function HusbandryApp() {
           onOpenHousehold={() => { setGuideOpen(false); openTab("more"); }}
         />
       )}
-      {profileId && <AnimalProfile animalId={profileId} onClose={() => setProfileId(null)} />}
+      {profileId && (
+        <AnimalProfile
+          animalId={profileId}
+          onClose={() => setProfileId(null)}
+          onEdit={isOwner ? () => { const id = profileId; setProfileId(null); openManager("animal", id); } : undefined}
+        />
+      )}
       {forecastOpen && <FeederForecast onClose={() => { setForecastOpen(false); void loadForecast().catch(() => undefined); }} />}
       {bulkFeedersOpen && isOwner && <BulkFeederIntake onClose={() => setBulkFeedersOpen(false)} onSaved={(message) => { setBulkFeedersOpen(false); notify(message); void refresh().catch(() => undefined); void loadForecast().catch(() => undefined); }} />}
     </div>
