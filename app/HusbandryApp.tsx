@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { AnimalProfile, BulkFeederIntake, FeederForecast, GettingStartedGuide, ManageConsole, RestorePanel, SetupGate, type FeederForecastData, type ResourceKey, type SetupSummary } from "./manage";
 
 type Role = "Owner" | "Zookeeper";
@@ -120,6 +120,13 @@ const timeAgo = (value: string) => {
   return hours < 24 ? `${hours}h ago` : new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(value));
 };
 
+const THEME_EVENT = "shed-theme-change";
+const readTheme = () => document.documentElement.getAttribute("data-theme") === "dark";
+const subscribeToTheme = (onChange: () => void) => {
+  window.addEventListener(THEME_EVENT, onChange);
+  return () => window.removeEventListener(THEME_EVENT, onChange);
+};
+
 export default function HusbandryApp() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -127,6 +134,7 @@ export default function HusbandryApp() {
   const [busyTask, setBusyTask] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+
 
   // ── Management overlays (Head Keeper) ──
   const [manageOpen, setManageOpen] = useState(false);
@@ -137,6 +145,18 @@ export default function HusbandryApp() {
   const [forecastOpen, setForecastOpen] = useState(false);
   const [bulkFeedersOpen, setBulkFeedersOpen] = useState(false);
   const [forecast, setForecast] = useState<{ orderNeeded: boolean; warnings: number } | null>(null);
+
+  // The pre-paint script owns the attribute; read it rather than duplicating it
+  // in state, so there is no hydration mismatch and no flash.
+  const darkMode = useSyncExternalStore(subscribeToTheme, readTheme, () => false);
+
+  const toggleTheme = () => {
+    const next = !darkMode;
+    if (next) document.documentElement.setAttribute("data-theme", "dark");
+    else document.documentElement.removeAttribute("data-theme");
+    try { localStorage.setItem("shed-theme", next ? "dark" : "light"); } catch { /* private browsing */ }
+    window.dispatchEvent(new Event(THEME_EVENT));
+  };
 
   const notify = (message: string) => {
     setToast(message);
@@ -585,6 +605,7 @@ export default function HusbandryApp() {
           </button>
           {viewer ? (
             <div className="viewer-cluster">
+              <button className="theme-toggle" onClick={toggleTheme} title={darkMode ? "Switch to day mode" : "Switch to night mode"} aria-label={darkMode ? "Switch to day mode" : "Switch to night mode"}>{darkMode ? "☾" : "☀"}</button>
               {earnerBalanceCents !== null && (
                 <button className="balance-pill" onClick={() => openTab("more")} title="Your earnings balance">
                   <i aria-hidden="true">◍</i>{formatCents(earnerBalanceCents)}
@@ -595,9 +616,12 @@ export default function HusbandryApp() {
               </button>
             </div>
           ) : (
-            <button className="role-chip" onClick={() => openTab("more")}>
-              <span>→</span>Sign in
-            </button>
+            <div className="viewer-cluster">
+              <button className="theme-toggle" onClick={toggleTheme} title={darkMode ? "Switch to day mode" : "Switch to night mode"} aria-label={darkMode ? "Switch to day mode" : "Switch to night mode"}>{darkMode ? "☾" : "☀"}</button>
+              <button className="role-chip" onClick={() => openTab("more")}>
+                <span>→</span>Sign in
+              </button>
+            </div>
           )}
         </header>
 
