@@ -670,7 +670,16 @@ function LightingImportSheet({ catalog, onClose, onSaved }: { catalog: Catalog; 
       <div className="sheet lighting-import-sheet" onClick={(event) => event.stopPropagation()}>
         <header className="sheet-head"><div><h2>Import lighting setup</h2><small>From a Light My Reptile exact-setup link</small></div><button className="sheet-close" onClick={onClose} aria-label="Close">✕</button></header>
         <form className="sheet-body" onSubmit={submit}>
-          <label className="field field-wide"><span>Exact setup link *</span><input type="url" value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="https://lightmyreptile.com/#s=…" required /><small>In Light My Reptile, finish the setup and choose “Link to this exact setup.”</small></label>
+          {!preview && <section className="import-guide field-wide">
+            <p className="import-guide-lede">Shed reads the layout straight from a Light My Reptile share link. Don’t have one yet? Build the setup there first — it opens in a new tab, so Shed stays open behind it.</p>
+            <a className="import-guide-open" href="https://lightmyreptile.com/" target="_blank" rel="noreferrer">Open Light My Reptile ↗</a>
+            <ol className="import-guide-steps">
+              <li>Enter your enclosure size and animal, then add each lamp until the layout matches the real enclosure.</li>
+              <li>Tap <b>FINISH</b> at the bottom, then choose <b>Link to this exact setup</b>.</li>
+              <li>Copy the link, come back to this tab, and paste it below.</li>
+            </ol>
+          </section>}
+          <label className="field field-wide"><span>Exact setup link *</span><input type="url" value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="https://lightmyreptile.com/#s=…" required /><small>The link looks like <code>lightmyreptile.com/#s=…</code>. A plain <code>lightmyreptile.com</code> address has no setup in it.</small></label>
           <label className="field"><span>Enclosure *</span><select value={enclosureId} onChange={(event) => { setEnclosureId(event.target.value); setPreview(null); }}><option value="">Select…</option>{catalog.enclosures.filter((item) => bool(item.active)).map((item) => <option key={str(item.id)} value={str(item.id)}>{str(item.name)}</option>)}</select></label>
           <div className="field preview-action"><span>Read configuration</span><button type="button" disabled={busy || !sourceUrl.trim()} onClick={() => void loadPreview()}>{busy && !preview ? "Reading…" : "Preview shared setup"}</button></div>
           {preview && <div className="import-preview field-wide">
