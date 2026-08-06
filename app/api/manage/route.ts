@@ -18,7 +18,7 @@ const configs: Record<Resource, Config> = {
   enclosure: { table: "enclosures", required: ["name"], softDelete: true, fields: {
     name: { column: "name" }, enclosureType: { column: "enclosure_type" }, manufacturer: { column: "manufacturer" }, model: { column: "model" },
     width: { column: "width", kind: "number" }, depth: { column: "depth", kind: "number" }, height: { column: "height", kind: "number" }, dimensionUnit: { column: "dimension_unit" },
-    location: { column: "location" }, substrate: { column: "substrate" }, bioactive: { column: "bioactive", kind: "boolean" }, sharedHabitatId: { column: "shared_habitat_id" },
+    location: { column: "location" }, substrate: { column: "substrate" }, bioactive: { column: "bioactive", kind: "boolean" },
     notes: { column: "notes" }, active: { column: "active", kind: "boolean" }, createdAt: { column: "created_at" }, updatedAt: { column: "updated_at" },
   } },
   schedule: { table: "care_schedules", required: ["animalId", "taskType", "title", "frequency", "startDate"], softDelete: true, fields: {

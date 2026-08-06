@@ -63,7 +63,6 @@ type Animal = {
   weightGrams: number | null;
   weightDate: string | null;
   enclosureName: string | null;
-  sharedHabitatId: string | null;
   photoUpdatedAt: string | null;
 };
 type RecentEvent = {
@@ -266,21 +265,6 @@ export default function HusbandryApp() {
     // Mount-only: loadSession/refresh are stable for the component's lifetime.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => {
-    if (!data?.animals.length) return;
-    const sharedHabitatId = new URLSearchParams(window.location.search).get("sharedHabitat");
-    if (!sharedHabitatId) return;
-    const linkedAnimal = data.animals.find((animal) => animal.sharedHabitatId === sharedHabitatId);
-    if (!linkedAnimal) return;
-    const timer = window.setTimeout(() => {
-      setProfileId(linkedAnimal.id);
-      const url = new URL(window.location.href);
-      url.searchParams.delete("sharedHabitat");
-      window.history.replaceState({}, "", url);
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [data?.animals]);
 
   const loadMembers = async () => {
     setMembersError(null);

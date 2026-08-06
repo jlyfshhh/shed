@@ -51,15 +51,6 @@ const todayIso = (): string => {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 };
-const linkedAppUrl = (port: number, sharedHabitatId: string): string => {
-  const url = new URL(window.location.href);
-  url.port = String(port);
-  url.pathname = "/";
-  url.search = "";
-  url.hash = "";
-  url.searchParams.set("sharedHabitat", sharedHabitatId);
-  return url.toString();
-};
 
 const weekdayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -154,7 +145,6 @@ const resourceDefs: ResourceDef[] = [
       { key: "location", column: "location", label: "Room / location", type: "text" },
       { key: "substrate", column: "substrate", label: "Substrate", type: "text" },
       { key: "bioactive", column: "bioactive", label: "Bioactive", type: "boolean" },
-      { key: "sharedHabitatId", column: "shared_habitat_id", label: "Shared habitat ID", type: "text", help: "Link a mixed habitat to Clarity with a shared id" },
       { key: "notes", column: "notes", label: "Notes", type: "textarea" },
     ],
     summary: (row) => ({ title: str(row.name), sub: `${str(row.enclosure_type) || "Enclosure"}${row.location ? ` · ${str(row.location)}` : ""}`, archived: !bool(row.active) }),
@@ -947,7 +937,7 @@ export function ManageConsole({ onClose, onChanged, toast, initialResource = "an
 // ── Animal profile (baseball card) ─────────────────────────────────────────────
 type HusbandryScore = { percent: number | null; done: number; accountable: number; since: string; windowDays: number };
 type AnimalProfileData = {
-  animal: Row & { enclosureName?: string | null; sharedHabitatId?: string | null };
+  animal: Row & { enclosureName?: string | null };
   husbandryScore?: HusbandryScore;
   weightHistory: Array<{ id: string; recordedOn: string; weightGrams: number }>;
   notes: Array<{ id: string; category: string; title: string; body: string; pinned: number; createdBy: string; updatedAt: string }>;
@@ -1063,7 +1053,6 @@ export function AnimalProfile({ animalId, onClose, onEdit, onPhotoChange }: { an
                 <p>{str(animal.scientificName) || str(animal.species)}{animal.morph ? ` · ${str(animal.morph)}` : ""}</p>
                 <div className="profile-tags">
                   {profileFacts.map((fact) => <span key={fact}>{fact}</span>)}
-                  {animal.sharedHabitatId ? <a href={linkedAppUrl(3001, str(animal.sharedHabitatId))}>Open linked tank in Clarity ↗</a> : null}
                 </div>
               </div>
               {data.husbandryScore && (

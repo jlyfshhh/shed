@@ -74,9 +74,12 @@ releases its assignment when the feeder was not actually used.
 weights, dedicated notes, equipment, schedules, tasks, feeding history, enclosure
 history, legacy event notes, and full auditable event history.
 Active equipment assigned either directly to the animal or to its enclosure is included
-with `installedOn`, `scope`, and the derived `inUseDays`. Shared enclosure/habitat IDs
-are exposed so Shed and Clarity can deep-link to one another with
-`?sharedHabitat=<id>`.
+with `installedOn`, `scope`, and the derived `inUseDays`.
+
+The `enclosures.shared_habitat_id` column still exists and is still carried by the
+portable backup, but nothing reads it: it only ever fed the retired Clarity
+deep-link. It is left in place so no existing export loses data — drop it in a
+deliberate migration if it stays unused.
 
 ### Animal photos
 
