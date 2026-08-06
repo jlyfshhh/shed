@@ -2,6 +2,8 @@
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { equipmentAgeLabel } from "@/lib/equipment-age";
+import { animalFacts, speciesGlyph } from "@/lib/animal-traits";
+import { AnimalPhotoControls, animalPhotoUrl } from "./animal-photo";
 
 // ── Shared types ─────────────────────────────────────────────────────────────
 export type Role = "Owner" | "Zookeeper";
@@ -42,6 +44,11 @@ type LightingImportPreview = {
 
 const str = (value: unknown): string => (value === null || value === undefined ? "" : String(value));
 const bool = (value: unknown): boolean => value === 1 || value === true || value === "1";
+/** Local calendar date, for age maths on the client. */
+const todayIso = (): string => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+};
 const linkedAppUrl = (port: number, sharedHabitatId: string): string => {
   const url = new URL(window.location.href);
   url.port = String(port);
@@ -874,7 +881,7 @@ type AnimalProfileData = {
   history: Array<{ id: string; title: string; taskType: string; occurredAt: string; completedBy: string; notes: string | null; voidedAt: string | null; voidReason: string | null; feederSpecies: string | null; feederSizeClass: string | null; feederWeightGrams: number | null }>;
 };
 
-export function AnimalProfile({ animalId, onClose, onEdit }: { animalId: string; onClose: () => void; onEdit?: () => void }) {
+export function AnimalProfile({ animalId, onClose, onEdit, onPhotoChange }: { animalId: string; onClose: () => void; onEdit?: () => void; onPhotoChange?: () => void }) {
   const [data, setData] = useState<AnimalProfileData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showWeight, setShowWeight] = useState(false);
@@ -928,6 +935,19 @@ export function AnimalProfile({ animalId, onClose, onEdit }: { animalId: string;
 
   const animal = data?.animal;
   const peakWeight = data?.weightHistory.length ? Math.max(...data.weightHistory.map((w) => w.weightGrams)) : null;
+  const photoUrl = animal ? animalPhotoUrl(animalId, animal.photoUpdatedAt ? str(animal.photoUpdatedAt) : null) : null;
+  const profileFacts = animal
+    ? animalFacts({
+      name: str(animal.name),
+      species: str(animal.species),
+      group: str(animal.group),
+      sex: animal.sex ? str(animal.sex) : null,
+      location: animal.location ? str(animal.location) : null,
+      enclosureName: animal.enclosureName ? str(animal.enclosureName) : null,
+      weightGrams: typeof animal.weightGrams === "number" ? animal.weightGrams : Number(animal.weightGrams) || null,
+      birthDate: animal.birthDate ? str(animal.birthDate) : null,
+    }, todayIso())
+    : [];
 
   return (
     <div className="overlay" role="dialog" aria-modal="true" aria-label="Animal profile">
@@ -945,15 +965,19 @@ export function AnimalProfile({ animalId, onClose, onEdit }: { animalId: string;
         ) : (
           <div className="profile">
             <div className="profile-hero">
-              <span className="profile-avatar">{str(animal.name).slice(0, 1).toUpperCase()}</span>
+              <div className="profile-portrait">
+                {photoUrl
+                  // Served from our own API at a fixed small size; next/image would only add a hop.
+                  // eslint-disable-next-line @next/next/no-img-element
+                  ? <img className="profile-photo" src={photoUrl} alt={str(animal.name)} />
+                  : <span className="profile-avatar" aria-hidden>{speciesGlyph(str(animal.species), str(animal.group))}</span>}
+                <AnimalPhotoControls animalId={animalId} hasPhoto={Boolean(photoUrl)} onChanged={async () => { await load(); onPhotoChange?.(); }} />
+              </div>
               <div>
                 <h2>{str(animal.name)}{!bool(animal.active) && <i className="archived-flag"> archived</i>}</h2>
                 <p>{str(animal.scientificName) || str(animal.species)}{animal.morph ? ` · ${str(animal.morph)}` : ""}</p>
                 <div className="profile-tags">
-                  {animal.sex ? <span>{str(animal.sex)}</span> : null}
-                  {animal.enclosureName ? <span>{str(animal.enclosureName)}</span> : null}
-                  {animal.location ? <span>{str(animal.location)}</span> : null}
-                  {animal.weightGrams ? <span>{str(animal.weightGrams)} g</span> : null}
+                  {profileFacts.map((fact) => <span key={fact}>{fact}</span>)}
                   {animal.sharedHabitatId ? <a href={linkedAppUrl(3001, str(animal.sharedHabitatId))}>Open linked tank in Clarity ↗</a> : null}
                 </div>
               </div>

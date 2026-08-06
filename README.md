@@ -64,7 +64,8 @@ either can still work independently and each keeps its own portable data.
 - **Shared daily care list** across everyone's phones, with a one-day carryover so nothing slips.
 - **Household accounts** — a Head Keeper who manages everything, and Keepers who record care from their own phones. Every completed task is credited to the person who did it, with a per-member contribution report.
 - **Full record management** — add and edit animals (with morph, sex, scientific name, enclosure, source, and notes), enclosures, care plans, husbandry notes, equipment, weights, and feeder inventory, all from the app.
-- **Animal profiles** — a per-animal card with weight history, care plans, equipment, notes, and full auditable event history.
+- **Animal profiles** — a per-animal card with a photo, weight history, care plans, equipment, notes, and full auditable event history.
+- **Photos** — add a portrait from your phone; Shed resizes it in the browser, stores it in your own database, and includes it in your backup.
 - **Lighting plans** — import a Light My Reptile exact-setup link, preserve a permanent reviewed snapshot, create or match installed equipment, return to the live configuration, and track measured UVI/lux/temperature history.
 - **Editable care plans** — daily, weekly, every-N-day, monthly, and one-time routines per animal.
 - **Feeder tracking & forecasting** — weighed feeder inventory plus meal forecasting from growth trends.

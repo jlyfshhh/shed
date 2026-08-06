@@ -1,10 +1,10 @@
-export const BACKUP_SCHEMA_VERSION = 12;
+export const BACKUP_SCHEMA_VERSION = 13;
 
 export const PORTABLE_APP_SETTING_KEYS = ["default_reward_cents", "care_start_date"] as const;
 
 type ResourceDefinition = {
   table: string;
-  key: "id" | "key";
+  key: "id" | "key" | "animal_id";
   columns: readonly string[];
 };
 
@@ -23,6 +23,7 @@ export const PORTABLE_RESOURCES = {
   weightEvents: { table: "weight_events", key: "id", columns: ["id", "animal_id", "recorded_on", "weight_grams", "notes", "recorded_by_member_id", "recorded_by_name", "created_at"] },
   feederInventory: { table: "feeder_inventory", key: "id", columns: ["id", "prey_species", "size_class", "weight_grams", "status", "added_on", "consumed_at", "animal_id", "husbandry_event_id", "notes"] },
   feedingAssignments: { table: "feeding_assignments", key: "id", columns: ["id", "animal_id", "feeder_id", "planned_for", "status", "created_at", "consumed_at", "husbandry_event_id"] },
+  animalPhotos: { table: "animal_photos", key: "animal_id", columns: ["animal_id", "mime", "data", "byte_size", "updated_at", "updated_by_member_id", "updated_by_name"] },
   appSettings: { table: "app_settings", key: "key", columns: ["key", "value"] },
   rewardPayouts: { table: "reward_payouts", key: "id", columns: ["id", "member_id", "amount_cents", "note", "paid_at", "paid_by_member_id", "paid_by_name"] },
 } as const satisfies Record<string, ResourceDefinition>;
@@ -32,6 +33,7 @@ const MEMBER_REFERENCE_COLUMNS: Partial<Record<keyof typeof PORTABLE_RESOURCES, 
   husbandryEvents: ["completed_by_member_id", "voided_by_member_id", "edited_by_member_id"],
   husbandryEventRevisions: ["changed_by_member_id"],
   animalNotes: ["created_by_member_id"],
+  animalPhotos: ["updated_by_member_id"],
   weightEvents: ["recorded_by_member_id"],
   lightingMeasurements: ["measured_by_member_id"],
   rewardPayouts: ["member_id", "paid_by_member_id"],

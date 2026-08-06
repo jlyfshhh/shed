@@ -11,7 +11,7 @@ export async function GET(request: Request) {
   if (householdAuthRequired() && member?.role !== "Owner") {
     return Response.json({ error: member ? "Owner access required" : "Sign in to Shed first" }, { status: member ? 403 : 401 });
   }
-  const [animals, enclosures, careSchedules, careTasks, events, eventRevisions, notes, equipment, lightingPlans, lightingPlanFixtures, lightingMeasurements, weights, feederInventory, feedingAssignments, householdMembers, appSettings, rewardPayouts] = await Promise.all([
+  const [animals, enclosures, careSchedules, careTasks, events, eventRevisions, notes, animalPhotos, equipment, lightingPlans, lightingPlanFixtures, lightingMeasurements, weights, feederInventory, feedingAssignments, householdMembers, appSettings, rewardPayouts] = await Promise.all([
     db.prepare("SELECT * FROM animals ORDER BY id").all(),
     db.prepare("SELECT * FROM enclosures ORDER BY id").all(),
     db.prepare("SELECT * FROM care_schedules ORDER BY id").all(),
@@ -19,6 +19,7 @@ export async function GET(request: Request) {
     db.prepare("SELECT * FROM husbandry_events ORDER BY occurred_at").all(),
     db.prepare("SELECT * FROM husbandry_event_revisions ORDER BY changed_at").all(),
     db.prepare("SELECT * FROM animal_notes ORDER BY updated_at").all(),
+    db.prepare("SELECT * FROM animal_photos ORDER BY animal_id").all(),
     db.prepare("SELECT * FROM equipment ORDER BY id").all(),
     db.prepare("SELECT * FROM lighting_plans ORDER BY id").all(),
     db.prepare("SELECT * FROM lighting_plan_fixtures ORDER BY plan_id, id").all(),
@@ -35,10 +36,10 @@ export async function GET(request: Request) {
     if (!object) return null;
     return { planId: plan.id, name: plan.plan_sheet_name, type: plan.plan_sheet_type, dataBase64: bytesToBase64(new Uint8Array(await object.arrayBuffer())) };
   }));
-  const bundle = { exportedAt: new Date().toISOString(), schemaVersion: BACKUP_SCHEMA_VERSION, animals: animals.results, enclosures: enclosures.results, careSchedules: careSchedules.results, careTasks: careTasks.results, husbandryEvents: events.results, husbandryEventRevisions: eventRevisions.results, animalNotes: notes.results, equipment: equipment.results, lightingPlans: lightingPlans.results, lightingPlanFixtures: lightingPlanFixtures.results, lightingMeasurements: lightingMeasurements.results, lightingPlanSheets: lightingPlanSheets.filter(Boolean), weightEvents: weights.results, feederInventory: feederInventory.results, feedingAssignments: feedingAssignments.results, householdMembers: householdMembers.results, appSettings: appSettings.results, rewardPayouts: rewardPayouts.results };
+  const bundle = { exportedAt: new Date().toISOString(), schemaVersion: BACKUP_SCHEMA_VERSION, animals: animals.results, enclosures: enclosures.results, careSchedules: careSchedules.results, careTasks: careTasks.results, husbandryEvents: events.results, husbandryEventRevisions: eventRevisions.results, animalNotes: notes.results, animalPhotos: animalPhotos.results, equipment: equipment.results, lightingPlans: lightingPlans.results, lightingPlanFixtures: lightingPlanFixtures.results, lightingMeasurements: lightingMeasurements.results, lightingPlanSheets: lightingPlanSheets.filter(Boolean), weightEvents: weights.results, feederInventory: feederInventory.results, feedingAssignments: feedingAssignments.results, householdMembers: householdMembers.results, appSettings: appSettings.results, rewardPayouts: rewardPayouts.results };
   const format = new URL(request.url).searchParams.get("format");
   if (format === "csv") {
-    const lines = ["record_type,data_json", ...Object.entries(bundle).flatMap(([kind, rows]) => kind !== "lightingPlanSheets" && Array.isArray(rows) ? rows.map((row) => `${csvCell(kind)},${csvCell(JSON.stringify(row))}`) : [])];
+    const lines = ["record_type,data_json", ...Object.entries(bundle).flatMap(([kind, rows]) => kind !== "lightingPlanSheets" && kind !== "animalPhotos" && Array.isArray(rows) ? rows.map((row) => `${csvCell(kind)},${csvCell(JSON.stringify(row))}`) : [])];
     return new Response(lines.join("\n"), { headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": "attachment; filename=animal-room-export.csv" } });
   }
   return new Response(JSON.stringify(bundle, null, 2), { headers: { "content-type": "application/json; charset=utf-8", "content-disposition": "attachment; filename=animal-room-export.json" } });

@@ -78,6 +78,18 @@ with `installedOn`, `scope`, and the derived `inUseDays`. Shared enclosure/habit
 are exposed so Shed and Clarity can deep-link to one another with
 `?sharedHabitat=<id>`.
 
+### Animal photos
+
+One portrait per animal, stored base64 in `animal_photos` keyed by `animal_id`.
+
+- `GET /api/animals/:id/photo` returns the image bytes with an `ETag` of the row's `updated_at` and `Cache-Control: private, max-age=31536000`; it answers `304` to a matching `If-None-Match` and `404` when there is no photo. Callers cache-bust with `?v=<photoUpdatedAt>`.
+- `POST` accepts `{ dataUrl }` — a base64 `data:` URL limited to JPEG, PNG, or WebP. SVG is refused, since it would be served back under its own mime type. The client downscales to a 1200px JPEG first; the server caps the encoded payload at 2.8 MB as a backstop.
+- `DELETE` removes it.
+
+Both writes use the keeper-level gate (enforced only when `SHED_AUTH_REQUIRED`), matching `POST /api/weights` — keepers take the pictures, and a self-hosted install without auth still works.
+
+`GET /api/animals/:id` and `GET /api/dashboard` expose `photoUpdatedAt` (null when unset) rather than image bytes, so the dashboard payload stays small. The rows are portable-backup data in the JSON bundle and are deliberately excluded from the CSV export.
+
 Active lighting plans for the animal's enclosure are returned in `lighting`. Each plan includes its fixture links, measurement history, latest UVI, and derived status (`plan-only`, `due`, `verified`, or `review`). Plan sheets are uploaded by the Owner at `POST /api/lighting/plans/:id/sheet`, viewed by signed-in household members with `GET`, and removed by the Owner with `DELETE`. Uploads accept PDF, PNG, JPEG, or WebP files up to 5 MB.
 
 ### Light My Reptile exact-setup import

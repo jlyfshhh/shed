@@ -71,7 +71,7 @@ export async function POST(request: Request) {
     if (payload.mode === "replace" && payload.confirmation !== "REPLACE") return Response.json({ error: "Type REPLACE to confirm a full data restore" }, { status: 400 });
 
     if (payload.mode === "replace") {
-      const deleteOrder = ["reward_payouts", "feeding_assignments", "feeder_inventory", "lighting_measurements", "lighting_plan_fixtures", "lighting_plans", "husbandry_event_revisions", "husbandry_events", "care_tasks", "care_schedules", "weight_events", "animal_notes", "equipment", "animals", "enclosures"];
+      const deleteOrder = ["reward_payouts", "feeding_assignments", "feeder_inventory", "lighting_measurements", "lighting_plan_fixtures", "lighting_plans", "husbandry_event_revisions", "husbandry_events", "care_tasks", "care_schedules", "weight_events", "animal_notes", "animal_photos", "equipment", "animals", "enclosures"];
       await db.batch(deleteOrder.map((table) => db.prepare(`DELETE FROM ${table}`)));
       await deleteLightingPlanSheets();
       await db.prepare(`DELETE FROM app_settings WHERE key IN (${PORTABLE_APP_SETTING_KEYS.map(() => "?").join(", ")})`)

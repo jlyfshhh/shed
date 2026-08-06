@@ -35,6 +35,9 @@ export async function ensureDatabase(targetDate?: string) {
     db.prepare("CREATE TABLE IF NOT EXISTS household_members (id TEXT PRIMARY KEY, display_name TEXT NOT NULL, role TEXT NOT NULL, access_code_hash TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, earning_enabled INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, last_login_at TEXT)"),
     db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS household_members_access_code_hash_unique ON household_members(access_code_hash)"),
     db.prepare("CREATE INDEX IF NOT EXISTS household_members_active_role_idx ON household_members(active, role)"),
+    // One portrait per animal, stored base64 in the row. Photos are downscaled
+    // in the browser before upload, so these stay tens of KB, not megabytes.
+    db.prepare("CREATE TABLE IF NOT EXISTS animal_photos (animal_id TEXT PRIMARY KEY, mime TEXT NOT NULL, data TEXT NOT NULL, byte_size INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL, updated_by_member_id TEXT, updated_by_name TEXT)"),
     db.prepare("CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)"),
     db.prepare("CREATE TABLE IF NOT EXISTS reward_payouts (id TEXT PRIMARY KEY, member_id TEXT NOT NULL, amount_cents INTEGER NOT NULL, note TEXT, paid_at TEXT NOT NULL, paid_by_member_id TEXT, paid_by_name TEXT)"),
     db.prepare("CREATE INDEX IF NOT EXISTS reward_payouts_member_idx ON reward_payouts(member_id, paid_at)"),

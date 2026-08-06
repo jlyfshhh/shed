@@ -8,8 +8,10 @@ import {
   remapMemberReferences,
 } from "../lib/portable-backup.ts";
 
-test("schema 12 carries feeders, allowance, lighting imports, payouts, and care-baseline data", () => {
-  assert.equal(BACKUP_SCHEMA_VERSION, 12);
+test("schema 13 carries feeders, allowance, lighting imports, payouts, and care-baseline data", () => {
+  assert.equal(BACKUP_SCHEMA_VERSION, 13);
+  assert.ok(PORTABLE_RESOURCES.animalPhotos.columns.includes("data"));
+  assert.equal(PORTABLE_RESOURCES.animalPhotos.key, "animal_id");
   assert.ok(PORTABLE_RESOURCES.careSchedules.columns.includes("prey_size_class"));
   assert.ok(PORTABLE_RESOURCES.careSchedules.columns.includes("reward_cents"));
   assert.ok(PORTABLE_RESOURCES.careTasks.columns.includes("missed_at"));

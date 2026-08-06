@@ -36,6 +36,14 @@ Open **Manage records → Animals → New animal**. A name and common species ar
 
 Use one record per individually tracked animal. For inhabitants that receive care as a group, make a community record such as `Tree frog habitat` or `Isopod colony`. You can add birth or acquisition dates, morph, sex, source, and reference notes later.
 
+### Add a photo
+
+Open the animal from the **Animals** tab and tap **＋ Add photo** under its portrait. Any keeper can add or replace one — take it on your phone and pick it straight from your camera roll.
+
+Shed shrinks the picture in your browser before it's uploaded, so a multi-megabyte phone photo is stored as a few tens of kilobytes. Photos live in your own database and travel with your JSON backup.
+
+Until an animal has a photo, its card shows a glyph for its kind. The details beneath — sex, latest weight, age, and which enclosure or room it lives in — appear only when you've recorded them, so a card never pads itself out with blanks.
+
 ### Add a care plan
 
 Open **Manage records → Care plans → New care plan**. Pick an animal, use a short task title such as `Mist enclosure`, and choose when it repeats:

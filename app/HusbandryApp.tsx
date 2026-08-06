@@ -2,6 +2,8 @@
 
 import { FormEvent, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { AnimalProfile, BulkFeederIntake, FeederForecast, GettingStartedGuide, ManageConsole, RestorePanel, SetupGate, type FeederForecastData, type ResourceKey, type SetupSummary } from "./manage";
+import { animalPhotoUrl } from "./animal-photo";
+import { animalFacts, speciesGlyph } from "@/lib/animal-traits";
 
 type Role = "Owner" | "Zookeeper";
 type Viewer = { id: string; displayName: string; role: Role; earningEnabled?: boolean; balanceCents?: number | null };
@@ -55,9 +57,14 @@ type Animal = {
   species: string;
   group: string;
   location: string;
+  morph: string | null;
+  sex: string | null;
+  birthDate: string | null;
   weightGrams: number | null;
   weightDate: string | null;
+  enclosureName: string | null;
   sharedHabitatId: string | null;
+  photoUpdatedAt: string | null;
 };
 type RecentEvent = {
   id: string;
@@ -586,7 +593,7 @@ export default function HusbandryApp() {
     const needle = query.trim().toLowerCase();
     if (!needle) return data?.animals ?? [];
     return (data?.animals ?? []).filter((animal) =>
-      `${animal.name} ${animal.species} ${animal.location}`.toLowerCase().includes(needle),
+      `${animal.name} ${animal.species} ${animal.morph ?? ""} ${animal.enclosureName ?? ""} ${animal.location}`.toLowerCase().includes(needle),
     );
   }, [data?.animals, query]);
 
@@ -780,13 +787,27 @@ export default function HusbandryApp() {
             <div className="page-heading"><div><h1>Animals & habitats</h1><p>{data.animals.length} individual and community records.</p></div></div>
             <label className="search-box"><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search animals, species, or rooms" /></label>
             <div className="animal-grid">
-              {filteredAnimals.map((animal) => (
-                <article className="animal-card" key={animal.id} role="button" tabIndex={0} onClick={() => setProfileId(animal.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setProfileId(animal.id); } }}>
-                  <div className="animal-card-top"><span>{animal.name.slice(0, 1)}</span><small>{animal.group}</small></div>
-                  <h2>{animal.name}</h2><p>{animal.species}</p>
-                  <div className="animal-meta"><span>{animal.location}</span>{animal.weightGrams !== null && <b>{animal.weightGrams} g</b>}</div>
-                </article>
-              ))}
+              {filteredAnimals.map((animal) => {
+                const photo = animalPhotoUrl(animal.id, animal.photoUpdatedAt);
+                const facts = animalFacts(animal, data.date);
+                return (
+                  <article className="animal-card" key={animal.id} role="button" tabIndex={0} onClick={() => setProfileId(animal.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setProfileId(animal.id); } }}>
+                    <div className="animal-photo">
+                      {photo
+                        // Portraits come from our own API already downscaled; next/image would only add a hop.
+                        // eslint-disable-next-line @next/next/no-img-element
+                        ? <img src={photo} alt={animal.name} loading="lazy" decoding="async" />
+                        : <span className="animal-photo-glyph" aria-hidden>{speciesGlyph(animal.species, animal.group)}</span>}
+                      <small className="animal-group">{animal.group}</small>
+                    </div>
+                    <div className="animal-card-body">
+                      <h2>{animal.name}</h2>
+                      <p>{animal.species}{animal.morph ? ` · ${animal.morph}` : ""}</p>
+                      {facts.length > 0 && <div className="animal-meta">{facts.map((fact) => <span key={fact}>{fact}</span>)}</div>}
+                    </div>
+                  </article>
+                );
+              })}
             </div>
           </section>
         ) : activeTab === "trends" ? (
@@ -1061,6 +1082,7 @@ export default function HusbandryApp() {
           animalId={profileId}
           onClose={() => setProfileId(null)}
           onEdit={isOwner ? () => { const id = profileId; setProfileId(null); openManager("animal", id); } : undefined}
+          onPhotoChange={() => { void refresh().catch(() => undefined); }}
         />
       )}
       {forecastOpen && <FeederForecast onClose={() => { setForecastOpen(false); void loadForecast().catch(() => undefined); }} />}

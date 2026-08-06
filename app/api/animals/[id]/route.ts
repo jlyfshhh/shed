@@ -25,7 +25,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
 
     const { id } = await context.params;
     const animal = await db.prepare(
-      "SELECT a.id, a.name, a.species, a.group_name AS 'group', a.location, a.weight_grams AS weightGrams, a.weight_date AS weightDate, a.scientific_name AS scientificName, a.morph, a.sex, a.birth_date AS birthDate, a.acquired_date AS acquiredDate, a.source, a.notes, a.active, a.enclosure_id AS enclosureId, e.name AS enclosureName, e.shared_habitat_id AS sharedHabitatId FROM animals a LEFT JOIN enclosures e ON e.id = a.enclosure_id WHERE a.id = ?",
+      "SELECT a.id, a.name, a.species, a.group_name AS 'group', a.location, a.weight_grams AS weightGrams, a.weight_date AS weightDate, a.scientific_name AS scientificName, a.morph, a.sex, a.birth_date AS birthDate, a.acquired_date AS acquiredDate, a.source, a.notes, a.active, a.enclosure_id AS enclosureId, e.name AS enclosureName, e.shared_habitat_id AS sharedHabitatId, p.updated_at AS photoUpdatedAt FROM animals a LEFT JOIN enclosures e ON e.id = a.enclosure_id LEFT JOIN animal_photos p ON p.animal_id = a.id WHERE a.id = ?",
     ).bind(id).first();
     if (!animal) {
       return Response.json({ error: "Animal not found" }, { status: 404, headers: { "Cache-Control": "no-store" } });
