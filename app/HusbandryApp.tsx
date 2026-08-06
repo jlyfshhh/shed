@@ -1018,7 +1018,7 @@ export default function HusbandryApp() {
                 </div>
               </div>
               <nav className="about-links" aria-label="Project links">
-                <a href="https://jlyfshhh.github.io/shed/" target="_blank" rel="noreferrer">Project page</a>
+                <a href="https://animalroom.app/shed/" target="_blank" rel="noreferrer">Project page</a>
                 <a href="https://github.com/jlyfshhh/shed" target="_blank" rel="noreferrer">GitHub</a>
                 <a href="https://ko-fi.com/jlyfshhh" target="_blank" rel="noreferrer">🦗 Buy the animals crickets</a>
               </nav>
