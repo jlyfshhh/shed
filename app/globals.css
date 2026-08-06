@@ -514,7 +514,9 @@ button.primary:disabled { opacity: .6; cursor: wait; }
 .fixture-review > p { color: var(--muted); font-size: 12px; margin: 0 0 12px; line-height: 1.5; }
 .fixture-review article { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; border: 1px solid var(--line); border-radius: 13px; padding: 12px; margin-top: 9px; }
 .fixture-review article header { grid-column: 1 / -1; display: flex; justify-content: space-between; gap: 10px; }
-.fixture-review article header small { color: var(--muted); }
+.fixture-review article header small { color: var(--muted); text-align: right; }
+/* The product Shed resolved from the catalog, above the raw reference. */
+.fixture-review .fixture-product { display: block; color: var(--accent-ink); font-size: 12px; margin-bottom: 2px; }
 .fixture-review article label { display: grid; gap: 4px; font-size: 11px; font-weight: 800; }
 .fixture-review article input, .fixture-review article select { width: 100%; }
 .fixture-review .skip-fixture { grid-column: 1 / -1; display: flex; align-items: center; gap: 7px; font-weight: 600; color: var(--muted); }

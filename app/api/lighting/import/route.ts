@@ -1,7 +1,7 @@
 import { ensureDatabase } from "@/db/runtime";
 import { dateInTimeZone, isIsoDate } from "@/lib/date";
 import { requireHouseholdMember } from "@/lib/household-auth";
-import { decodeLightMyReptileUrl, inches, type LightMyReptileSnapshot } from "@/lib/light-my-reptile";
+import { decodeLightMyReptileUrl, inches, unnamedFixtures, type LightMyReptileSnapshot } from "@/lib/light-my-reptile";
 
 type FixtureResolution = {
   fixtureKey?: string;
@@ -87,10 +87,14 @@ export async function POST(request: Request) {
         if (existing.enclosureId && existing.enclosureId !== enclosureId) return Response.json({ error: `The equipment selected for ${fixture.fixtureKey} belongs to another enclosure` }, { status: 400 });
         if (existing.animalId && existing.animalEnclosureId !== enclosureId) return Response.json({ error: `The equipment selected for ${fixture.fixtureKey} belongs to an animal in another enclosure` }, { status: 400 });
       } else {
-        const name = text(resolution.name, `Equipment name for ${fixture.fixtureKey}`, 180);
+        // The catalog names the fixture; an explicit value from review still wins.
+        const name = optionalText(resolution.name, 180) ?? fixture.product?.name;
+        if (!name) throw new Error(`Equipment name for ${fixture.fixtureKey} is required`);
+        const brand = optionalText(resolution.brand, 100) ?? fixture.product?.brand ?? null;
+        const model = optionalText(resolution.model, 160) ?? fixture.product?.model ?? null;
         equipmentId = crypto.randomUUID();
         statements.push(db.prepare("INSERT INTO equipment (id, enclosure_id, category, name, brand, model, installed_on, source_name, source_ref, active, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'Light My Reptile', ?, 1, ?, ?, ?)")
-          .bind(equipmentId, enclosureId, fixtureCategory(fixture.role), name, optionalText(resolution.brand, 100), optionalText(resolution.model, 160), validOptionalDate(resolution.installedOn), fixture.sourceRef, `Imported from ${snapshot.sourceUrl}`, now, now));
+          .bind(equipmentId, enclosureId, fixtureCategory(fixture.role), name, brand, model, validOptionalDate(resolution.installedOn), fixture.sourceRef, `Imported from ${snapshot.sourceUrl}`, now, now));
       }
       if (usedEquipment.has(equipmentId)) return Response.json({ error: "Choose a separate equipment record for each physical fixture" }, { status: 400 });
       usedEquipment.add(equipmentId);
@@ -128,10 +132,12 @@ export async function POST(request: Request) {
 }
 
 function previewWarnings(snapshot: LightMyReptileSnapshot, enclosure: Record<string, unknown> | null) {
-  const warnings = [
-    "Product names and calculated readings are resolved by Light My Reptile's live catalog; confirm them during review before saving.",
-  ];
-  if (snapshot.fixtures.some((fixture) => fixture.sourceRefKind === "catalog-hash")) warnings.push("This share version stores catalog hashes, so Shed will ask you to match or name each physical fixture.");
+  const warnings: string[] = [];
+  const unnamed = unnamedFixtures(snapshot);
+  if (unnamed.length) {
+    warnings.push(`Shed doesn't recognise the catalog reference for ${unnamed.map((fixture) => fixture.fixtureKey).join(", ")} — name ${unnamed.length === 1 ? "it" : "them"} during review. ${unnamed.length === 1 ? "It is" : "They are"} probably newer than Shed's product list.`);
+  }
+  warnings.push("Calculated UVI, lux, and W/m² are not carried in the link — open the setup to read them, or measure them once the lamps are in.");
   if (enclosure) {
     const unit = enclosure.dimensionUnit === "cm" ? "cm" : "in";
     const expected = unit === "cm" ? snapshot.enclosure : { widthCm: inches(snapshot.enclosure.widthCm), depthCm: inches(snapshot.enclosure.depthCm), heightCm: inches(snapshot.enclosure.heightCm) };

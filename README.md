@@ -66,7 +66,7 @@ either can still work independently and each keeps its own portable data.
 - **Full record management** — add and edit animals (with morph, sex, scientific name, enclosure, source, and notes), enclosures, care plans, husbandry notes, equipment, weights, and feeder inventory, all from the app.
 - **Animal profiles** — a per-animal card with a photo, weight history, care plans, equipment, notes, and full auditable event history.
 - **Photos** — add a portrait from your phone; Shed resizes it in the browser, stores it in your own database, and includes it in your backup.
-- **Lighting plans** — import a Light My Reptile exact-setup link, preserve a permanent reviewed snapshot, create or match installed equipment, return to the live configuration, and track measured UVI/lux/temperature history.
+- **Lighting plans** — paste a Light My Reptile exact-setup link and Shed names every fixture for you, from a product list its developer supplied. It preserves a permanent reviewed snapshot, creates or matches installed equipment, returns to the live configuration, and tracks measured UVI/lux/temperature history.
 - **Editable care plans** — daily, weekly, every-N-day, monthly, and one-time routines per animal.
 - **Feeder tracking & forecasting** — weighed feeder inventory plus meal forecasting from growth trends.
 - **Weight trends** in grams.

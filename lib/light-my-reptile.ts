@@ -1,7 +1,14 @@
+import { lookupCatalogProduct, type CatalogProduct } from "./light-my-reptile-catalog.ts";
+
 export type LightMyReptileFixture = {
   fixtureKey: string;
   sourceRef: string;
   sourceRefKind: "catalog-id" | "catalog-hash";
+  /**
+   * The real product, resolved from the catalog the Light My Reptile developer
+   * shared. Null when the hash post-dates our snapshot — the keeper names it.
+   */
+  product?: CatalogProduct | null;
   role: "uvb" | "heat" | "daylight";
   enabled: boolean;
   positionCm: number;
@@ -229,7 +236,15 @@ function decodeLegacy(sourceUrl: string, payload: string): LightMyReptileSnapsho
 export function decodeLightMyReptileUrl(rawUrl: string): LightMyReptileSnapshot {
   const { url, payload, version } = parseShareUrl(rawUrl);
   const canonicalUrl = `${url.origin}${url.pathname}${url.search}#s=${encodeURIComponent(payload)}`;
-  return version === 1 ? decodeLegacy(canonicalUrl, payload) : decodeBinary(canonicalUrl, payload, version);
+  const snapshot = version === 1 ? decodeLegacy(canonicalUrl, payload) : decodeBinary(canonicalUrl, payload, version);
+  // Naming is a pure lookup against a bundled table — still no network call.
+  for (const fixture of snapshot.fixtures) fixture.product = lookupCatalogProduct(fixture.sourceRef);
+  return snapshot;
+}
+
+/** Enabled fixtures whose hash isn't in our catalog snapshot, so still need naming. */
+export function unnamedFixtures(snapshot: LightMyReptileSnapshot): LightMyReptileFixture[] {
+  return snapshot.fixtures.filter((fixture) => fixture.enabled && !fixture.product);
 }
 
 export function inches(valueCm: number): number {

@@ -35,6 +35,8 @@ type CatalogKey = keyof Catalog;
 type LightingImportFixture = {
   fixtureKey: string; sourceRef: string; sourceRefKind: "catalog-id" | "catalog-hash"; role: "uvb" | "heat" | "daylight";
   enabled: boolean; positionCm: number; mountingMode: string; cageEnabled: boolean; cageBlockagePercent: number;
+  /** Resolved from Light My Reptile's product list; null when the hash is newer than ours. */
+  product?: { name: string; brand: string | null; model: string | null } | null;
 };
 type LightingImportPreview = {
   formatVersion: number; sourceUrl: string; unitSystem: "imperial" | "metric"; mountingMode: string; lightingLevel: string;
@@ -660,7 +662,19 @@ function LightingImportSheet({ catalog, onClose, onSaved }: { catalog: Catalog; 
       setPreview(payload.preview); setWarnings(payload.warnings ?? []);
       if (!planName) setPlanName(`${selectedEnclosure ? str(selectedEnclosure.name) : payload.preview.animalName || "Enclosure"} lighting plan`);
       const next: typeof fixtureValues = {};
-      for (const fixture of payload.preview.fixtures.filter((item) => item.enabled)) next[fixture.fixtureKey] = { equipmentId: "", name: "", brand: "", model: "", installedOn: "", skip: false };
+      for (const fixture of payload.preview.fixtures.filter((item) => item.enabled)) {
+        // Re-use the equipment a previous import of this same lamp created,
+        // matching on the catalog reference rather than on a typed name.
+        const alreadySaved = availableEquipment.find((item) => str(item.source_ref) === fixture.sourceRef);
+        next[fixture.fixtureKey] = {
+          equipmentId: alreadySaved ? str(alreadySaved.id) : "",
+          name: fixture.product?.name ?? "",
+          brand: fixture.product?.brand ?? "",
+          model: fixture.product?.model ?? "",
+          installedOn: "",
+          skip: false,
+        };
+      }
       setFixtureValues(next);
     } catch (previewError) { setError(previewError instanceof Error ? previewError.message : "Couldn’t read this shared setup."); }
     finally { setBusy(false); }
@@ -710,9 +724,9 @@ function LightingImportSheet({ catalog, onClose, onSaved }: { catalog: Catalog; 
             <label className="field"><span>Species / community</span><input value={species} onChange={(event) => setSpecies(event.target.value)} /></label>
             <label className="field"><span>Planned on</span><input type="date" value={plannedOn} onChange={(event) => setPlannedOn(event.target.value)} /></label>
             <label className="field"><span>Simulator version</span><input value={derived.simulatorVersion ?? ""} onChange={(event) => setDerived((current) => ({ ...current, simulatorVersion: event.target.value }))} placeholder="e.g. v0.4.6" /></label>
-            <section className="fixture-review field-wide"><h3>Match installed equipment</h3><p>The link preserves exact catalog references, but current share links do not include readable product names. Open the setup above and confirm each physical fixture.</p>{preview.fixtures.filter((fixture) => fixture.enabled).map((fixture) => {
+            <section className="fixture-review field-wide"><h3>Match installed equipment</h3><p>Shed names each fixture from Light My Reptile’s own product list. Check them over — anything Shed didn’t recognise is flagged above and needs a name.</p>{preview.fixtures.filter((fixture) => fixture.enabled).map((fixture) => {
               const value = fixtureValues[fixture.fixtureKey] ?? { equipmentId: "", name: "", brand: "", model: "", installedOn: "", skip: false };
-              return <article key={fixture.fixtureKey}><header><b>{fixture.role === "daylight" ? "LED / daylight" : fixture.role.toUpperCase()}</b><small>{fixture.positionCm} cm across · {fixture.sourceRef}</small></header><label><span>Use saved equipment</span><select value={value.equipmentId} onChange={(event) => setFixture(fixture.fixtureKey, "equipmentId", event.target.value)} disabled={value.skip}><option value="">Create a new equipment record</option>{availableEquipment.map((item) => <option key={str(item.id)} value={str(item.id)}>{str(item.name)}</option>)}</select></label>{!value.equipmentId && !value.skip && <><label><span>Product name *</span><input value={value.name} onChange={(event) => setFixture(fixture.fixtureKey, "name", event.target.value)} /></label><label><span>Brand</span><input value={value.brand} onChange={(event) => setFixture(fixture.fixtureKey, "brand", event.target.value)} /></label><label><span>Model</span><input value={value.model} onChange={(event) => setFixture(fixture.fixtureKey, "model", event.target.value)} /></label><label><span>Installed on</span><input type="date" value={value.installedOn} onChange={(event) => setFixture(fixture.fixtureKey, "installedOn", event.target.value)} /></label></>}<label className="skip-fixture"><input type="checkbox" checked={value.skip} onChange={(event) => setFixture(fixture.fixtureKey, "skip", event.target.checked)} /> Don’t add this fixture</label></article>;
+              return <article key={fixture.fixtureKey}><header><b>{fixture.role === "daylight" ? "LED / daylight" : fixture.role.toUpperCase()}</b><small>{fixture.product ? <b className="fixture-product">{fixture.product.name}</b> : null}{fixture.positionCm} cm across · {fixture.sourceRef}</small></header><label><span>Use saved equipment</span><select value={value.equipmentId} onChange={(event) => setFixture(fixture.fixtureKey, "equipmentId", event.target.value)} disabled={value.skip}><option value="">Create a new equipment record</option>{availableEquipment.map((item) => <option key={str(item.id)} value={str(item.id)}>{str(item.name)}</option>)}</select></label>{!value.equipmentId && !value.skip && <><label><span>Product name *</span><input value={value.name} onChange={(event) => setFixture(fixture.fixtureKey, "name", event.target.value)} /></label><label><span>Brand</span><input value={value.brand} onChange={(event) => setFixture(fixture.fixtureKey, "brand", event.target.value)} /></label><label><span>Model</span><input value={value.model} onChange={(event) => setFixture(fixture.fixtureKey, "model", event.target.value)} /></label><label><span>Installed on</span><input type="date" value={value.installedOn} onChange={(event) => setFixture(fixture.fixtureKey, "installedOn", event.target.value)} /></label></>}<label className="skip-fixture"><input type="checkbox" checked={value.skip} onChange={(event) => setFixture(fixture.fixtureKey, "skip", event.target.checked)} /> Don’t add this fixture</label></article>;
             })}</section>
             <details className="derived-review field-wide"><summary>Record the modeled results shown by Light My Reptile (optional)</summary><div>{[["modeledUvi", "Modeled UVI"], ["targetUviMin", "Target UVI minimum"], ["targetUviMax", "Target UVI maximum"], ["modeledLux", "Modeled lux"], ["targetLuxMin", "Target lux minimum"], ["targetLuxMax", "Target lux maximum"], ["modeledPowerDensity", "Modeled W/m²"], ["targetPowerDensityMin", "Target W/m² minimum"], ["targetPowerDensityMax", "Target W/m² maximum"]].map(([key, label]) => <label key={key}><span>{label}</span><input type="number" step="0.01" min="0" value={derived[key] ?? ""} onChange={(event) => setDerived((current) => ({ ...current, [key]: event.target.value }))} /></label>)}</div></details>
             <label className="field field-wide remove-file"><input type="checkbox" checked={updateDimensions} onChange={(event) => setUpdateDimensions(event.target.checked)} /> Update the saved enclosure dimensions to match this setup</label>

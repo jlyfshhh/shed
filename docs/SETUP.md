@@ -86,7 +86,7 @@ Click an animal on **Animals** to see its profile, including care plans, equipme
 
 1. In Shed, open **Manage → Lighting plans → + Import lighting setup**. If you have not built the setup yet, the sheet opens Light My Reptile in a new tab and walks you through it.
 2. At [Light My Reptile](https://lightmyreptile.com/), match the enclosure and lamps, tap **FINISH**, choose **Link to this exact setup**, and copy the link. Back in Shed, paste it, choose the enclosure, and preview it.
-3. Review every physical fixture. Current shared links use compact catalog references rather than readable product names, so match each fixture to equipment already in Shed or confirm its brand, model, and installation date. Shed will create and link new equipment records for you.
+3. Check the fixtures. Shed names each lamp from Light My Reptile's own product list, so the brand and model are already filled in — you only need to add an installation date if you want one. If Shed doesn't recognise a lamp it says so at the top of the review, and you can type that one in. Re-importing the same setup re-uses the equipment records it made the first time rather than duplicating them.
 4. Optionally copy the modeled UVI, lux, power-density result, target ranges, and simulator version shown by Light My Reptile. These calculated results are not embedded in the share link itself.
 5. Import the reviewed setup. Shed stores a permanent configuration snapshot and the original link. The animal profile’s **View or edit exact setup** button returns to that precise configuration later.
 6. Record real UVI, lux, surface-temperature, or power-density readings under **Lighting measurements**. Shed shows whether the latest UVI is verified, outside the target, or needs remeasurement.

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { decodeLightMyReptileUrl, inches } from "../lib/light-my-reptile.ts";
+import { decodeLightMyReptileUrl, inches, unnamedFixtures } from "../lib/light-my-reptile.ts";
 
 const MORT_SETUP = "https://lightmyreptile.com/#s=2.GRQRiKa4_eyFALcAWwBbAEYAmAAaACpGAAAGJLmDAQAxAgDf9bMBAEYCAACY";
 
@@ -21,6 +21,17 @@ test("decodes Mort's version 2 exact-setup link without contacting the source si
     { fixtureKey: "heat-1", role: "heat", sourceRef: "hash:24b983", positionCm: 24.5 },
     { fixtureKey: "daylight-1", role: "daylight", sourceRef: "hash:dff5b3", positionCm: 35 },
   ]);
+});
+
+test("names Mort's three fixtures from the catalog, so nothing needs typing in", () => {
+  const setup = decodeLightMyReptileUrl(MORT_SETUP);
+  assert.deepEqual(setup.fixtures.map((fixture) => fixture.product?.name), [
+    "Arcadia ProT5 ShadeDweller 7% UVB 8W",
+    "Exo Terra 75W Intense Basking Spot",
+    "Sol Reptile VisionLED 54W",
+  ]);
+  assert.deepEqual(setup.fixtures.map((fixture) => fixture.product?.brand), ["Arcadia", "Exo Terra", "Sol Reptile"]);
+  assert.equal(unnamedFixtures(setup).length, 0);
 });
 
 test("rejects lookalike and ordinary planner URLs", () => {
