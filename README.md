@@ -28,7 +28,7 @@ Shed is a small, shared dashboard for households that keep animals together. One
 Shed runs as a Docker container on any always-on machine on your home network — an old PC, a NAS, a home server, or a Raspberry Pi.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jlyfshhh/shed/main/get-shed.sh | bash
+curl -fsSL https://animalroom.app/shed/install.sh | bash
 ```
 
 The installer clones Shed, builds it, turns on sign-in, and saves a **one-time setup token** in `shed/.env`.

@@ -7,7 +7,7 @@ This guide takes a brand-new Shed install from an empty dashboard to a working h
 On an always-on computer with Docker, the Docker Compose plugin, and Git installed, run:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jlyfshhh/shed/main/get-shed.sh | bash
+curl -fsSL https://animalroom.app/shed/install.sh | bash
 ```
 
 The installer creates a `shed` folder, builds the app, and stores its settings in `shed/.env`. Do not publish or share that file: it contains the one-time setup token and authentication secrets.
