@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { equipmentAgeLabel } from "@/lib/equipment-age";
 import { animalFacts, speciesGlyph } from "@/lib/animal-traits";
 import { AnimalPhotoControls, animalPhotoUrl } from "./animal-photo";
@@ -417,14 +417,18 @@ function toLocalDatetime(iso: string): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-function ResourceForm({ def, catalog, editing, onClose, onSaved }: {
+function ResourceForm({ def, catalog, editing, onClose, onSaved, defaults, presentation = "sheet" }: {
   def: ResourceDef;
   catalog: Catalog;
   editing: Row | null;
   onClose: () => void;
   onSaved: (message: string) => void;
+  /** Pre-filled values for a new record, e.g. the animal you're already managing. */
+  defaults?: Record<string, string>;
+  /** "inline" drops the modal chrome so the form can sit inside a tab. */
+  presentation?: "sheet" | "inline";
 }) {
-  const [values, setValues] = useState<Record<string, string>>(() => toFormValues(def, editing));
+  const [values, setValues] = useState<Record<string, string>>(() => ({ ...toFormValues(def, editing), ...(editing ? {} : defaults ?? {}) }));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [planFile, setPlanFile] = useState<File | null>(null);
@@ -479,6 +483,35 @@ function ResourceForm({ def, catalog, editing, onClose, onSaved }: {
     }
   };
 
+  const body = (
+    <form className="sheet-body" onSubmit={submit}>
+      {visibleFields.map((field) => (
+        <label className={`field ${field.type === "textarea" ? "field-wide" : ""}`} key={field.key}>
+          <span>{field.label}{field.required ? " *" : ""}</span>
+          <FieldInput field={field} value={values[field.key] ?? ""} catalog={catalog} onChange={(value) => set(field.key, value)} />
+          {field.help && <small>{field.help}</small>}
+        </label>
+      ))}
+      {def.key === "lightingPlan" && (
+        <div className="field field-wide">
+          <span>Exported plan sheet</span>
+          {editing?.plan_sheet_name && !removePlanSheet ? <a className="file-link" href={`/api/lighting/plans/${encodeURIComponent(str(editing.id))}/sheet`} target="_blank" rel="noreferrer">Open {str(editing.plan_sheet_name)} ↗</a> : null}
+          <input type="file" accept="application/pdf,image/png,image/jpeg,image/webp" onChange={(event) => { setPlanFile(event.target.files?.[0] ?? null); setRemovePlanSheet(false); }} />
+          {editing?.plan_sheet_name && !planFile ? <label className="remove-file"><input type="checkbox" checked={removePlanSheet} onChange={(event) => setRemovePlanSheet(event.target.checked)} /> Remove the current attachment</label> : null}
+          <small>PDF or image, up to 5 MB. Export the sheet from Light My Reptile and keep it with the plan.</small>
+        </div>
+      )}
+      {error && <p className="form-error field-wide" role="alert">{error}</p>}
+      <div className="sheet-actions field-wide">
+        {/* Inline forms live in a tab, so there is nothing to cancel back to. */}
+        {presentation === "sheet" && <button type="button" className="ghost" onClick={onClose}>Cancel</button>}
+        <button disabled={busy}>{busy ? "Saving…" : editing ? "Save changes" : `Add ${def.singular}`}</button>
+      </div>
+    </form>
+  );
+
+  if (presentation === "inline") return <div className="inline-form">{body}</div>;
+
   return (
     <div className="sheet-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
       <div className="sheet" onClick={(event) => event.stopPropagation()}>
@@ -486,29 +519,7 @@ function ResourceForm({ def, catalog, editing, onClose, onSaved }: {
           <h2>{editing ? "Edit" : "New"} {def.singular}</h2>
           <button className="sheet-close" onClick={onClose} aria-label="Close">✕</button>
         </header>
-        <form className="sheet-body" onSubmit={submit}>
-          {visibleFields.map((field) => (
-            <label className={`field ${field.type === "textarea" ? "field-wide" : ""}`} key={field.key}>
-              <span>{field.label}{field.required ? " *" : ""}</span>
-              <FieldInput field={field} value={values[field.key] ?? ""} catalog={catalog} onChange={(value) => set(field.key, value)} />
-              {field.help && <small>{field.help}</small>}
-            </label>
-          ))}
-          {def.key === "lightingPlan" && (
-            <div className="field field-wide">
-              <span>Exported plan sheet</span>
-              {editing?.plan_sheet_name && !removePlanSheet ? <a className="file-link" href={`/api/lighting/plans/${encodeURIComponent(str(editing.id))}/sheet`} target="_blank" rel="noreferrer">Open {str(editing.plan_sheet_name)} ↗</a> : null}
-              <input type="file" accept="application/pdf,image/png,image/jpeg,image/webp" onChange={(event) => { setPlanFile(event.target.files?.[0] ?? null); setRemovePlanSheet(false); }} />
-              {editing?.plan_sheet_name && !planFile ? <label className="remove-file"><input type="checkbox" checked={removePlanSheet} onChange={(event) => setRemovePlanSheet(event.target.checked)} /> Remove the current attachment</label> : null}
-              <small>PDF or image, up to 5 MB. Export the sheet from Light My Reptile and keep it with the plan.</small>
-            </div>
-          )}
-          {error && <p className="form-error field-wide" role="alert">{error}</p>}
-          <div className="sheet-actions field-wide">
-            <button type="button" className="ghost" onClick={onClose}>Cancel</button>
-            <button disabled={busy}>{busy ? "Saving…" : editing ? "Save changes" : `Add ${def.singular}`}</button>
-          </div>
-        </form>
+        {body}
       </div>
     </div>
   );
@@ -715,14 +726,18 @@ function LightingImportSheet({ catalog, onClose, onSaved }: { catalog: Catalog; 
 }
 
 // ── Management console ─────────────────────────────────────────────────────────
-export function ManageConsole({ onClose, onChanged, toast, initialResource = "animal", initialEditId }: {
+export function ManageConsole({ onClose, onChanged, toast, initialResource = "animal", focusAnimalId }: {
   onClose: () => void;
   onChanged: () => void;
   toast: (message: string) => void;
   initialResource?: ResourceKey;
-  // Open straight into one record's editor, so "Edit" on a profile lands on the
-  // form instead of dropping the keeper on a list to hunt through.
-  initialEditId?: string;
+  /**
+   * Scope the whole console to one animal. "Edit" on a profile lands here, so
+   * the keeper arrives at everything recorded for that animal — details, care
+   * plans, lighting, notes — rather than on a form they have to cancel out of
+   * before they can reach anything else.
+   */
+  focusAnimalId?: string;
 }) {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -731,23 +746,12 @@ export function ManageConsole({ onClose, onChanged, toast, initialResource = "an
   const [importingLighting, setImportingLighting] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const jumped = useRef(false);
 
   const load = async () => {
     try {
       const response = await fetch("/api/manage", { cache: "no-store" });
       if (!response.ok) throw new Error("Couldn’t load your records.");
-      const next = (await response.json()) as Catalog;
-      setCatalog(next);
-      // First load only: open straight into the record the caller asked to edit.
-      if (initialEditId && !jumped.current) {
-        const target = resourceDefs.find((entry) => entry.key === initialResource);
-        const row = target && next[target.catalog].find((entry) => str(entry.id) === initialEditId);
-        if (target && row) {
-          jumped.current = true;
-          setEditing({ def: target, row });
-        }
-      }
+      setCatalog((await response.json()) as Catalog);
       setError(null);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Couldn’t load your records.");
@@ -759,14 +763,63 @@ export function ManageConsole({ onClose, onChanged, toast, initialResource = "an
     return () => window.clearTimeout(timer);
   }, []);
 
-  const def = resourceDefs.find((entry) => entry.key === active)!;
+  const focusAnimal = focusAnimalId && catalog ? catalog.animals.find((row) => str(row.id) === focusAnimalId) ?? null : null;
+  const focusEnclosureId = focusAnimal ? str(focusAnimal.enclosure_id) : "";
+  const focusName = focusAnimal ? str(focusAnimal.name) : "";
 
-  const rows = useMemo(() => {
-    if (!catalog) return [];
-    const list = catalog[def.catalog];
-    return list.map((row) => ({ row, meta: def.summary(row, catalog) }))
-      .filter((entry) => showArchived || !entry.meta.archived);
-  }, [catalog, def, showArchived]);
+  // Plain computation, not useMemo: these are tens of rows, and the React
+  // Compiler memoizes it better than a hand-written dependency list would.
+  const focusPlanIds = new Set(
+    !catalog || !focusEnclosureId ? [] : catalog.lightingPlans.filter((row) => str(row.enclosure_id) === focusEnclosureId).map((row) => str(row.id)),
+  );
+
+  const tabs = !focusAnimalId ? resourceDefs : resourceDefs.filter((entry) => {
+    // Feeders are a household-wide freezer, not one animal's record.
+    if (entry.key === "feeder") return false;
+    // Fixtures and measurements hang off a lighting plan; with no plan on this
+    // animal's enclosure they could only ever be empty, so don't offer them.
+    if (entry.key === "lightingFixture" || entry.key === "lightingMeasurement") return focusPlanIds.size > 0;
+    return true;
+  });
+  const def = (tabs.find((entry) => entry.key === active) ?? tabs[0])!;
+
+  /** Does this row belong to the animal we're scoped to? */
+  const inFocus = (key: ResourceKey, row: Row): boolean => {
+    if (!focusAnimalId) return true;
+    switch (key) {
+      case "animal": return str(row.id) === focusAnimalId;
+      case "enclosure": return Boolean(focusEnclosureId) && str(row.id) === focusEnclosureId;
+      case "schedule": case "weight": case "event": return str(row.animal_id) === focusAnimalId;
+      // Notes and equipment attach to either the animal or the room it lives in.
+      case "note": case "equipment":
+        return str(row.animal_id) === focusAnimalId || (Boolean(focusEnclosureId) && str(row.enclosure_id) === focusEnclosureId);
+      case "lightingPlan": return Boolean(focusEnclosureId) && str(row.enclosure_id) === focusEnclosureId;
+      case "lightingFixture": case "lightingMeasurement": return focusPlanIds.has(str(row.plan_id));
+      default: return true;
+    }
+  };
+
+  /** Pre-fill a new record with the animal (and enclosure) already in hand. */
+  const newDefaults = (key: ResourceKey): Record<string, string> | undefined => {
+    if (!focusAnimalId) return undefined;
+    switch (key) {
+      case "schedule": case "weight": case "event": return { animalId: focusAnimalId };
+      case "note": case "equipment": return { animalId: focusAnimalId, ...(focusEnclosureId ? { enclosureId: focusEnclosureId } : {}) };
+      case "lightingPlan": return focusEnclosureId ? { enclosureId: focusEnclosureId } : undefined;
+      default: return undefined;
+    }
+  };
+
+  const rows = !catalog ? [] : catalog[def.catalog]
+    .map((row) => ({ row, meta: def.summary(row, catalog) }))
+    .filter((entry) => showArchived || !entry.meta.archived)
+    .filter((entry) => inFocus(def.key, entry.row));
+
+  // The animal's own details are the landing tab, shown as the form itself —
+  // a one-row list with an Edit button would just be another click.
+  const showDetailsForm = Boolean(focusAnimal) && def.key === "animal";
+  // Lighting hangs off the enclosure, so without one there is nothing to show.
+  const needsEnclosure = Boolean(focusAnimalId) && !focusEnclosureId && (def.key === "enclosure" || def.key === "lightingPlan" || def.key === "lightingFixture" || def.key === "lightingMeasurement");
 
   const remove = async (row: Row) => {
     const meta = def.summary(row, catalog!);
@@ -800,23 +853,28 @@ export function ManageConsole({ onClose, onChanged, toast, initialResource = "an
   return (
     <div className="overlay" role="dialog" aria-modal="true" aria-label="Manage records">
       <header className="overlay-head">
-        <div><b>Manage</b><span>Animals, enclosures, care plans & records</span></div>
+        <div>
+          <b>{focusName || "Manage"}</b>
+          <span>{focusAnimal ? "Details, care plans, lighting & records" : "Animals, enclosures, care plans & records"}</span>
+        </div>
         <button className="sheet-close" onClick={onClose} aria-label="Close manager">✕</button>
       </header>
       <div className="overlay-body">
         <nav className="manage-tabs">
-          {resourceDefs.map((entry) => (
-            <button key={entry.key} className={entry.key === active ? "on" : ""} onClick={() => setActive(entry.key)}>{entry.plural}</button>
+          {tabs.map((entry) => (
+            <button key={entry.key} className={entry.key === def.key ? "on" : ""} onClick={() => setActive(entry.key)}>
+              {focusAnimal && entry.key === "animal" ? "Details" : entry.plural}
+            </button>
           ))}
         </nav>
 
         <div className="manage-toolbar">
-          <h2>{def.plural}</h2>
+          <h2>{showDetailsForm ? `${focusName}’s details` : def.plural}</h2>
           <div>
-            <label className="archived-toggle"><input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} />Show archived</label>
+            {!showDetailsForm && <label className="archived-toggle"><input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} />Show archived</label>}
             {/* Lighting plans only ever come from a Light My Reptile import, so
                 that is the single way to add one. Existing plans stay editable. */}
-            {active === "lightingPlan"
+            {showDetailsForm || needsEnclosure ? null : def.key === "lightingPlan"
               ? <button className="primary" onClick={() => setImportingLighting(true)}>+ Import lighting setup</button>
               : <button className="primary" onClick={() => setEditing({ def, row: null })}>+ New {def.singular}</button>}
           </div>
@@ -825,8 +883,20 @@ export function ManageConsole({ onClose, onChanged, toast, initialResource = "an
         {error && <p className="form-error" role="alert">{error}</p>}
         {!catalog ? (
           <p className="member-note">Loading…</p>
+        ) : showDetailsForm ? (
+          <ResourceForm
+            key={str(focusAnimal!.id)}
+            def={def}
+            catalog={catalog}
+            editing={focusAnimal}
+            presentation="inline"
+            onClose={() => undefined}
+            onSaved={(message) => { toast(message); void load(); onChanged(); }}
+          />
+        ) : needsEnclosure ? (
+          <div className="empty-card"><span>+</span><h3>No enclosure yet</h3><p>{focusName} isn’t attached to an enclosure. Add one under <b>Enclosures</b> in the full manager, then set it on the <b>Details</b> tab — lighting plans and enclosure records hang off it.</p></div>
         ) : rows.length === 0 ? (
-          <div className="empty-card"><span>+</span><h3>No {def.plural.toLowerCase()} yet</h3><p>{active === "lightingPlan" ? "Import a Light My Reptile exact-setup link to add your first one." : `Add your first ${def.singular} to get started.`}</p></div>
+          <div className="empty-card"><span>+</span><h3>No {def.plural.toLowerCase()} yet{focusName ? ` for ${focusName}` : ""}</h3><p>{def.key === "lightingPlan" ? "Import a Light My Reptile exact-setup link to add your first one." : `Add your first ${def.singular} to get started.`}</p></div>
         ) : (
           <div className="manage-list">
             {rows.map(({ row, meta }) => (
@@ -850,6 +920,7 @@ export function ManageConsole({ onClose, onChanged, toast, initialResource = "an
           def={editing.def}
           catalog={catalog ?? { animals: [], enclosures: [], schedules: [], notes: [], equipment: [], weights: [], events: [], feeders: [], lightingPlans: [], lightingFixtures: [], lightingMeasurements: [] }}
           editing={editing.row}
+          defaults={newDefaults(editing.def.key)}
           onClose={() => setEditing(null)}
           onSaved={(message) => { setEditing(null); toast(message); void load(); onChanged(); }}
         />

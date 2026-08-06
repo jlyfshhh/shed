@@ -44,6 +44,14 @@ Shed shrinks the picture in your browser before it's uploaded, so a multi-megaby
 
 Until an animal has a photo, its card shows a glyph for its kind. The details beneath — sex, latest weight, age, and which enclosure or room it lives in — appear only when you've recorded them, so a card never pads itself out with blanks.
 
+### Manage one animal's records
+
+Open an animal from the **Animals** tab and tap **Edit**. That gives you everything recorded for that one animal, on tabs: its details, enclosure, care plans, lighting, notes, equipment, weights, and history.
+
+The **Details** tab is the edit form itself, so there's nothing to open first. On any other tab, adding a record arrives with the animal already filled in. Closing the manager puts you back on the animal's profile.
+
+Tabs only appear when they can hold something — feeders are household-wide, and lighting fixtures and measurements only show once the animal's enclosure has a lighting plan. For everything at once, across every animal, use **More → Manage records**.
+
 ### Add a care plan
 
 Open **Manage records → Care plans → New care plan**. Pick an animal, use a short task title such as `Mist enclosure`, and choose when it repeats:

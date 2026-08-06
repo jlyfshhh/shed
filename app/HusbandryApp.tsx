@@ -146,7 +146,7 @@ export default function HusbandryApp() {
   // ── Management overlays (Head Keeper) ──
   const [manageOpen, setManageOpen] = useState(false);
   const [manageStart, setManageStart] = useState<ResourceKey>("animal");
-  const [manageEditId, setManageEditId] = useState<string | undefined>(undefined);
+  const [manageFocusAnimal, setManageFocusAnimal] = useState<string | undefined>(undefined);
   const [guideOpen, setGuideOpen] = useState(false);
   const [profileId, setProfileId] = useState<string | null>(null);
   const [forecastOpen, setForecastOpen] = useState(false);
@@ -382,9 +382,9 @@ export default function HusbandryApp() {
     }
   };
 
-  const openManager = (resource: ResourceKey = "animal", editId?: string) => {
+  const openManager = (resource: ResourceKey = "animal", focusAnimal?: string) => {
     setManageStart(resource);
-    setManageEditId(editId);
+    setManageFocusAnimal(focusAnimal);
     setManageOpen(true);
   };
 
@@ -1062,11 +1062,17 @@ export default function HusbandryApp() {
 
       {manageOpen && isOwner && (
         <ManageConsole
-          onClose={() => { setManageOpen(false); setManageEditId(undefined); }}
+          onClose={() => {
+            setManageOpen(false);
+            // Came from an animal's profile — go back to it, so the keeper sees
+            // what they just changed instead of landing on the grid.
+            if (manageFocusAnimal) setProfileId(manageFocusAnimal);
+            setManageFocusAnimal(undefined);
+          }}
           onChanged={() => { void refresh().catch(() => undefined); void loadForecast().catch(() => undefined); }}
           toast={notify}
           initialResource={manageStart}
-          initialEditId={manageEditId}
+          focusAnimalId={manageFocusAnimal}
         />
       )}
       {guideOpen && data && (
