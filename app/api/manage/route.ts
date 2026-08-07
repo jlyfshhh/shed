@@ -1,6 +1,6 @@
 import { ensureDatabase } from "@/db/runtime";
 import { dateInTimeZone, isIsoDate } from "@/lib/date";
-import { requireHouseholdMember } from "@/lib/household-auth";
+import { attributedTo, requireHouseholdMember } from "@/lib/household-auth";
 import { normalizedEmptyValue } from "@/lib/manage-values";
 
 type Resource = "animal" | "enclosure" | "schedule" | "note" | "equipment" | "weight" | "event" | "feeder" | "lightingPlan" | "lightingFixture" | "lightingMeasurement";
@@ -96,11 +96,12 @@ export async function POST(request: Request) {
     const db = await ensureDatabase();
     const auth = await requireHouseholdMember(request, db, ["Owner"]);
     if (auth.response) return auth.response;
+    const actor = attributedTo(auth.member);
     const payload = await request.json() as Payload;
     const resource = requireResource(payload.resource);
     const data = { ...(payload.data ?? {}) };
     const now = new Date().toISOString();
-    applyCreateDefaults(resource, data, now, auth.member!.id, auth.member!.displayName);
+    applyCreateDefaults(resource, data, now, actor.id, actor.name);
     const normalized = normalize(resource, data, true);
     const id = cleanId(payload.id) ?? crypto.randomUUID();
     const columns = ["id", ...Object.keys(normalized).map((key) => configs[resource].fields[key].column)];
@@ -110,7 +111,7 @@ export async function POST(request: Request) {
     if (resource === "lightingPlan") await queueLightingVerification(db, String(normalized.enclosureId), String(normalized.name));
     if (resource === "lightingFixture") await touchAndQueueLightingVerificationForPlan(db, String(normalized.planId), now);
     if (resource === "equipment" && isLightingEquipment(String(normalized.category ?? ""))) await touchAndQueueLightingVerificationForEquipment(db, normalized, now);
-    if (resource === "lightingMeasurement") await completeLightingVerification(db, String(normalized.planId), auth.member!.id, auth.member!.displayName, String(normalized.metric), Number(normalized.value), String(normalized.unit), String(normalized.measuredAt));
+    if (resource === "lightingMeasurement") await completeLightingVerification(db, String(normalized.planId), actor.id, actor.name, String(normalized.metric), Number(normalized.value), String(normalized.unit), String(normalized.measuredAt));
     return Response.json({ saved: true, id }, { status: 201, headers: { "Cache-Control": "no-store" } });
   } catch (error) { return failure(error); }
 }
@@ -120,6 +121,7 @@ export async function PATCH(request: Request) {
     const db = await ensureDatabase();
     const auth = await requireHouseholdMember(request, db, ["Owner"]);
     if (auth.response) return auth.response;
+    const actor = attributedTo(auth.member);
     const payload = await request.json() as Payload;
     const resource = requireResource(payload.resource);
     const id = requireId(payload.id);
@@ -131,8 +133,8 @@ export async function PATCH(request: Request) {
     if (resource === "lightingPlan" && existing.import_status && !Object.hasOwn(data, "importStatus")) data.importStatus = "modified";
     if (resource === "event") {
       await db.prepare("INSERT INTO husbandry_event_revisions (id, event_id, changed_at, changed_by_member_id, changed_by_name, previous_json) VALUES (?, ?, ?, ?, ?, ?)")
-        .bind(crypto.randomUUID(), id, now, auth.member!.id, auth.member!.displayName, JSON.stringify(existing)).run();
-      Object.assign(data, { editedAt: now, editedByMemberId: auth.member!.id, editedByName: auth.member!.displayName });
+        .bind(crypto.randomUUID(), id, now, actor.id, actor.name, JSON.stringify(existing)).run();
+      Object.assign(data, { editedAt: now, editedByMemberId: actor.id, editedByName: actor.name });
     }
     const normalized = normalize(resource, data, false);
     if (!Object.keys(normalized).length) return Response.json({ error: "No editable fields supplied" }, { status: 400 });
@@ -158,12 +160,13 @@ export async function DELETE(request: Request) {
     const db = await ensureDatabase();
     const auth = await requireHouseholdMember(request, db, ["Owner"]);
     if (auth.response) return auth.response;
+    const actor = attributedTo(auth.member);
     const payload = await request.json() as Payload;
     const resource = requireResource(payload.resource);
     const id = requireId(payload.id);
     if (resource === "event") {
       await db.prepare("UPDATE husbandry_events SET voided_at = ?, voided_by_member_id = ?, voided_by_name = ?, void_reason = ? WHERE id = ? AND voided_at IS NULL")
-        .bind(new Date().toISOString(), auth.member!.id, auth.member!.displayName, cleanText(payload.reason, 500) ?? "Voided by the Head Keeper.", id).run();
+        .bind(new Date().toISOString(), actor.id, actor.name, cleanText(payload.reason, 500) ?? "Voided by the Head Keeper.", id).run();
     } else if (configs[resource].softDelete) {
       await db.prepare(`UPDATE ${configs[resource].table} SET active = 0 WHERE id = ?`).bind(id).run();
       if (resource === "schedule") await db.prepare("DELETE FROM care_tasks WHERE schedule_id = ? AND due_date >= ? AND id NOT IN (SELECT task_id FROM husbandry_events WHERE task_id IS NOT NULL)").bind(id, dateInTimeZone()).run();
@@ -177,7 +180,7 @@ export async function DELETE(request: Request) {
   } catch (error) { return failure(error); }
 }
 
-function applyCreateDefaults(resource: Resource, data: Record<string, unknown>, now: string, memberId: string, memberName: string) {
+function applyCreateDefaults(resource: Resource, data: Record<string, unknown>, now: string, memberId: string | null, memberName: string) {
   if (resource === "animal") Object.assign(data, { group: data.group ?? "Reptile", location: data.location ?? "", active: true, createdAt: now, updatedAt: now });
   if (resource === "enclosure") Object.assign(data, { dimensionUnit: data.dimensionUnit ?? "in", bioactive: data.bioactive ?? false, active: true, createdAt: now, updatedAt: now });
   if (resource === "schedule") Object.assign(data, { details: data.details ?? "", active: true, createdAt: now, updatedAt: now });
@@ -278,7 +281,7 @@ async function queueLightingVerification(db: D1Database, enclosureId: string, pl
   }
 }
 
-async function completeLightingVerification(db: D1Database, planId: string, memberId: string, memberName: string, metric: string, value: number, unit: string, occurredAt: string) {
+async function completeLightingVerification(db: D1Database, planId: string, memberId: string | null, memberName: string, metric: string, value: number, unit: string, occurredAt: string) {
   const plan = await db.prepare("SELECT enclosure_id AS enclosureId FROM lighting_plans WHERE id = ?").bind(planId).first<{ enclosureId: string }>();
   if (!plan) return;
   const tasks = await db.prepare("SELECT t.id, t.animal_id AS animalId, t.due_date AS dueDate FROM care_tasks t JOIN animals a ON a.id = t.animal_id LEFT JOIN husbandry_events e ON e.task_id = t.id AND e.voided_at IS NULL WHERE a.enclosure_id = ? AND t.task_type = 'lighting' AND t.title = 'Verify lighting' AND e.id IS NULL").bind(plan.enclosureId).all<{ id: string; animalId: string; dueDate: string }>();

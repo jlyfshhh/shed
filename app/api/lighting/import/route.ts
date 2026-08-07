@@ -1,6 +1,6 @@
 import { ensureDatabase } from "@/db/runtime";
 import { dateInTimeZone, isIsoDate } from "@/lib/date";
-import { requireHouseholdMember } from "@/lib/household-auth";
+import { attributedTo, requireHouseholdMember } from "@/lib/household-auth";
 import { decodeLightMyReptileUrl, inches, unnamedFixtures, type LightMyReptileSnapshot } from "@/lib/light-my-reptile";
 
 type FixtureResolution = {
@@ -45,6 +45,7 @@ export async function POST(request: Request) {
     const db = await ensureDatabase();
     const auth = await requireHouseholdMember(request, db, ["Owner"]);
     if (auth.response) return auth.response;
+    const actor = attributedTo(auth.member);
     const payload = await request.json() as ImportPayload;
     const sourceUrl = text(payload.sourceUrl, "Light My Reptile share link", 4096);
     const snapshot = decodeLightMyReptileUrl(sourceUrl);
@@ -101,7 +102,7 @@ export async function POST(request: Request) {
       fixtureLinks.push({ fixtureKey: fixture.fixtureKey, equipmentId });
     }
 
-    const storedSnapshot = JSON.stringify({ configuration: snapshot, derived, warnings, importedBy: auth.member!.displayName });
+    const storedSnapshot = JSON.stringify({ configuration: snapshot, derived, warnings, importedBy: actor.name });
     statements.unshift(db.prepare("INSERT INTO lighting_plans (id, enclosure_id, name, species, source_name, source_url, source_version, planned_on, reviewed_on, mounting_mode, mesh_loss_percent, basking_height, height_unit, target_uvi_min, target_uvi_max, target_lux_min, target_lux_max, target_power_density_min, target_power_density_max, source_snapshot_json, import_status, imported_at, notes, active, created_at, updated_at) VALUES (?, ?, ?, ?, 'Light My Reptile', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'reviewed', ?, ?, 1, ?, ?)")
       .bind(planId, enclosureId, planName, optionalText(payload.species, 160), snapshot.sourceUrl, `share-v${snapshot.formatVersion}${derived.simulatorVersion ? ` / ${derived.simulatorVersion}` : ""}`, plannedOn, plannedOn, displayMounting(snapshot.mountingMode), snapshot.meshBlockagePercent, snapshot.unitSystem === "imperial" ? inches(snapshot.baskingDistanceCm) : snapshot.baskingDistanceCm, snapshot.unitSystem === "imperial" ? "in" : "cm", derived.targetUviMin, derived.targetUviMax, derived.targetLuxMin, derived.targetLuxMax, derived.targetPowerDensityMin, derived.targetPowerDensityMax, storedSnapshot, now, optionalText(payload.notes, 2000), now, now));
 

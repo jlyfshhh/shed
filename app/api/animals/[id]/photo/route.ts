@@ -31,7 +31,9 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       return new Response(null, { status: 304, headers: { ETag: etag, "Cache-Control": "private, max-age=31536000" } });
     }
 
-    return new Response(base64ToBytes(row.data), {
+    // base64ToBytes allocates an exact-size array, so its buffer is exactly
+    // these bytes — Uint8Array itself is not a BodyInit in the type defs.
+    return new Response(base64ToBytes(row.data).buffer as ArrayBuffer, {
       headers: {
         "Content-Type": row.mime,
         "Cache-Control": "private, max-age=31536000",

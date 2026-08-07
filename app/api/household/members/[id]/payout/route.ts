@@ -1,6 +1,6 @@
 // Task earnings ("allowance") — added by Claude 2026-07-21 while Codex was out.
 import { ensureDatabase } from "@/db/runtime";
-import { requireHouseholdMember } from "@/lib/household-auth";
+import { attributedTo, requireHouseholdMember } from "@/lib/household-auth";
 import { MAX_REWARD_CENTS, memberBalance } from "@/lib/rewards";
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -8,6 +8,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const db = await ensureDatabase();
     const auth = await requireHouseholdMember(request, db, ["Owner"]);
     if (auth.response) return auth.response;
+    const actor = attributedTo(auth.member);
     const { id } = await context.params;
 
     const member = await db.prepare("SELECT id, display_name AS displayName FROM household_members WHERE id = ?").bind(id).first<{ id: string; displayName: string }>();
@@ -31,7 +32,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const note = payload.note?.trim().slice(0, 200) || null;
     await db.prepare(
       "INSERT INTO reward_payouts (id, member_id, amount_cents, note, paid_at, paid_by_member_id, paid_by_name) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    ).bind(crypto.randomUUID(), id, requested, note, new Date().toISOString(), auth.member!.id, auth.member!.displayName).run();
+    ).bind(crypto.randomUUID(), id, requested, note, new Date().toISOString(), actor.id, actor.name).run();
 
     const updated = await memberBalance(db, id);
     return Response.json(

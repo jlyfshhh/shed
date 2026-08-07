@@ -1,5 +1,5 @@
 import { ensureDatabase } from "@/db/runtime";
-import { householdAuthRequired, memberFromRequest, requireHouseholdMember } from "@/lib/household-auth";
+import { householdAuthRequired, memberFromRequest, attributedTo, requireHouseholdMember } from "@/lib/household-auth";
 import { getDefaultRewardCents, memberBalance, rewardForCompletion } from "@/lib/rewards";
 import { loadFeederForecast } from "@/lib/feeder-forecast-data";
 import { feederGuidance } from "@/lib/feeder-guidance";
@@ -125,6 +125,7 @@ export async function DELETE(request: Request) {
     const db = await ensureDatabase();
     const auth = await requireHouseholdMember(request, db, ["Owner"]);
     if (auth.response) return auth.response;
+    const actor = attributedTo(auth.member);
 
     const payload = await request.json() as CorrectionPayload;
     if (!payload.taskId || !payload.dueDate) {
@@ -141,9 +142,9 @@ export async function DELETE(request: Request) {
     const voidedAt = new Date().toISOString();
     await db.prepare(
       "UPDATE husbandry_events SET voided_at = ?, voided_by_member_id = ?, voided_by_name = ?, void_reason = ? WHERE id = ? AND voided_at IS NULL",
-    ).bind(voidedAt, auth.member!.id, auth.member!.displayName, reason, event.id).run();
+    ).bind(voidedAt, actor.id, actor.name, reason, event.id).run();
 
-    return Response.json({ saved: true, correction: { eventId: event.id, taskId: payload.taskId, dueDate: payload.dueDate, voidedAt, voidedBy: auth.member!.displayName, reason } }, { headers: noStore });
+    return Response.json({ saved: true, correction: { eventId: event.id, taskId: payload.taskId, dueDate: payload.dueDate, voidedAt, voidedBy: actor.name, reason } }, { headers: noStore });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Unable to mark the task incomplete" }, { status: 500, headers: noStore });
   }
