@@ -32,6 +32,9 @@ export async function POST(request: Request) {
       { headers: { "Set-Cookie": accessCookie(payload.accessCode.trim(), request), "Cache-Control": "no-store" } },
     );
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Unable to sign in" }, { status: 500, headers: { "Cache-Control": "no-store" } });
+    // Sign-in is the one route reachable with no credentials at all, so it
+    // returns a fixed message rather than echoing internal error text.
+    console.error("sign-in failed", error);
+    return Response.json({ error: "Unable to sign in" }, { status: 500, headers: { "Cache-Control": "no-store" } });
   }
 }
