@@ -11,7 +11,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     const existing = await db.prepare("SELECT id, role FROM household_members WHERE id = ?").bind(id).first<{ id: string; role: string }>();
     if (!existing) return Response.json({ error: "Household member not found" }, { status: 404 });
     if (existing.role === "Owner" && payload.active === false) {
-      return Response.json({ error: "The Owner profile cannot be deactivated" }, { status: 400 });
+      return Response.json({ error: "The Head Keeper profile cannot be deactivated" }, { status: 400 });
     }
     const displayName = payload.displayName?.trim().replace(/\s+/g, " ");
     if (payload.displayName !== undefined && (!displayName || displayName.length > 40)) {

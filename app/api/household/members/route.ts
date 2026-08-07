@@ -52,7 +52,7 @@ export async function POST(request: Request) {
       { status: 201, headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Unable to create the Zookeeper" }, { status: 500 });
+    return Response.json({ error: error instanceof Error ? error.message : "Unable to add the keeper" }, { status: 500 });
   }
 }
 

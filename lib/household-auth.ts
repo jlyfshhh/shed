@@ -60,7 +60,7 @@ export async function requireHouseholdMember(
     return { member: null, response: Response.json({ error: "Sign in to Shed first" }, { status: 401 }) };
   }
   if (!allowedRoles.includes(member.role)) {
-    return { member, response: Response.json({ error: "Owner access required" }, { status: 403 }) };
+    return { member, response: Response.json({ error: "Head Keeper access required" }, { status: 403 }) };
   }
   return { member, response: null };
 }

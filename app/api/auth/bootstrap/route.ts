@@ -6,7 +6,7 @@ export async function POST(request: Request) {
   try {
     const bootstrapToken = binding("SHED_BOOTSTRAP_TOKEN");
     if (!bootstrapToken) {
-      return Response.json({ error: "Owner bootstrap is not enabled" }, { status: 503 });
+      return Response.json({ error: "Head Keeper setup is not enabled" }, { status: 503 });
     }
     if (!(await sharedSecretIsAuthorized(request, bootstrapToken, "X-Shed-Bootstrap-Token"))) {
       return Response.json({ error: "Invalid bootstrap token" }, { status: 401 });
