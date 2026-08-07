@@ -34,6 +34,10 @@ export async function GET(request: Request) {
        JOIN animals a ON a.id = e.animal_id
        WHERE e.completed_by_member_id IS NOT NULL
          AND e.task_id IS NOT NULL
+         -- Voided completions were corrected as not-actually-done. Earnings
+         -- already exclude them, so counting them here made the contribution
+         -- report disagree with the balance it sits next to on allowance day.
+         AND e.voided_at IS NULL
          AND COALESCE(e.due_date, substr(e.occurred_at, 1, 10)) BETWEEN ? AND ?
        ORDER BY e.occurred_at DESC`,
     ).bind(from, to).all<ContributionRow>();

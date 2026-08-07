@@ -65,7 +65,17 @@ export async function GET(request: Request) {
         : task.details,
       dueDate: task.dueDate,
     }));
-    const overdue = overdueResult.results as DisplayTask[];
+    // Projected to the same six fields as `tasks` above. The query selects
+    // animalId/scheduleId for the join, but the display has never used them and
+    // this feed should carry only what the wall dashboard renders.
+    const overdue = (overdueResult.results as DisplayTask[]).map((task) => ({
+      animalName: task.animalName,
+      species: task.species,
+      taskType: task.taskType,
+      title: task.title,
+      details: task.details,
+      dueDate: task.dueDate,
+    }));
     const completed = todayRows.length - tasks.length;
 
     return Response.json({

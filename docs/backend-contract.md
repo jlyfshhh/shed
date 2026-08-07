@@ -111,6 +111,70 @@ This is a snapshot of someone else's catalog, so treat an unresolved hash as nor
 
 The import creates equipment using the resolved name/brand/model unless review supplies its own, so a fully catalogued link imports with no typing. Imported equipment and fixture links retain `source_ref`, and the review step re-uses existing equipment matching that reference, so re-importing the same setup links the same records instead of duplicating them. `source_snapshot_json`, `import_status`, and `imported_at` are portable-backup fields. The profile’s source URL should be labeled **View or edit exact setup**, not as a generic website link.
 
+## Room display feed (Haven)
+
+`GET /api/display` is the only route Bask calls, and the only one authenticated
+by a shared secret rather than a household session. It requires
+`X-Shed-Display-Token` matching the `SHED_DISPLAY_TOKEN` binding, compared in
+constant time. Without the binding it answers `503`; with a wrong token, `401`.
+Responses are `no-store` and `X-Content-Type-Options: nosniff`.
+
+The payload is `{ date, generatedAt, summary: { total, completed, remaining,
+overdue }, tasks[], overdue[] }`. **Both task arrays carry exactly six fields** —
+`animalName`, `species`, `taskType`, `title`, `details`, `dueDate` — and nothing
+else. That projection is the privacy boundary the README describes: no member
+ids or names, no access codes, no reward or earnings data, no completion or
+event identifiers, no history, and no write path of any kind.
+
+`details` carries the same dynamic feeder guidance the household dashboard
+shows, so the wall display and Shed never disagree about a feeding.
+
+**If you add a column to either query, project it away here unless the wall
+display genuinely needs it.** The feed is read by a device that is, by design,
+visible to anyone standing in the room.
+
+## Care baseline
+
+`POST /api/care/start-fresh` (Owner) does two things, and the first is
+destructive: it **deletes** every `care_tasks` row due before today that has no
+completion event, then sets `care_start_date` to today via `setCareStartDate`.
+Returns `{ saved, startDate, cleared }` where `cleared` is the row count.
+
+Tasks with a completion event are left alone, so recorded history survives
+intact — only un-acted-on backlog is removed, which is why it counts as neither
+done nor missed rather than as a pile of misses. Overdue calculation and task
+materialisation then clamp to the new baseline.
+
+## Marking work missed
+
+`POST /api/tasks/miss` uses the keeper-level gate. With `{ taskId, dueDate }` it
+marks one task; with no body it sweeps every task due before today that has no
+completion event. Both set `missed_at` plus the member id and name, and both
+skip tasks that already have an event, so marking missed can never overwrite
+recorded care.
+
+## Feeder reorder acknowledgement
+
+`POST /api/feeders/order` (Owner) writes `feeder_order_placed_at` to
+`app_settings`; `DELETE` clears it. `GET /api/feeders/forecast` returns
+`reorderAcknowledged`, true only while the mark is set, no `feeder_inventory`
+row has an `added_on` later than it, and it is under 30 days old — so the nudge
+returns on its own when stock arrives or the order never does. Deliberately not
+in `PORTABLE_APP_SETTING_KEYS`: it is transient state, not husbandry data.
+
+## Contribution report
+
+`GET /api/household/contributions` (Owner) takes `from` and `to` dates and
+returns per-member completion counts plus the individual completions behind
+them. It reads `husbandry_events`, so voided entries are excluded.
+
+## Health
+
+`GET /api/health` is unauthenticated and used by the Docker healthcheck. It
+touches the database and returns `{ "status": "ok" }`, or `503` with
+`{ "status": "unavailable" }`. Bask's equivalent returns `{ "ok": true,
+"status": "ok" }` so both apps answer the same probe shape.
+
 ## Sign-in throttling
 
 `POST /api/auth/login` allows up to 10 failed household-code attempts in 10 minutes,
