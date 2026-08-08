@@ -1,6 +1,10 @@
 services:
   shed:
-    build: .
+    # A prebuilt multi-architecture image, so installing is a pull rather than a
+    # compile on the target machine. To build from this checkout instead, add
+    # the dev overlay:
+    #   docker compose -f compose.yaml -f compose.dev.yaml up -d --build
+    image: ghcr.io/jlyfshhh/shed:${SHED_TAG:-latest}
     container_name: shed
     restart: unless-stopped
     logging:

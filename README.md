@@ -31,7 +31,7 @@ Shed runs as a Docker container on any always-on machine on your home network �
 curl -fsSL https://animalroom.app/shed/install.sh | bash
 ```
 
-The installer clones Shed, builds it, turns on sign-in, and saves a **one-time setup token** in `shed/.env`.
+The installer downloads a prebuilt Shed image, turns on sign-in, and saves a **one-time setup token** in `shed/.env`. Nothing is compiled on your machine.
 
 1. Open `http://your-server:3000` on your phone or computer.
 2. Enter the setup token and create your **Head Keeper** account.
@@ -40,7 +40,18 @@ The installer clones Shed, builds it, turns on sign-in, and saves a **one-time s
 
 Re-run the same command any time to update Shed **without touching your database or settings**.
 
-**Requirements:** Docker with the Compose plugin, `git`, and a machine that stays on.
+**Requirements:** Docker with the Compose plugin, and a machine that stays on. Shed is published as a multi-architecture image, so 64-bit Raspberry Pi OS, a NAS, and an x86 box all pull the right build automatically.
+
+Prefer to write the two files yourself? That works too — Shed is an ordinary
+compose service:
+
+```bash
+mkdir -p ~/shed && cd ~/shed
+curl -fsSLO https://raw.githubusercontent.com/jlyfshhh/shed/main/compose.yaml
+curl -fsSL https://raw.githubusercontent.com/jlyfshhh/shed/main/.env.example -o .env
+# edit .env, then:
+docker compose up -d
+```
 
 For one chooser that can install Bask, Shed, or both with their combined room
 dashboard, use the **[Haven installer](https://github.com/jlyfshhh/animal-room)**.
@@ -84,7 +95,7 @@ either can still work independently and each keeps its own portable data.
 
 ## Managing your install
 
-- **Update:** re-run the install command. It pulls the latest Shed and rebuilds, keeping your data and settings.
+- **Update:** `docker compose pull && docker compose up -d` in your install directory, or re-run the install command. Either downloads the current image and keeps your data and settings.
 - **Backups:** `scripts/backup.sh` writes dated SQLite snapshots (with configurable retention) into `shed/backups`. You can also download a full JSON or CSV export from the app at any time.
 - **Restore:** the More screen accepts a Shed JSON export — merge it into your current data, or replace everything (your household sign-in stays intact).
 - **Add keepers:** as the Head Keeper, open **More → Household access** to create a keeper and share their one-time code. You can reissue or disable codes any time.
@@ -96,6 +107,12 @@ Shed is a Next.js 16 app that runs on Cloudflare Workers with a D1-compatible SQ
 ```bash
 npm install
 npm run dev
+```
+
+To run the container from your own checkout rather than the published image:
+
+```bash
+docker compose -f compose.yaml -f compose.dev.yaml up -d --build
 ```
 
 The API contract the interface is built against lives in [`docs/backend-contract.md`](docs/backend-contract.md).
