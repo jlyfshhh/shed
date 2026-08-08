@@ -6,10 +6,11 @@ import { describeWeek, resolveWeekStart, shiftWeeks, weekDates, weekdayIndex, WE
 
 export const dynamic = "force-dynamic";
 
+// Projected to exactly what the week screen renders. The rows carry ids for the
+// join and for building a stable key, but the view has never needed them, and a
+// payload should not carry fields nobody reads.
 type WeekTask = {
   id: string;
-  scheduleId: string | null;
-  animalId: string;
   animalName: string;
   taskType: string;
   title: string;
@@ -72,8 +73,6 @@ export async function GET(request: Request) {
       for (const date of futureDates) {
         byDate.set(date, schedules.results.filter((schedule) => scheduleIsDue(schedule, date)).map((schedule) => ({
           id: `${schedule.id}:${date}`,
-          scheduleId: schedule.id,
-          animalId: schedule.animalId,
           animalName: schedule.animalName,
           taskType: schedule.taskType,
           title: schedule.title,
@@ -87,9 +86,8 @@ export async function GET(request: Request) {
     const days = dates.map((date) => {
       // dueDate is only needed to bucket the rows; the day already carries it.
       const tasks: WeekTask[] = (byDate.get(date) ?? []).map((row) => ({
-        id: row.id, scheduleId: row.scheduleId, animalId: row.animalId, animalName: row.animalName,
-        taskType: row.taskType, title: row.title, complete: row.complete,
-        completedBy: row.completedBy, missedAt: row.missedAt,
+        id: row.id, animalName: row.animalName, taskType: row.taskType, title: row.title,
+        complete: row.complete, completedBy: row.completedBy, missedAt: row.missedAt,
       }));
       const done = tasks.filter((task) => task.complete).length;
       const missed = tasks.filter((task) => !task.complete && task.missedAt).length;

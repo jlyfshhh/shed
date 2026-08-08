@@ -4,15 +4,15 @@ This guide takes a brand-new Shed install from an empty dashboard to a working h
 
 ## 1. Install Shed
 
-On an always-on computer with Docker, the Docker Compose plugin, and Git installed, run:
+You need an always-on computer on your home network with Docker and the Docker Compose plugin — a Raspberry Pi 4 or 5, an old laptop, a NAS, or a home server. **Shed needs about 1 GB of memory.** A Pi Zero or Pi Zero 2 W is not enough; those are good [Bask](https://animalroom.app/bask/) boards.
 
 ```bash
 curl -fsSL https://animalroom.app/shed/install.sh | bash
 ```
 
-The installer creates a `shed` folder, builds the app, and stores its settings in `shed/.env`. Do not publish or share that file: it contains the one-time setup token and authentication secrets.
+Nothing is compiled on your machine — the installer downloads a ready-made container, creates a `shed` folder, and stores settings in `shed/.env`. Do not publish or share that file: it contains the one-time setup token and authentication secrets.
 
-Open `http://your-server-address:3000`. If you installed Shed on the computer you are using, `http://localhost:3000` also works.
+When it finishes it prints the address to open, like `http://192.168.1.50:3000`. Use that numeric address from your phone or another computer — it always works on your network. The friendlier `http://yourpi.local:3000` also works *if* your device supports `.local` names, which Windows and some Android phones do not. If you are sitting at the machine you installed on, `http://localhost:3000` works too.
 
 ## 2. Create the Head Keeper
 
@@ -80,6 +80,14 @@ Active care plans generate the tasks on **Today**. If Today is empty on a new in
 
 On **Today**, choose **Mark done**. Shed records who completed it and keeps the completion in the animal's history. If a task was marked accidentally, correct the entry from History; Shed retains an audit trail rather than silently erasing it.
 
+### See the whole week
+
+Today shows today. To see the week around it, choose **See the week** at the top of Today.
+
+It lays out Sunday to Saturday: what is still outstanding, what was completed and by whom, and anything marked missed. Use **←** and **→** to look back at what has been done or ahead at what is coming — handy before a weekend away, or when ordering feeders. On a phone each day shows its totals and opens when you tap it.
+
+This screen is for looking, not doing. Record care back on Today.
+
 ## 4. Know where information belongs
 
 | Record | Use it for |
@@ -135,14 +143,26 @@ The included `scripts/backup.sh` also creates dated SQLite snapshots. Keep at le
 
 ## 7. Update Shed
 
-Run the same installer command again. It pulls the current version and rebuilds the container without replacing the database or `.env` settings.
+Run the same installer command again, or from your `shed` folder:
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+Either downloads the current version and restarts it. Your database, your settings, and your records are left alone.
 
 ## Quick troubleshooting
 
 - **Today has no tasks:** add an active care plan and confirm its date/frequency makes it due today.
 - **I cannot edit records:** only the Head Keeper can open the manager; confirm you used the Head Keeper access code.
 - **A keeper lost their code:** the Head Keeper can issue a new one under Household access. The old code stops working.
-- **Another phone cannot connect:** use the server's LAN address, not `localhost`, and make sure port 3000 is reachable on the local network.
+- **Another phone cannot connect:** use the server's numeric LAN address (like `http://192.168.1.50:3000`), not `localhost`. If you were given a `.local` address and it will not load, your phone probably does not support `.local` names — use the numbers instead.
+- **The address will not load at all, right after installing:** most often the machine ran out of memory while Shed was starting. Shed needs roughly 400 MB free just to start. The diagnostic below reports this directly.
+- **Anything else, or you are not sure:** run the diagnostic and send whoever is helping what it prints. It reads your system only, changes nothing, and deliberately contains no records, passwords, or access codes.
+
+  ```bash
+  curl -fsSL https://animalroom.app/doctor.sh | bash
+  ```
 - **I need to move servers:** export JSON (and preferably copy the SQLite backup), install Shed on the new server, then restore the JSON file.
 
 For technical details, see the [backend contract](backend-contract.md) and the main [README](../README.md).

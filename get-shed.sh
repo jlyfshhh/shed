@@ -49,8 +49,23 @@ if ! "${docker_cmd[@]}" compose pull; then
 fi
 "${docker_cmd[@]}" compose up -d
 
-host="$(hostname -f 2>/dev/null || hostname)"
+host="$(hostname)"
+# `hostname -f` can return a name that resolves nowhere, and a .local name needs
+# mDNS that Windows and many Android phones do not have. The LAN address always
+# works from the same network, so lead with it.
+lan_ip="$(ip -4 -o addr show scope global 2>/dev/null | awk '$2 !~ /^(docker|br-|veth|virbr|tun|tap)/ {print $4}' | cut -d/ -f1 \
+  | grep -E '^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.)' | head -n 1)"
+port="${SHED_PORT:-3000}"
 echo
-echo "Shed is running at http://$host:${SHED_PORT:-3000}"
+echo "Shed is running. Open it from any device on the same network:"
+if [ -n "$lan_ip" ]; then
+  echo "  http://$lan_ip:$port"
+  echo "  or http://$host.local:$port"
+else
+  echo "  http://$host.local:$port"
+fi
+echo
 echo "On first visit, use the one-time setup token stored in $install_dir/.env."
 echo "Run this installer again to update; your database and settings are left alone."
+echo
+echo "If the address will not load: curl -fsSL https://animalroom.app/doctor.sh | bash"

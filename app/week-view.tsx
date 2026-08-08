@@ -17,8 +17,6 @@ function readNarrow() {
 
 type WeekTask = {
   id: string;
-  scheduleId: string | null;
-  animalId: string;
   animalName: string;
   taskType: string;
   title: string;
