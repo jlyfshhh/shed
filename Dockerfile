@@ -6,6 +6,13 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
+# Prune here, in the stage that gets thrown away, so the runtime stage copies a
+# tree that is already production-only. Pruning after the COPY instead leaves
+# the full dev install sitting in an earlier layer, where it still costs its
+# full size in the published image — layers are additive, and a later delete
+# cannot shrink an earlier one.
+RUN npm prune --omit=dev
+
 FROM node:22.14-bookworm-slim AS runtime
 
 WORKDIR /app
@@ -21,7 +28,6 @@ ENV NODE_ENV=production \
 
 COPY --from=build /app/package.json /app/package-lock.json ./
 COPY --from=build /app/node_modules ./node_modules
-RUN npm prune --omit=dev
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/docker-entrypoint.sh ./docker-entrypoint.sh
 
