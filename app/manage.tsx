@@ -409,22 +409,26 @@ function toLocalDatetime(iso: string): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-function ResourceForm({ def, catalog, editing, onClose, onSaved, defaults, presentation = "sheet" }: {
+function ResourceForm({ def, catalog, editing, onClose, onSaved, defaults, presentation = "sheet", onCatalogRefresh }: {
   def: ResourceDef;
   catalog: Catalog;
   editing: Row | null;
   onClose: () => void;
-  onSaved: (message: string) => void;
+  onSaved: (message: string, savedId?: string) => void;
   /** Pre-filled values for a new record, e.g. the animal you're already managing. */
   defaults?: Record<string, string>;
   /** "inline" drops the modal chrome so the form can sit inside a tab. */
   presentation?: "sheet" | "inline";
+  /** Reload the catalog so a record created from inside this form appears. */
+  onCatalogRefresh?: () => Promise<void>;
 }) {
   const [values, setValues] = useState<Record<string, string>>(() => ({ ...toFormValues(def, editing), ...(editing ? {} : defaults ?? {}) }));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [planFile, setPlanFile] = useState<File | null>(null);
   const [removePlanSheet, setRemovePlanSheet] = useState(false);
+  // Which field asked for a new related record, so the result can be selected.
+  const [creatingFor, setCreatingFor] = useState<Field | null>(null);
   const set = (key: string, value: string) => setValues((current) => ({ ...current, [key]: value }));
   const visibleFields = def.fields.filter((field) => !field.showIf || field.showIf(values));
 
@@ -467,7 +471,7 @@ function ResourceForm({ def, catalog, editing, onClose, onSaved, defaults, prese
         const removeResponse = await fetch(`/api/lighting/plans/${encodeURIComponent(savedId)}/sheet`, { method: "DELETE" });
         if (!removeResponse.ok) throw new Error("The plan was saved, but its old plan sheet could not be removed.");
       }
-      onSaved(`${editing ? "Updated" : "Added"} ${def.singular}.`);
+      onSaved(`${editing ? "Updated" : "Added"} ${def.singular}.`, savedId || undefined);
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Couldn’t save.");
     } finally {
@@ -480,7 +484,13 @@ function ResourceForm({ def, catalog, editing, onClose, onSaved, defaults, prese
       {visibleFields.map((field) => (
         <label className={`field ${field.type === "textarea" ? "field-wide" : ""}`} key={field.key}>
           <span>{field.label}{field.required ? " *" : ""}</span>
-          <FieldInput field={field} value={values[field.key] ?? ""} catalog={catalog} onChange={(value) => set(field.key, value)} />
+          <FieldInput
+            field={field}
+            value={values[field.key] ?? ""}
+            catalog={catalog}
+            onChange={(value) => set(field.key, value)}
+            onCreateNew={field.type === "enclosureRef" ? () => setCreatingFor(field) : undefined}
+          />
           {field.help && <small>{field.help}</small>}
         </label>
       ))}
@@ -502,7 +512,25 @@ function ResourceForm({ def, catalog, editing, onClose, onSaved, defaults, prese
     </form>
   );
 
-  if (presentation === "inline") return <div className="inline-form">{body}</div>;
+  // A nested form for a record this one references. Rendered above the parent
+  // so the parent's own values survive untouched while it is open.
+  const nestedCreate = creatingFor && (
+    <ResourceForm
+      def={resourceDefs.find((entry) => entry.key === "enclosure")!}
+      catalog={catalog}
+      editing={null}
+      onClose={() => setCreatingFor(null)}
+      onSaved={async (_message, savedId) => {
+        const field = creatingFor;
+        setCreatingFor(null);
+        // Pull the catalog forward so the new row is selectable, then select it.
+        await onCatalogRefresh?.();
+        if (field && savedId) set(field.key, savedId);
+      }}
+    />
+  );
+
+  if (presentation === "inline") return <div className="inline-form">{body}{nestedCreate}</div>;
 
   return (
     <div className="sheet-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
@@ -513,15 +541,20 @@ function ResourceForm({ def, catalog, editing, onClose, onSaved, defaults, prese
         </header>
         {body}
       </div>
+      {nestedCreate}
     </div>
   );
 }
 
-function FieldInput({ field, value, catalog, onChange }: {
+const CREATE_NEW = "__create_new__";
+
+function FieldInput({ field, value, catalog, onChange, onCreateNew }: {
   field: Field;
   value: string;
   catalog: Catalog;
   onChange: (value: string) => void;
+  /** Offered on reference pickers so a missing record can be made in place. */
+  onCreateNew?: () => void;
 }) {
   if (field.type === "textarea") return <textarea value={value} rows={3} onChange={(event) => onChange(event.target.value)} />;
   if (field.type === "boolean") return (
@@ -538,11 +571,20 @@ function FieldInput({ field, value, catalog, onChange }: {
   if (field.type === "animalRef" || field.type === "enclosureRef" || field.type === "lightingPlanRef" || field.type === "equipmentRef") {
     const rows = field.type === "animalRef" ? catalog.animals : field.type === "enclosureRef" ? catalog.enclosures : field.type === "lightingPlanRef" ? catalog.lightingPlans : catalog.equipment;
     return (
-      <select value={value} onChange={(event) => onChange(event.target.value)}>
+      <select
+        value={value}
+        onChange={(event) => {
+          // Adding the first animal usually means the enclosure does not exist
+          // yet. Rather than making the keeper abandon the form, build it here.
+          if (event.target.value === CREATE_NEW) { onCreateNew?.(); return; }
+          onChange(event.target.value);
+        }}
+      >
         <option value="">{field.optional ? "— none —" : "Select…"}</option>
         {rows.filter((row) => row.active === undefined || bool(row.active) || row.id === value).map((row) => (
           <option key={str(row.id)} value={str(row.id)}>{str(row.name)}{bool(row.active) ? "" : " (archived)"}</option>
         ))}
+        {onCreateNew && <option value={CREATE_NEW}>+ Add a new {field.type === "enclosureRef" ? "enclosure" : "record"}…</option>}
       </select>
     );
   }
@@ -750,6 +792,8 @@ export function ManageConsole({ onClose, onChanged, toast, initialResource = "an
   const [importingLighting, setImportingLighting] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  // Animal id awaiting the "copy care plans from the same species" offer.
+  const [suggestingFor, setSuggestingFor] = useState<string | null>(null);
 
   const load = async () => {
     try {
@@ -926,7 +970,27 @@ export function ManageConsole({ onClose, onChanged, toast, initialResource = "an
           editing={editing.row}
           defaults={newDefaults(editing.def.key)}
           onClose={() => setEditing(null)}
-          onSaved={(message) => { setEditing(null); toast(message); void load(); onChanged(); }}
+          onCatalogRefresh={load}
+          onSaved={(message, savedId) => {
+            const created = !editing.row && editing.def.key === "animal" && savedId;
+            setEditing(null);
+            toast(message);
+            void load();
+            onChanged();
+            // A brand-new animal has no care plans yet, and the household almost
+            // certainly already keeps this species. Offer to copy those over
+            // rather than leaving a blank Today list.
+            if (created) setSuggestingFor(savedId);
+          }}
+        />
+      )}
+      {suggestingFor && catalog && (
+        <CareRoutineSuggestions
+          animalId={suggestingFor}
+          catalog={catalog}
+          toast={toast}
+          onClose={() => setSuggestingFor(null)}
+          onCreated={() => { void load(); onChanged(); }}
         />
       )}
       {importingLighting && catalog && <LightingImportSheet catalog={catalog} onClose={() => setImportingLighting(false)} onSaved={(message) => { setImportingLighting(false); toast(message); void load(); onChanged(); }} />}
@@ -1424,6 +1488,192 @@ export function RestorePanel({ onDone, toast }: { onDone: () => void; toast: (me
         </>
       )}
       {error && <p className="form-error" role="alert">{error}</p>}
+    </div>
+  );
+}
+
+// ── Care routines for a newly added animal ───────────────────────────────────
+// Adding an animal used to end on a blank Today list: the keeper had to rebuild
+// every routine by hand, even though the household already keeps the species and
+// the plans exist on its siblings. This offers those plans as a checklist.
+
+/** Fields copied from a sibling's plan. Dates and identity are deliberately not. */
+const COPIED_SCHEDULE_FIELDS = [
+  "taskType", "title", "details", "frequency", "intervalDays", "weekdaysJson", "dayOfMonth",
+  "preySpecies", "preyDescription", "preySizeClass", "targetPercent", "minimumPercent",
+  "maximumPercent", "buyAsNeeded", "rewardCents",
+] as const;
+
+const SCHEDULE_COLUMN_TO_KEY: Record<string, string> = {
+  task_type: "taskType", title: "title", details: "details", frequency: "frequency",
+  interval_days: "intervalDays", weekdays_json: "weekdaysJson", day_of_month: "dayOfMonth",
+  prey_species: "preySpecies", prey_description: "preyDescription", prey_size_class: "preySizeClass",
+  target_percent: "targetPercent", minimum_percent: "minimumPercent", maximum_percent: "maximumPercent",
+  buy_as_needed: "buyAsNeeded", reward_cents: "rewardCents",
+};
+
+/** Human summary of when a plan repeats, so the checklist is readable. */
+function scheduleCadence(row: Row): string {
+  const frequency = str(row.frequency);
+  if (frequency === "daily") return "every day";
+  if (frequency === "interval") return `every ${str(row.interval_days) || "?"} days`;
+  if (frequency === "once") return `once on ${str(row.start_date)}`;
+  if (frequency === "weekly" || frequency === "monthly") {
+    const names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    let days: number[] = [];
+    try { days = JSON.parse(str(row.weekdays_json) || "[]"); } catch { days = []; }
+    const listed = days.map((day) => names[day] ?? "?").join(", ");
+    if (frequency === "weekly") return listed ? `weekly on ${listed}` : "weekly";
+    return listed ? `monthly on ${listed}` : `monthly on day ${str(row.day_of_month) || "?"}`;
+  }
+  return frequency || "custom";
+}
+
+/**
+ * Distinct care plans kept for other animals of the same species.
+ *
+ * Deduplicated on title + task type: six ball pythons share one "Feed" routine
+ * conceptually, and the keeper wants to see it once, not six times.
+ */
+function suggestedSchedules(catalog: Catalog, animal: Row): Array<{ row: Row; sharedBy: string[] }> {
+  const species = str(animal.species).trim().toLowerCase();
+  if (!species) return [];
+  const siblings = catalog.animals.filter(
+    (other) => str(other.id) !== str(animal.id)
+      && bool(other.active)
+      && str(other.species).trim().toLowerCase() === species,
+  );
+  if (!siblings.length) return [];
+  const siblingNames = new Map(siblings.map((other) => [str(other.id), str(other.name)]));
+  const grouped = new Map<string, { row: Row; sharedBy: string[] }>();
+  for (const plan of catalog.schedules) {
+    if (!bool(plan.active) || !siblingNames.has(str(plan.animal_id))) continue;
+    const key = `${str(plan.task_type)}::${str(plan.title).trim().toLowerCase()}`;
+    const existing = grouped.get(key);
+    const owner = siblingNames.get(str(plan.animal_id))!;
+    if (existing) { if (!existing.sharedBy.includes(owner)) existing.sharedBy.push(owner); continue; }
+    grouped.set(key, { row: plan, sharedBy: [owner] });
+  }
+  return [...grouped.values()].sort((a, b) => str(a.row.title).localeCompare(str(b.row.title)));
+}
+
+export function CareRoutineSuggestions({ animalId, catalog, onClose, onCreated, toast }: {
+  animalId: string;
+  catalog: Catalog;
+  onClose: () => void;
+  onCreated: () => void;
+  toast: (message: string) => void;
+}) {
+  const animal = catalog.animals.find((row) => str(row.id) === animalId);
+  const suggestions = animal ? suggestedSchedules(catalog, animal) : [];
+  // Track what the keeper has *un*ticked rather than what they have ticked.
+  // A "chosen" set would have to be seeded from `suggestions`, which is empty on
+  // the first render — the catalog reload that adds the new animal lands a beat
+  // later — leaving every box unchecked. Inverting removes the sync entirely.
+  const [deselected, setDeselected] = useState<Set<string>>(() => new Set());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!animal) return null;
+  const name = str(animal.name);
+  const isChosen = (id: string) => !deselected.has(id);
+  const chosenCount = suggestions.filter(({ row }) => isChosen(str(row.id))).length;
+  const feeding = suggestions.some(({ row }) => str(row.task_type) === "feeding" && isChosen(str(row.id)));
+
+  const toggle = (id: string) => setDeselected((current) => {
+    const next = new Set(current);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
+  const create = async () => {
+    const picked = suggestions.filter(({ row }) => isChosen(str(row.id)));
+    if (!picked.length) { onClose(); return; }
+    setBusy(true);
+    setError(null);
+    try {
+      for (const { row } of picked) {
+        const data: Record<string, unknown> = { animalId, startDate: todayIso() };
+        for (const [column, key] of Object.entries(SCHEDULE_COLUMN_TO_KEY)) {
+          const value = row[column];
+          if (value === null || value === undefined || value === "") continue;
+          if (!(COPIED_SCHEDULE_FIELDS as readonly string[]).includes(key)) continue;
+          data[key] = key === "buyAsNeeded" ? bool(value) : value;
+        }
+        const response = await fetch("/api/manage", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ resource: "schedule", data }),
+        });
+        const payload = (await response.json()) as { error?: string };
+        if (!response.ok) throw new Error(payload.error ?? "Couldn’t create that care plan.");
+      }
+      toast(`Added ${picked.length} care plan${picked.length === 1 ? "" : "s"} for ${name}.`);
+      onCreated();
+      onClose();
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : "Couldn’t create those care plans.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="sheet-backdrop" role="dialog" aria-modal="true" aria-label={`Care routines for ${name}`}>
+      <div className="sheet suggest-sheet" onClick={(event) => event.stopPropagation()}>
+        <header className="sheet-head">
+          <div><h2>Set up care for {name}</h2><small>{str(animal.species)}</small></div>
+          <button className="sheet-close" onClick={onClose} aria-label="Close">✕</button>
+        </header>
+
+        {suggestions.length === 0 ? (
+          <div className="suggest-body">
+            <p className="member-note">
+              {name} is your first {str(animal.species) || "animal"} in Shed, so there are no
+              existing routines to copy. Add care plans under <b>Care plans</b> whenever you’re ready —
+              until then {name} won’t appear on Today.
+            </p>
+            <div className="sheet-actions"><button type="button" onClick={onClose}>Done</button></div>
+          </div>
+        ) : (
+          <div className="suggest-body">
+            <p className="suggest-lede">
+              Your other {str(animal.species)}{suggestions[0].sharedBy.length > 1 ? "s" : ""} already
+              have these routines. Tick the ones {name} needs and Shed will create them, starting today.
+            </p>
+            <ul className="suggest-list">
+              {suggestions.map(({ row, sharedBy }) => {
+                const id = str(row.id);
+                return (
+                  <li key={id}>
+                    <label>
+                      <input type="checkbox" checked={isChosen(id)} onChange={() => toggle(id)} />
+                      <span>
+                        <b>{str(row.title)}</b>
+                        <small>{scheduleCadence(row)} · kept for {sharedBy.slice(0, 3).join(", ")}{sharedBy.length > 3 ? ` +${sharedBy.length - 3}` : ""}</small>
+                        {row.details ? <em>{str(row.details)}</em> : null}
+                      </span>
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+            {feeding && (
+              <p className="suggest-warn">
+                Feeding plans copy their prey sizing too. Check it against {name}’s own weight before
+                the first feed — a plan sized for another animal may not suit this one.
+              </p>
+            )}
+            {error && <p className="form-error" role="alert">{error}</p>}
+            <div className="sheet-actions">
+              <button type="button" className="ghost" onClick={onClose} disabled={busy}>Skip for now</button>
+              <button type="button" onClick={() => void create()} disabled={busy}>
+                {busy ? "Creating…" : chosenCount ? `Create ${chosenCount} care plan${chosenCount === 1 ? "" : "s"}` : "Skip"}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

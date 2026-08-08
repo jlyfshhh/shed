@@ -595,3 +595,20 @@ button.primary:disabled { opacity: .6; cursor: wait; }
 
 @media (max-width: 420px) { .animal-grid { gap: 11px; }.animal-card h2 { font-size: 17px; }.animal-card-body { padding: 11px 12px 13px; }.animal-photo-glyph { font-size: 34px; }.completed-list > div { grid-template-columns: auto auto minmax(0, 1fr) auto; }.page-heading h1 { font-size: 36px; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+
+/* ── Care routines offered after adding an animal ── */
+.suggest-sheet { max-width: 620px; }
+.suggest-body { padding: 20px 22px 24px; }
+.suggest-lede { color: var(--muted); font-size: 13.5px; line-height: 1.55; margin: 0 0 16px; }
+.suggest-list { list-style: none; margin: 0 0 4px; padding: 0; display: grid; gap: 8px; }
+.suggest-list li { border: 1px solid var(--line); border-radius: 14px; background: var(--paper); }
+.suggest-list label { display: flex; gap: 12px; align-items: start; padding: 13px 15px; cursor: pointer; }
+.suggest-list input { margin-top: 3px; width: 18px; height: 18px; flex: 0 0 auto; accent-color: var(--moss); }
+.suggest-list span { display: grid; gap: 2px; min-width: 0; }
+.suggest-list b { font-size: 14.5px; font-weight: 800; }
+.suggest-list small { color: var(--muted); font-size: 11.5px; }
+.suggest-list em { font-style: normal; color: var(--muted); font-size: 12.5px; line-height: 1.45; margin-top: 3px; }
+.suggest-warn { margin: 14px 0 0; padding: 11px 14px; border-radius: 12px; font-size: 12.5px; line-height: 1.5;
+  background: var(--accent-wash); border: 1px solid var(--accent-line); color: var(--accent-ink); }
+.suggest-body .sheet-actions { margin-top: 18px; }
+@media (max-width: 620px) { .suggest-body { padding: 16px 15px 20px; } }
