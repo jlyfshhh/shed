@@ -36,6 +36,18 @@ Open **Manage records → Animals → New animal**. A name and common species ar
 
 Use one record per individually tracked animal. For inhabitants that receive care as a group, make a community record such as `Tree frog habitat` or `Isopod colony`. You can add birth or acquisition dates, morph, sex, source, and reference notes later.
 
+If the enclosure doesn't exist yet, choose **＋ Add a new enclosure…** in the Enclosure dropdown. It opens a form on top of the one you're filling in, and when you save it the new enclosure is selected for you — everything you had already typed is still there.
+
+### Copy care routines from an animal you already keep
+
+After saving a new animal, Shed offers the routines your other animals of the same species already have — feeding, misting, water changes, whatever you keep. Tick the ones that apply and they're created starting today. Untick anything that doesn't.
+
+**Feeding plans are matched to the new animal, not copied blindly.** Shed picks the plan from whichever animal of that species is closest in weight — or closest in age, if you haven't weighed the new one yet — because portion size and feeding interval depend on the animal. A yearling gets the yearling schedule, not an adult's. The row tells you which animal it matched and why.
+
+Portions are a percentage of body weight, so they follow the animal's own weight from then on. If you haven't recorded a weight, Shed says so and the portions can't be calculated until you log one from the animal's profile.
+
+Already added an animal without routines? Open it, tap **Edit → Care plans**, and use **Copy routines from another…**.
+
 ### Add a photo
 
 Open the animal from the **Animals** tab and tap **＋ Add photo** under its portrait. Any keeper can add or replace one — take it on your phone and pick it straight from your camera roll.

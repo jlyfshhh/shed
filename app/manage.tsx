@@ -944,7 +944,18 @@ export function ManageConsole({ onClose, onChanged, toast, initialResource = "an
         ) : needsEnclosure ? (
           <div className="empty-card"><span>+</span><h3>No enclosure yet</h3><p>{focusName} isn’t attached to an enclosure. Add one under <b>Enclosures</b> in the full manager, then set it on the <b>Details</b> tab — lighting plans and enclosure records hang off it.</p></div>
         ) : rows.length === 0 ? (
-          <div className="empty-card"><span>+</span><h3>No {def.plural.toLowerCase()} yet{focusName ? ` for ${focusName}` : ""}</h3><p>{def.key === "lightingPlan" ? "Import a Light My Reptile exact-setup link to add your first one." : `Add your first ${def.singular} to get started.`}</p></div>
+          <div className="empty-card">
+            <span>+</span>
+            <h3>No {def.plural.toLowerCase()} yet{focusName ? ` for ${focusName}` : ""}</h3>
+            <p>{def.key === "lightingPlan" ? "Import a Light My Reptile exact-setup link to add your first one." : `Add your first ${def.singular} to get started.`}</p>
+            {/* An animal added before this offer existed — or one whose plans were
+                all archived — can still pull its species' routines across. */}
+            {def.key === "schedule" && focusAnimal && (
+              <button className="primary" style={{ marginTop: 14 }} onClick={() => setSuggestingFor(str(focusAnimal.id))}>
+                Copy routines from another {str(focusAnimal.species) || "animal"}
+              </button>
+            )}
+          </div>
         ) : (
           <div className="manage-list">
             {rows.map(({ row, meta }) => (
@@ -1535,7 +1546,57 @@ function scheduleCadence(row: Row): string {
  * Deduplicated on title + task type: six ball pythons share one "Feed" routine
  * conceptually, and the keeper wants to see it once, not six times.
  */
-function suggestedSchedules(catalog: Catalog, animal: Row): Array<{ row: Row; sharedBy: string[] }> {
+const numberOr = (value: unknown): number | null => {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+
+const ageInDays = (birthDate: unknown, today: string): number | null => {
+  const born = str(birthDate).slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(born)) return null;
+  const days = Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${born}T00:00:00Z`)) / 86_400_000);
+  return days >= 0 ? days : null;
+};
+
+/**
+ * Which sibling's feeding plan suits this animal.
+ *
+ * A feeding plan encodes how much and how often for the animal it was written
+ * for, and in this household those differ sharply by size — the light snakes eat
+ * every 14 days at 10% of body weight, the heavy ones monthly at 5%. Copying an
+ * arbitrary sibling's plan would hand a yearling an adult's schedule.
+ *
+ * So pick the sibling closest in weight; if the new animal has not been weighed
+ * yet, closest in age. Both come from the household's own decisions rather than
+ * any assumption of ours about the species.
+ */
+function closestSibling(
+  candidates: Array<{ plan: Row; animal: Row }>,
+  target: Row,
+  today: string,
+): { plan: Row; animal: Row; reason: string | null } {
+  const targetWeight = numberOr(target.weight_grams);
+  if (targetWeight) {
+    const weighed = candidates.filter((c) => numberOr(c.animal.weight_grams));
+    if (weighed.length) {
+      const best = weighed.reduce((a, b) =>
+        Math.abs(numberOr(a.animal.weight_grams)! - targetWeight) <= Math.abs(numberOr(b.animal.weight_grams)! - targetWeight) ? a : b);
+      return { ...best, reason: `closest in weight to ${str(best.animal.name)}` };
+    }
+  }
+  const targetAge = ageInDays(target.birth_date, today);
+  if (targetAge !== null) {
+    const aged = candidates.filter((c) => ageInDays(c.animal.birth_date, today) !== null);
+    if (aged.length) {
+      const best = aged.reduce((a, b) =>
+        Math.abs(ageInDays(a.animal.birth_date, today)! - targetAge) <= Math.abs(ageInDays(b.animal.birth_date, today)! - targetAge) ? a : b);
+      return { ...best, reason: `closest in age to ${str(best.animal.name)}` };
+    }
+  }
+  return { ...candidates[0], reason: null };
+}
+
+function suggestedSchedules(catalog: Catalog, animal: Row): Array<{ row: Row; sharedBy: string[]; matchReason: string | null }> {
   const species = str(animal.species).trim().toLowerCase();
   if (!species) return [];
   const siblings = catalog.animals.filter(
@@ -1544,17 +1605,24 @@ function suggestedSchedules(catalog: Catalog, animal: Row): Array<{ row: Row; sh
       && str(other.species).trim().toLowerCase() === species,
   );
   if (!siblings.length) return [];
-  const siblingNames = new Map(siblings.map((other) => [str(other.id), str(other.name)]));
-  const grouped = new Map<string, { row: Row; sharedBy: string[] }>();
+  const today = todayIso();
+  const siblingById = new Map(siblings.map((other) => [str(other.id), other]));
+  const grouped = new Map<string, Array<{ plan: Row; animal: Row }>>();
   for (const plan of catalog.schedules) {
-    if (!bool(plan.active) || !siblingNames.has(str(plan.animal_id))) continue;
+    const owner = siblingById.get(str(plan.animal_id));
+    if (!bool(plan.active) || !owner) continue;
     const key = `${str(plan.task_type)}::${str(plan.title).trim().toLowerCase()}`;
-    const existing = grouped.get(key);
-    const owner = siblingNames.get(str(plan.animal_id))!;
-    if (existing) { if (!existing.sharedBy.includes(owner)) existing.sharedBy.push(owner); continue; }
-    grouped.set(key, { row: plan, sharedBy: [owner] });
+    grouped.set(key, [...(grouped.get(key) ?? []), { plan, animal: owner }]);
   }
-  return [...grouped.values()].sort((a, b) => str(a.row.title).localeCompare(str(b.row.title)));
+  return [...grouped.values()].map((candidates) => {
+    const sharedBy = [...new Set(candidates.map((c) => str(c.animal.name)))];
+    // Only feeding is size-dependent; the rest are the same job on any animal.
+    if (str(candidates[0].plan.task_type) !== "feeding") {
+      return { row: candidates[0].plan, sharedBy, matchReason: null };
+    }
+    const best = closestSibling(candidates, animal, today);
+    return { row: best.plan, sharedBy, matchReason: best.reason };
+  }).sort((a, b) => str(a.row.title).localeCompare(str(b.row.title)));
 }
 
 export function CareRoutineSuggestions({ animalId, catalog, onClose, onCreated, toast }: {
@@ -1579,6 +1647,7 @@ export function CareRoutineSuggestions({ animalId, catalog, onClose, onCreated, 
   const isChosen = (id: string) => !deselected.has(id);
   const chosenCount = suggestions.filter(({ row }) => isChosen(str(row.id))).length;
   const feeding = suggestions.some(({ row }) => str(row.task_type) === "feeding" && isChosen(str(row.id)));
+  const unweighed = !numberOr(animal.weight_grams);
 
   const toggle = (id: string) => setDeselected((current) => {
     const next = new Set(current);
@@ -1642,7 +1711,7 @@ export function CareRoutineSuggestions({ animalId, catalog, onClose, onCreated, 
               have these routines. Tick the ones {name} needs and Shed will create them, starting today.
             </p>
             <ul className="suggest-list">
-              {suggestions.map(({ row, sharedBy }) => {
+              {suggestions.map(({ row, sharedBy, matchReason }) => {
                 const id = str(row.id);
                 return (
                   <li key={id}>
@@ -1650,7 +1719,7 @@ export function CareRoutineSuggestions({ animalId, catalog, onClose, onCreated, 
                       <input type="checkbox" checked={isChosen(id)} onChange={() => toggle(id)} />
                       <span>
                         <b>{str(row.title)}</b>
-                        <small>{scheduleCadence(row)} · kept for {sharedBy.slice(0, 3).join(", ")}{sharedBy.length > 3 ? ` +${sharedBy.length - 3}` : ""}</small>
+                        <small>{scheduleCadence(row)} · {matchReason ? `sized to match — ${matchReason}` : `kept for ${sharedBy.slice(0, 3).join(", ")}${sharedBy.length > 3 ? ` +${sharedBy.length - 3}` : ""}`}</small>
                         {row.details ? <em>{str(row.details)}</em> : null}
                       </span>
                     </label>
@@ -1660,8 +1729,13 @@ export function CareRoutineSuggestions({ animalId, catalog, onClose, onCreated, 
             </ul>
             {feeding && (
               <p className="suggest-warn">
-                Feeding plans copy their prey sizing too. Check it against {name}’s own weight before
-                the first feed — a plan sized for another animal may not suit this one.
+                {unweighed
+                  ? <>No weight is recorded for {name} yet, so the feeding plan was matched on age instead
+                      and its portions cannot be calculated until you weigh {name}. Log a weight from the
+                      animal’s profile before the first feed.</>
+                  : <>The feeding plan was matched to the {str(animal.species).toLowerCase()} closest to {name} in
+                      size, and its portions are a percentage of body weight, so they follow {name}’s own
+                      weight. Confirm the amount before the first feed.</>}
               </p>
             )}
             {error && <p className="form-error" role="alert">{error}</p>}

@@ -133,6 +133,35 @@ shows, so the wall display and Shed never disagree about a feeding.
 display genuinely needs it.** The feed is read by a device that is, by design,
 visible to anyone standing in the room.
 
+## Copying care routines to a new animal
+
+Purely a client-side convenience over `POST /api/manage` — no new route. When an
+animal is created, or from the empty state of its Care plans tab, Shed offers the
+active plans kept by other animals of the same species, deduplicated on
+`task_type` + lowercased `title`.
+
+Copied: `taskType`, `title`, `details`, `frequency`, `intervalDays`,
+`weekdaysJson`, `dayOfMonth`, prey fields, percentage fields, `buyAsNeeded`,
+`rewardCents`. **Not** copied: `startDate` (set to today) and `endDate`.
+
+**Feeding plans pick their source rather than taking any sibling's.** A feeding
+plan encodes portion and cadence for the animal it was written for, and in a real
+collection those diverge sharply — the household's light ball pythons eat every
+14 days at 10% of body weight, the heavy ones monthly at 5%. Copying an arbitrary
+sibling would hand a yearling an adult's schedule. So the source is the sibling
+closest in **weight**, or closest in **age** when the new animal has not been
+weighed, falling back to the first only when neither is known. The reason is
+shown on the row.
+
+The comparison uses the household's own recorded plans, not any assumption of
+ours about the species — if you rewrite what a ball python eats, the matching
+follows automatically. Non-feeding plans are the same job on any animal and take
+the first match.
+
+Portions stay percentage-based, so they track the animal's own weight from then
+on. An animal with no weight recorded gets an explicit warning that portions
+cannot be calculated until one is logged.
+
 ## Care baseline
 
 `POST /api/care/start-fresh` (Owner) does two things, and the first is
