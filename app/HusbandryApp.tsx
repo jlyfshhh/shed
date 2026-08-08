@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import WeekView from "./week-view";
 import { AnimalProfile, BulkFeederIntake, FeederForecast, GettingStartedGuide, ManageConsole, RestorePanel, SetupGate, type FeederForecastData, type ResourceKey, type SetupSummary } from "./manage";
 import { animalPhotoUrl } from "./animal-photo";
 import { animalFacts, speciesGlyph } from "@/lib/animal-traits";
@@ -147,6 +148,7 @@ export default function HusbandryApp() {
   const [manageStart, setManageStart] = useState<ResourceKey>("animal");
   const [manageFocusAnimal, setManageFocusAnimal] = useState<string | undefined>(undefined);
   const [guideOpen, setGuideOpen] = useState(false);
+  const [weekOpen, setWeekOpen] = useState(false);
   const [profileId, setProfileId] = useState<string | null>(null);
   const [forecastOpen, setForecastOpen] = useState(false);
   const [bulkFeedersOpen, setBulkFeedersOpen] = useState(false);
@@ -669,7 +671,10 @@ export default function HusbandryApp() {
             <div className="eyebrow">{formatDate(data.date)}</div>
             <div className="page-heading">
               <div><h1>Today’s care</h1><p>{pending.length ? (pending.length === 1 ? "1 thing still needs a keeper." : `${pending.length} things still need a keeper.`) : "Everything is tucked in for today."}</p></div>
-              {isOwner && <button className="quiet-button" onClick={() => openManager()}>Manage records</button>}
+              <div className="page-heading-actions">
+                <button className="week-button" onClick={() => setWeekOpen(true)}>See the week</button>
+                {isOwner && <button className="quiet-button" onClick={() => openManager()}>Manage records</button>}
+              </div>
             </div>
 
             {isOwner && (data.setupSummary.animalCount === 0 || data.setupSummary.scheduleCount === 0) && (
@@ -1075,6 +1080,7 @@ export default function HusbandryApp() {
           onPhotoChange={() => { void refresh().catch(() => undefined); }}
         />
       )}
+      {weekOpen && <WeekView onClose={() => setWeekOpen(false)} />}
       {forecastOpen && <FeederForecast onClose={() => { setForecastOpen(false); void loadForecast().catch(() => undefined); }} />}
       {bulkFeedersOpen && isOwner && <BulkFeederIntake onClose={() => setBulkFeedersOpen(false)} onSaved={(message) => { setBulkFeedersOpen(false); notify(message); void refresh().catch(() => undefined); void loadForecast().catch(() => undefined); }} />}
     </div>

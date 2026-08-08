@@ -612,3 +612,78 @@ button.primary:disabled { opacity: .6; cursor: wait; }
   background: var(--accent-wash); border: 1px solid var(--accent-line); color: var(--accent-ink); }
 .suggest-body .sheet-actions { margin-top: 18px; }
 @media (max-width: 620px) { .suggest-body { padding: 16px 15px 20px; } }
+
+/* ── The week at a glance ─────────────────────────────────────────────── */
+.page-heading-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+/* Deliberately not a .quiet-button: those are hidden below 800px, and checking
+   the week on a phone is the main reason this screen exists. */
+.week-button { border: 1px solid var(--line); background: var(--paper); color: var(--moss); font-weight: 800;
+  font-size: 13px; border-radius: 999px; padding: 8px 15px; cursor: pointer; white-space: nowrap; }
+.week-button:hover { border-color: var(--moss); }
+
+.week-step { border: 1px solid var(--line); background: var(--paper); color: var(--ink); border-radius: 50%;
+  width: 34px; height: 34px; font-size: 15px; cursor: pointer; flex: 0 0 auto; }
+.week-step:hover { border-color: var(--moss); color: var(--moss); }
+
+.week-body { width: min(1180px, 100%); }
+.week-loading { display: grid; place-items: center; gap: 12px; padding: 60px 0; color: var(--muted); }
+.week-error { background: var(--danger-soft); border: 1px solid var(--danger-line); border-radius: 12px;
+  padding: 12px 14px; color: var(--ink); font-weight: 700; }
+
+.week-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 10px; align-items: start; }
+.week-day { background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 12px 11px 10px;
+  display: flex; flex-direction: column; gap: 9px; min-height: 132px; }
+.week-day.today { border-color: var(--moss); box-shadow: 0 0 0 2px var(--accent-soft); }
+.week-day.ahead { background: var(--surface-sunken); }
+.week-day.done { border-color: var(--accent-line); }
+.week-day.missed { border-color: var(--danger-line); }
+
+.week-day-head { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
+.week-day-name { color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .09em; }
+.week-day-num { font-size: 19px; font-weight: 800; letter-spacing: -.03em; margin-left: 6px; }
+.week-today-flag { background: var(--moss); color: var(--paper); font-size: 10px; font-weight: 800;
+  text-transform: uppercase; letter-spacing: .07em; border-radius: 999px; padding: 3px 8px; }
+
+.week-tasks { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
+.week-tasks li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px; align-items: baseline;
+  font-size: 12px; line-height: 1.35; padding: 5px 7px; border-radius: 8px; background: var(--cream); }
+.week-tasks li.done { background: var(--accent-soft); }
+.week-tasks li.done .week-animal, .week-tasks li.done .week-title { text-decoration: line-through; opacity: .62; }
+/* Missed and done differ by a pale tint alone, which is too subtle in a
+   seven-column grid and invisible to anyone with a colour vision deficiency.
+   The bar gives missed days a shape you can spot without reading. */
+.week-tasks li.missed { background: var(--danger-soft); border-left: 3px solid var(--danger-line); padding-left: 5px; }
+.week-glyph { grid-row: span 2; font-size: 12px; }
+.week-animal { font-weight: 800; letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.week-title { grid-column: 2; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.week-none { color: var(--muted); font-size: 12px; margin: 0; }
+.week-day-foot { margin-top: auto; padding-top: 6px; border-top: 1px solid var(--line);
+  color: var(--muted); font-size: 11px; font-weight: 700; }
+.week-note { color: var(--muted); font-size: 13px; margin: 20px 0 0; text-align: center; }
+
+/* Collapsed days on a phone: the header becomes the whole row. */
+.week-day > button.week-day-head { width: 100%; border: 0; background: transparent; cursor: pointer;
+  font: inherit; color: inherit; text-align: left; padding: 0; display: flex; align-items: baseline; gap: 10px; }
+.week-day-summary { color: var(--muted); font-size: 12px; font-weight: 700; flex: 1; }
+.week-day.collapsed { min-height: 0; }
+.week-day.missed .week-day-summary { color: var(--ink); }
+.week-caret { color: var(--muted); font-size: 11px; flex: 0 0 auto; }
+
+/* Seven columns stop being readable well before the phone breakpoint. */
+@media (max-width: 1000px) {
+  .week-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .week-day { min-height: 0; }
+}
+@media (max-width: 620px) {
+  .week-grid { grid-template-columns: 1fr; gap: 8px; }
+  .week-day { padding: 0; gap: 0; }
+  /* The header is the tap target, so it owns the padding and stays one row. */
+  .week-day > button.week-day-head { padding: 13px 14px; gap: 10px; align-items: center; }
+  .week-day-head > div { flex: 0 0 auto; display: flex; align-items: baseline; gap: 5px; }
+  .week-day-name { font-size: 10px; }
+  .week-day-num { font-size: 17px; margin-left: 0; }
+  .week-day-summary { text-align: right; }
+  .week-tasks { padding: 0 14px 13px; }
+  .week-none { padding: 0 14px 13px; margin: 0; }
+}
