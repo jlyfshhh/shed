@@ -12,23 +12,25 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-    # Hardening that is verified working on real hardware. Two further steps
-    # from QC-12 are deliberately not here, because I tried both tonight and
-    # each takes the app down:
-    #
-    #   read_only: true   wrangler and miniflare create scratch directories
-    #                     under /app at startup, so the container fails to boot.
-    #   cap_drop: [ALL]   drops CAP_DAC_OVERRIDE, which the root process relies
-    #                     on to write into /data (owned by uid 1000). It
-    #                     crash-loops on EACCES.
-    #
-    # Both need the container running as a dedicated non-root UID with the data
-    # directory owned by it — the same piece of work — rather than being bolted
-    # on separately. Tracked as the remainder of QC-12.
+    # Match the host install owner so SQLite files and backups remain private
+    # but usable without making the application process root. get-shed.sh sets
+    # these values and repairs older root-owned installs before startup.
+    user: "${SHED_UID:-10001}:${SHED_GID:-10001}"
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
     security_opt:
       - no-new-privileges:true
-    pids_limit: 512
-    mem_limit: 1g
+    pids_limit: ${SHED_PIDS_LIMIT:-256}
+    mem_limit: ${SHED_MEMORY_LIMIT:-1g}
+    cpus: "${SHED_CPU_LIMIT:-2.0}"
+    stop_grace_period: 30s
+    tmpfs:
+      # Wrangler needs transient bundles beside its generated config. Nothing
+      # else under /app is writable, and all durable Miniflare state is /data.
+      - /app/dist/server/.wrangler:rw,nosuid,nodev,noexec,size=128m,mode=0700,uid=${SHED_UID:-10001},gid=${SHED_GID:-10001}
+      - /tmp:rw,nosuid,nodev,noexec,size=128m,mode=1777
     env_file:
       - .env
     ports:

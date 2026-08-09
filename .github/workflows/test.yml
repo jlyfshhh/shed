@@ -27,7 +27,7 @@ jobs:
       - name: Lint
         run: npm run lint
       - name: Shell syntax
-        run: bash -n get-shed.sh docker-entrypoint.sh scripts/backup.sh scripts/privacy-scan.sh tests/backup.sh tests/installer.sh
+        run: bash -n get-shed.sh docker-entrypoint.sh scripts/backup.sh scripts/privacy-scan.sh tests/backup.sh tests/installer.sh tests/container-boundary.sh tests/container-smoke.sh
       # The forbidden values live in a repository secret, never in the tree —
       # committing them here would publish exactly what the scan protects. It
       # passes when unset so forks and outside pull requests are not blocked.
@@ -35,9 +35,18 @@ jobs:
         run: bash tests/backup.sh
       - name: Installer behaviour
         run: bash tests/installer.sh
+      - name: Container security boundary
+        run: bash tests/container-boundary.sh
       - name: Privacy scan
         env:
           PRIVACY_DENYLIST: ${{ secrets.PRIVACY_DENYLIST }}
         run: bash scripts/privacy-scan.sh
+      - name: Compose configuration
+        run: |
+          cp .env.example .env
+          trap 'rm -f .env' EXIT
+          docker compose config --quiet
       - name: Container build
         run: docker build -t shed:test .
+      - name: Hardened container startup
+        run: bash tests/container-smoke.sh

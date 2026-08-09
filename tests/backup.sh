@@ -123,4 +123,31 @@ remaining="$(find "$work/backups" -name 'shed-*.sqlite' | wc -l | tr -d ' ')"
 [ "$remaining" -ge 1 ] || { echo "Retention left no backup at all." >&2; exit 1; }
 echo "  retention never leaves the machine with no backup"
 
+# ── The host-side tool reads safe path settings without sourcing .env ────────
+configured="$work/configured-install"
+configured_data="$configured/private-data/v3/d1/miniflare-D1DatabaseObject"
+configured_live="$configured_data/faaf2b0445ab934c3aac48ddf0cdfade8f9bac050be98993748742cdd2cb05fb.sqlite"
+mkdir -p "$configured_data"
+sqlite3 "$configured_live" "CREATE TABLE animals(id TEXT); CREATE TABLE care_schedules(id TEXT); CREATE TABLE husbandry_events(id TEXT);" >/dev/null
+cat >"$configured/.env" <<'ENV'
+SHED_DATA_PATH=./private-data
+SHED_BACKUP_PATH=./private-backups
+SHED_BACKUP_KEEP=7
+# This must be treated as inert text, never executed by the backup tool.
+IGNORED=$(touch /tmp/shed-env-must-not-execute)
+ENV
+rm -f /tmp/shed-env-must-not-execute
+configured_archive="$(SHED_INSTALL_DIR="$configured" bash "$backup")"
+case "$configured_archive" in "$configured/private-backups"/*) ;; *)
+  echo "Backup did not resolve .env paths relative to the install directory." >&2
+  exit 1
+esac
+[ ! -e /tmp/shed-env-must-not-execute ] || {
+  echo "Backup executed untrusted content from .env." >&2
+  exit 1
+}
+configured_mode="$(stat -c '%a' "$configured/private-backups" 2>/dev/null || stat -f '%Lp' "$configured/private-backups")"
+[ "$configured_mode" = 700 ] || { echo "Backup directory is mode $configured_mode, expected 700." >&2; exit 1; }
+echo "  .env backup paths are read as data, resolved safely, and kept private"
+
 echo "Backup tests passed."

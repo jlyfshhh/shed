@@ -7,9 +7,26 @@ set -euo pipefail
 umask 077
 
 root="${SHED_INSTALL_DIR:-$HOME/shed}"
-data="${SHED_DATA_PATH:-$root/data}"
-destination="${SHED_BACKUP_PATH:-$root/backups}"
-keep="${SHED_BACKUP_KEEP:-30}"
+settings="$root/.env"
+
+setting() {
+  local key="$1"
+  [ -f "$settings" ] || return 0
+  sed -n "s/^${key}=//p" "$settings" | tail -n 1
+}
+
+data="${SHED_DATA_PATH:-$(setting SHED_DATA_PATH)}"
+destination="${SHED_BACKUP_PATH:-$(setting SHED_BACKUP_PATH)}"
+keep="${SHED_BACKUP_KEEP:-$(setting SHED_BACKUP_KEEP)}"
+data="${data:-data}"
+destination="${destination:-backups}"
+keep="${keep:-30}"
+
+# Compose resolves relative bind paths beside compose.yaml. Do the same even
+# when the backup command is launched from another working directory.
+case "$data" in /*) ;; *) data="$root/${data#./}" ;; esac
+case "$destination" in /*) ;; *) destination="$root/${destination#./}" ;; esac
+case "$keep" in ''|*[!0-9]*) echo "SHED_BACKUP_KEEP must be a whole number of days." >&2; exit 1 ;; esac
 
 command -v sqlite3 >/dev/null 2>&1 || {
   echo "Shed's backup needs the sqlite3 command. Install it with: sudo apt-get install -y sqlite3" >&2
@@ -51,6 +68,7 @@ elif [ "$found" -gt 1 ]; then
 fi
 
 mkdir -p "$destination"
+chmod 0700 "$destination"
 stamp="$(date +%Y%m%d-%H%M%S)"
 final="$destination/shed-$stamp.sqlite"
 # Two runs inside the same second would otherwise land on the same name and the

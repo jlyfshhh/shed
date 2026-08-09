@@ -12,6 +12,12 @@ curl -fsSL https://animalroom.app/shed/install.sh | bash
 
 Nothing is compiled on your machine — the installer downloads a ready-made container, creates a `shed` folder, and stores settings in `shed/.env`. Do not publish or share that file: it contains the one-time setup token and authentication secrets.
 
+The installer also makes the install, database, and backup directories private
+to the installing account. Shed itself runs as that non-root uid/gid with no
+Linux capabilities and a read-only application filesystem. If an older Shed
+container created root-owned database files, the installer stops it before
+repairing their ownership and permissions.
+
 When it finishes it prints the address to open, like `http://192.168.1.50:3000`. Use that numeric address from your phone or another computer — it always works on your network. The friendlier `http://yourpi.local:3000` also works *if* your device supports `.local` names, which Windows and some Android phones do not. If you are sitting at the machine you installed on, `http://localhost:3000` works too.
 
 ## 2. Create the Head Keeper
@@ -150,6 +156,10 @@ docker compose pull && docker compose up -d
 ```
 
 Either downloads the current version and restarts it. Your database, your settings, and your records are left alone.
+
+After changing `SHED_UID`, `SHED_GID`, or `SHED_DATA_PATH` manually, re-run the
+installer rather than only running Compose. It validates the settings and
+repairs ownership before starting the read-only, non-root container.
 
 ## Quick troubleshooting
 

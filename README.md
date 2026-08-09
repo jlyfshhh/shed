@@ -49,9 +49,16 @@ compose service:
 mkdir -p ~/shed && cd ~/shed
 curl -fsSLO https://raw.githubusercontent.com/jlyfshhh/shed/main/compose.yaml
 curl -fsSL https://raw.githubusercontent.com/jlyfshhh/shed/main/.env.example -o .env
-# edit .env, then:
+# edit the secrets and set SHED_UID/SHED_GID to the output of `id -u`/`id -g`
+mkdir -p data backups && chmod 700 data backups && chmod 600 .env compose.yaml
 docker compose up -d
 ```
+
+The installer performs that ownership and permission setup automatically,
+including repairing data files left by older root-running images. The container
+runs without Linux capabilities, with a read-only application filesystem and
+bounded memory, CPU, and process counts. Only the SQLite data mount and two
+ephemeral scratch mounts are writable.
 
 For one chooser that can install Bask, Shed, or both with their combined room
 dashboard, use the **[Haven installer](https://github.com/jlyfshhh/animal-room)**.
@@ -105,6 +112,11 @@ If you put it behind a reverse proxy, leave `SHED_TRUSTED_PROXY_IP_HEADER` blank
 unless the origin is reachable **only** through that proxy and the proxy strips and
 overwrites the chosen header. The setting is solely an optional per-source login
 throttle; authentication does not depend on an IP address.
+
+Image releases include OCI source, revision, version, and license metadata plus
+BuildKit provenance and an attached software bill of materials (SBOM). These
+describe the published image; they do not replace verifying the release digest
+when pinning a production install.
 
 ## Local development
 

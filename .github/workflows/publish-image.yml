@@ -70,6 +70,12 @@ jobs:
         with:
           context: .
           platforms: ${{ matrix.platform }}
+          build-args: |
+            SHED_VERSION=${{ github.ref_name }}
+            SHED_VCS_REF=${{ github.sha }}
+            SHED_SOURCE=https://github.com/${{ github.repository }}
+          provenance: mode=max
+          sbom: true
           cache-from: type=gha,scope=${{ matrix.platform }}
           cache-to: type=gha,mode=max,scope=${{ matrix.platform }}
           outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
