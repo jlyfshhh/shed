@@ -30,6 +30,18 @@ else
   curl -fsSL "$raw/compose.yaml" -o compose.yaml
 fi
 
+# The documented backup command lives in the repository, and an image install
+# has no repository — so before this, every install that followed the docs got
+# "no such file". Fetch it alongside the compose file, and keep it current.
+mkdir -p scripts
+if curl -fsSL "$raw/scripts/backup.sh" -o scripts/backup.sh.new; then
+  mv -f scripts/backup.sh.new scripts/backup.sh
+  chmod +x scripts/backup.sh
+else
+  rm -f scripts/backup.sh.new
+  echo "Warning: could not download scripts/backup.sh; backups will be unavailable." >&2
+fi
+
 if [ ! -f .env ]; then
   umask 077
   curl -fsSL "$raw/.env.example" -o .env

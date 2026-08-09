@@ -24,10 +24,12 @@ jobs:
       - name: Lint
         run: npm run lint
       - name: Shell syntax
-        run: bash -n get-shed.sh docker-entrypoint.sh scripts/backup.sh scripts/privacy-scan.sh
+        run: bash -n get-shed.sh docker-entrypoint.sh scripts/backup.sh scripts/privacy-scan.sh tests/backup.sh
       # The forbidden values live in a repository secret, never in the tree —
       # committing them here would publish exactly what the scan protects. It
       # passes when unset so forks and outside pull requests are not blocked.
+      - name: Backup behaviour
+        run: bash tests/backup.sh
       - name: Privacy scan
         env:
           PRIVACY_DENYLIST: ${{ secrets.PRIVACY_DENYLIST }}
