@@ -13,6 +13,8 @@ type CompletionPayload = {
   taskId?: string;
   dueDate?: string;
   actorRole?: string;
+  /** "done", or "refused" when a feeding was offered and the animal did not eat. */
+  outcome?: string;
 };
 
 type CorrectionPayload = {
@@ -49,7 +51,9 @@ export async function POST(request: Request) {
     ).bind(task.id, payload.dueDate).first<{ id: string; voidedAt: string | null }>();
     if (existing && !existing.voidedAt) {
       const completion = await completionForTask(db, task.id, payload.dueDate);
-      return Response.json({ saved: true, completion, rewardCents: completion?.rewardCents ?? 0, balanceCents: null }, { headers: noStore });
+      // Already recorded: report the outcome that was stored, not the one this
+      // request happened to ask for.
+      return Response.json({ saved: true, completion, outcome: completion?.outcome ?? "done", rewardCents: completion?.rewardCents ?? 0, balanceCents: null }, { headers: noStore });
     }
 
     const eventId = existing?.id ?? crypto.randomUUID();
@@ -88,21 +92,32 @@ export async function POST(request: Request) {
       ? rewardForCompletion(true, task.scheduleReward, await getDefaultRewardCents(db))
       : 0;
 
+    // What the keeper did is the completion; what the animal did is the outcome.
+    // A refused meal is care performed — thawed, offered, feeder lost — so it
+    // completes the task and consumes inventory exactly as a taken meal does.
+    // Only the outcome differs, and for a snake that is the line in the record
+    // that matters months later.
+    const outcome = payload.outcome === "refused" ? "refused" : "done";
+    if (outcome === "refused" && task.taskType !== "feeding") {
+      return Response.json({ error: "Only a feeding can be refused." }, { status: 400, headers: noStore });
+    }
+
     const occurredAt = new Date().toISOString();
     const actorRole = member?.role ?? (payload.actorRole === "Owner" ? "Owner" : "Zookeeper");
     const statements: D1PreparedStatement[] = [];
     if (existing?.voidedAt) {
       statements.push(db.prepare(
-        "UPDATE husbandry_events SET animal_id = ?, task_type = ?, title = ?, notes = ?, occurred_at = ?, actor_role = ?, completed_by_member_id = ?, completed_by_name = ?, reward_cents = ?, voided_at = NULL, voided_by_member_id = NULL, voided_by_name = NULL, void_reason = NULL WHERE id = ?",
-      ).bind(task.animalId, task.taskType, task.title, task.details, occurredAt, actorRole, member?.id ?? null, member?.displayName ?? null, rewardCents, existing.id));
+        "UPDATE husbandry_events SET animal_id = ?, task_type = ?, title = ?, notes = ?, occurred_at = ?, actor_role = ?, completed_by_member_id = ?, completed_by_name = ?, reward_cents = ?, outcome = ?, voided_at = NULL, voided_by_member_id = NULL, voided_by_name = NULL, void_reason = NULL WHERE id = ?",
+      ).bind(task.animalId, task.taskType, task.title, task.details, occurredAt, actorRole, member?.id ?? null, member?.displayName ?? null, rewardCents, outcome, existing.id));
     } else if (!existing) {
       statements.push(db.prepare(
-        "INSERT INTO husbandry_events (id, task_id, animal_id, task_type, title, notes, due_date, occurred_at, actor_role, completed_by_member_id, completed_by_name, reward_cents) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      ).bind(eventId, task.id, task.animalId, task.taskType, task.title, task.details, payload.dueDate, occurredAt, actorRole, member?.id ?? null, member?.displayName ?? null, rewardCents));
+        "INSERT INTO husbandry_events (id, task_id, animal_id, task_type, title, notes, due_date, occurred_at, actor_role, completed_by_member_id, completed_by_name, reward_cents, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      ).bind(eventId, task.id, task.animalId, task.taskType, task.title, task.details, payload.dueDate, occurredAt, actorRole, member?.id ?? null, member?.displayName ?? null, rewardCents, outcome));
     }
 
-    // Completing a task clears any "missed" mark — it turned out to be done.
-    statements.push(db.prepare("UPDATE care_tasks SET missed_at = NULL, missed_by_member_id = NULL, missed_by_name = NULL WHERE id = ? AND due_date = ?")
+    // Completing a task clears any "missed" or "skipped" mark — it turned out to
+    // be done after all, and it cannot be two of those at once.
+    statements.push(db.prepare("UPDATE care_tasks SET missed_at = NULL, missed_by_member_id = NULL, missed_by_name = NULL, skipped_at = NULL, skipped_by_member_id = NULL, skipped_by_name = NULL, skip_reason = NULL WHERE id = ? AND due_date = ?")
       .bind(task.id, payload.dueDate));
     if (allocatedFeeder && !retainedAssignment) {
       statements.push(
@@ -116,7 +131,7 @@ export async function POST(request: Request) {
 
     const completion = await completionForTask(db, task.id, payload.dueDate);
     const balanceCents = member?.id && earningEnabled ? (await memberBalance(db, member.id)).balanceCents : null;
-    return Response.json({ saved: true, completion, rewardCents, balanceCents, allocatedFeeder, feederShortage }, { headers: noStore });
+    return Response.json({ saved: true, completion, outcome, rewardCents, balanceCents, allocatedFeeder, feederShortage }, { headers: noStore });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Unable to record task" }, { status: 500, headers: noStore });
   }
@@ -124,8 +139,8 @@ export async function POST(request: Request) {
 
 async function completionForTask(db: D1Database, taskId: string, dueDate: string) {
   return db.prepare(
-    "SELECT e.id, e.completed_by_member_id AS completedByMemberId, COALESCE(e.completed_by_name, e.actor_role) AS completedBy, e.occurred_at AS occurredAt, e.reward_cents AS rewardCents, f.id AS feederId, f.prey_species AS feederSpecies, f.size_class AS feederSizeClass, f.weight_grams AS feederWeightGrams FROM husbandry_events e LEFT JOIN feeding_assignments fa ON fa.husbandry_event_id = e.id AND fa.status = 'consumed' LEFT JOIN feeder_inventory f ON f.id = fa.feeder_id WHERE e.task_id = ? AND e.due_date = ? AND e.voided_at IS NULL",
-  ).bind(taskId, dueDate).first<{ rewardCents: number }>();
+    "SELECT e.id, e.outcome AS outcome, e.completed_by_member_id AS completedByMemberId, COALESCE(e.completed_by_name, e.actor_role) AS completedBy, e.occurred_at AS occurredAt, e.reward_cents AS rewardCents, f.id AS feederId, f.prey_species AS feederSpecies, f.size_class AS feederSizeClass, f.weight_grams AS feederWeightGrams FROM husbandry_events e LEFT JOIN feeding_assignments fa ON fa.husbandry_event_id = e.id AND fa.status = 'consumed' LEFT JOIN feeder_inventory f ON f.id = fa.feeder_id WHERE e.task_id = ? AND e.due_date = ? AND e.voided_at IS NULL",
+  ).bind(taskId, dueDate).first<{ rewardCents: number; outcome: string | null }>();
 }
 
 /**

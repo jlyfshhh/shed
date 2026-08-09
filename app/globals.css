@@ -698,3 +698,22 @@ button.primary:disabled { opacity: .6; cursor: wait; }
   .week-tasks { padding: 0 14px 13px; }
   .week-none { padding: 0 14px 13px; margin: 0; }
 }
+
+/* ── Skip and refusal ─────────────────────────────────────────────────── */
+/* Skip and Refused are deliberately quieter than Mark done. They are the
+   right answer sometimes, but they should never be the easy accidental tap. */
+.task-actions { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+.task-alt-actions { display: flex; gap: 6px; justify-content: flex-end; }
+.skip-button, .refuse-button {
+  border: 1px solid var(--line); background: var(--paper); color: var(--muted);
+  border-radius: 999px; padding: 6px 13px; font-size: 12px; font-weight: 800; cursor: pointer;
+}
+.skip-button:hover { border-color: var(--moss); color: var(--moss); }
+/* A refusal is a health signal, so it reads warm rather than neutral. */
+.refuse-button:hover { border-color: var(--gold); color: var(--ink); }
+.skip-button:disabled, .refuse-button:disabled { opacity: .5; cursor: default; }
+
+/* A skipped task in the week view: present, clearly not a lapse. */
+.week-tasks li.skipped { background: var(--surface-sunken); }
+.week-tasks li.skipped .week-animal, .week-tasks li.skipped .week-title { opacity: .6; }
+.week-day.skipped-only { border-style: dashed; }

@@ -35,7 +35,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         "SELECT id, recorded_on AS recordedOn, weight_grams AS weightGrams FROM weight_events WHERE animal_id = ? ORDER BY recorded_on DESC",
       ).bind(id).all(),
       db.prepare(
-        "SELECT e.id, e.task_id AS taskId, e.task_type AS taskType, e.title, e.notes, e.due_date AS dueDate, e.occurred_at AS occurredAt, e.actor_role AS actorRole, e.completed_by_member_id AS completedByMemberId, COALESCE(e.completed_by_name, e.actor_role) AS completedBy, e.voided_at AS voidedAt, e.voided_by_member_id AS voidedByMemberId, e.voided_by_name AS voidedBy, e.void_reason AS voidReason, f.id AS feederId, f.prey_species AS feederSpecies, f.size_class AS feederSizeClass, f.weight_grams AS feederWeightGrams FROM husbandry_events e LEFT JOIN feeding_assignments fa ON fa.husbandry_event_id = e.id AND fa.status = 'consumed' LEFT JOIN feeder_inventory f ON f.id = fa.feeder_id WHERE e.animal_id = ? ORDER BY COALESCE(e.voided_at, e.occurred_at) DESC",
+        "SELECT e.id, e.outcome AS outcome, e.task_id AS taskId, e.task_type AS taskType, e.title, e.notes, e.due_date AS dueDate, e.occurred_at AS occurredAt, e.actor_role AS actorRole, e.completed_by_member_id AS completedByMemberId, COALESCE(e.completed_by_name, e.actor_role) AS completedBy, e.voided_at AS voidedAt, e.voided_by_member_id AS voidedByMemberId, e.voided_by_name AS voidedBy, e.void_reason AS voidReason, f.id AS feederId, f.prey_species AS feederSpecies, f.size_class AS feederSizeClass, f.weight_grams AS feederWeightGrams FROM husbandry_events e LEFT JOIN feeding_assignments fa ON fa.husbandry_event_id = e.id AND fa.status = 'consumed' LEFT JOIN feeder_inventory f ON f.id = fa.feeder_id WHERE e.animal_id = ? ORDER BY COALESCE(e.voided_at, e.occurred_at) DESC",
       ).bind(id).all(),
       db.prepare(
         "SELECT t.id, t.task_type AS taskType, t.title, t.details, t.due_date AS dueDate, CASE WHEN e.id IS NULL THEN 0 ELSE 1 END AS complete, e.id AS completionEventId, COALESCE(e.completed_by_name, e.actor_role) AS completedBy FROM care_tasks t LEFT JOIN husbandry_events e ON e.task_id = t.id AND e.due_date = t.due_date AND e.voided_at IS NULL WHERE t.animal_id = ? ORDER BY t.due_date DESC, t.title",
@@ -74,21 +74,35 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     const careStartDate = await getCareStartDate(db);
     const windowStart = isoDaysAgo(today, SCORE_WINDOW_DAYS - 1);
     const scoreSince = careStartDate && careStartDate > windowStart ? careStartDate : windowStart;
+    // A skipped task is not accountable. The keeper looked at it and judged it
+    // did not need doing — leaving a new arrival alone to settle, or not misting
+    // an enclosure that is already damp. Counting those as unmet would penalise
+    // exactly the judgement good husbandry depends on, so they leave the
+    // denominator rather than counting as done.
+    //
+    // A refused meal needs no special case here: the keeper thawed, offered, and
+    // lost the feeder, so the care did happen and its completion counts. That
+    // the animal did not eat is recorded as the event's outcome and belongs in
+    // the feeding history, not in a score about whether the household keeps up.
     const scoreRow = await db.prepare(
       `SELECT
-         COALESCE(SUM(CASE WHEN t.due_date < ? THEN 1 ELSE 0 END), 0) AS pastDue,
+         COALESCE(SUM(CASE WHEN t.due_date < ? AND t.skipped_at IS NULL THEN 1 ELSE 0 END), 0) AS pastDue,
          COALESCE(SUM(CASE WHEN t.due_date < ? AND e.id IS NOT NULL THEN 1 ELSE 0 END), 0) AS pastDone,
-         COALESCE(SUM(CASE WHEN t.due_date = ? AND e.id IS NOT NULL THEN 1 ELSE 0 END), 0) AS todayDone
+         COALESCE(SUM(CASE WHEN t.due_date = ? AND e.id IS NOT NULL THEN 1 ELSE 0 END), 0) AS todayDone,
+         COALESCE(SUM(CASE WHEN t.skipped_at IS NOT NULL THEN 1 ELSE 0 END), 0) AS skipped
        FROM care_tasks t
        LEFT JOIN husbandry_events e ON e.task_id = t.id AND e.due_date = t.due_date AND e.voided_at IS NULL
        WHERE t.animal_id = ? AND t.due_date >= ? AND t.due_date <= ?`,
-    ).bind(today, today, today, id, scoreSince, today).first<{ pastDue: number; pastDone: number; todayDone: number }>();
+    ).bind(today, today, today, id, scoreSince, today).first<{ pastDue: number; pastDone: number; todayDone: number; skipped: number }>();
     const accountable = Number(scoreRow?.pastDue ?? 0) + Number(scoreRow?.todayDone ?? 0);
     const done = Number(scoreRow?.pastDone ?? 0) + Number(scoreRow?.todayDone ?? 0);
     const husbandryScore = {
       percent: accountable > 0 ? Math.round((done / accountable) * 100) : null,
       done,
       accountable,
+      // Surfaced so the number is explicable: "12 of 12 · 5 skipped" reads as
+      // deliberate, where a silently smaller denominator looks like a bug.
+      skipped: Number(scoreRow?.skipped ?? 0),
       since: scoreSince,
       windowDays: SCORE_WINDOW_DAYS,
     };

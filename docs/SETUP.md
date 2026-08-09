@@ -86,6 +86,24 @@ Active care plans generate the tasks on **Today**. If Today is empty on a new in
 
 On **Today**, choose **Mark done**. Shed records who completed it and keeps the completion in the animal's history. If a task was marked accidentally, the Head Keeper can use **Undo**; Shed retains the correction in its audit history rather than silently erasing it.
 
+### When care did not need doing, or an animal would not eat
+
+Not every scheduled task needs doing, and marking one **missed** says something
+different from what you mean. Missed means the care should have happened and did
+not — it counts against that animal's husbandry score. Use **Skip** instead when
+you looked and decided it was not needed: the enclosure is already damp, or a
+new arrival is being left alone to settle in. A skipped task leaves the list,
+keeps a note of your reason, and does **not** count against the score. You can
+un-skip it if you change your mind.
+
+Feedings have a third option. **Refused** records that you offered the meal and
+the animal did not take it. The care counts as done — you thawed it, offered it,
+and the feeder is gone either way, so it comes out of your feeder stock exactly
+as a taken meal would. The refusal is kept in that animal's history, which is
+what matters months later when you are trying to remember whether a snake went
+off food before a shed or before a vet visit. The next meal stays on its normal
+date.
+
 ### See the whole week
 
 Today shows today. To see the week around it, choose **See the week** at the top of Today.

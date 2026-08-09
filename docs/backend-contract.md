@@ -84,6 +84,27 @@ Completion corrections are two distinct Head Keeper-only operations on
   and atomically releases its feeding assignment and returns its feeder to available
   inventory.
 
+### Task dispositions
+
+A scheduled task ends in one of four states, and they are deliberately distinct:
+
+- **completed** — a `husbandry_events` row exists and is not voided.
+- **missed** — `care_tasks.missed_at` set. The care should have happened and did
+  not. Counts against the husbandry score.
+- **skipped** — `care_tasks.skipped_at`, with `skip_reason`. The keeper judged it
+  unnecessary. Leaves the overdue list and the display feed, and is **excluded
+  from the husbandry-score denominator** rather than counted as done. Reversible
+  via `DELETE /api/tasks/skip`. Completing a task clears both marks.
+- **refused** — a completion whose `husbandry_events.outcome` is `refused`,
+  accepted only on `feeding` tasks. The completion is real: it consumes feeder
+  inventory through the same path a taken meal does and counts toward the score,
+  because the husbandry happened. Only the animal's response differs. A refusal
+  does not move any scheduled dates.
+
+`POST /api/tasks/skip` and `DELETE /api/tasks/skip` both require `care.complete`
+— skipping is a judgement made by whoever does the care, not a Head Keeper
+power, and it destroys nothing.
+
 ## Animal profile
 
 `GET /api/animals/:id` returns the structured animal profile, current enclosure,

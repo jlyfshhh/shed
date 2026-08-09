@@ -91,6 +91,11 @@ const PROTECTED_ROUTES: RoutePolicy[] = [
   { file: "app/api/tasks/complete/route.ts", method: "PATCH", capabilities: ["care.correct"] },
   { file: "app/api/tasks/complete/route.ts", method: "DELETE", capabilities: ["care.correct"] },
   { file: "app/api/tasks/miss/route.ts", method: "POST", capabilities: ["care.miss", "care.missAll"] },
+  // Skipping is a judgement about whether care was needed, made by whoever is
+  // doing the care — the same people who complete tasks, not only the Head
+  // Keeper. It destroys nothing and is reversible.
+  { file: "app/api/tasks/skip/route.ts", method: "POST", capabilities: ["care.complete"] },
+  { file: "app/api/tasks/skip/route.ts", method: "DELETE", capabilities: ["care.complete"] },
   { file: "app/api/week/route.ts", method: "GET", capabilities: ["care.read"] },
   { file: "app/api/weights/route.ts", method: "POST", capabilities: ["weights.record"] },
 ];

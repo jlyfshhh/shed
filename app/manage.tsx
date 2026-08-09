@@ -1029,7 +1029,7 @@ type AnimalProfileData = {
   }>;
   schedules: Array<{ id: string; title: string; taskType: string; frequency: string; active: number }>;
   tasks: Array<{ id: string; title: string; dueDate: string; complete: number; completedBy: string | null }>;
-  history: Array<{ id: string; title: string; taskType: string; occurredAt: string; completedBy: string; notes: string | null; voidedAt: string | null; voidReason: string | null; feederSpecies: string | null; feederSizeClass: string | null; feederWeightGrams: number | null }>;
+  history: Array<{ id: string; title: string; taskType: string; occurredAt: string; completedBy: string; notes: string | null; voidedAt: string | null; voidReason: string | null; outcome?: string | null; feederSpecies: string | null; feederSizeClass: string | null; feederWeightGrams: number | null }>;
 };
 
 export function AnimalProfile({
@@ -1250,10 +1250,10 @@ export function AnimalProfile({
               {data.history.length === 0 ? <p className="member-note">No recorded husbandry yet.</p> : (
                 <div className="history-list">
                   {data.history.slice(0, 30).map((event) => (
-                    <div className={`history-row ${event.voidedAt ? "voided" : ""}`} key={event.id}>
+                    <div className={`history-row ${event.voidedAt ? "voided" : ""}${event.outcome === "refused" ? " refused" : ""}`} key={event.id}>
                       <span className="history-dot" />
                       <p>
-                        <b>{event.title}</b>{event.voidedAt ? <i> · corrected</i> : ""}
+                        <b>{event.title}</b>{event.voidedAt ? <i> · corrected</i> : ""}{event.outcome === "refused" ? <em className="refused-tag">refused</em> : ""}
                         <small>{event.completedBy} · {relativeTime(event.occurredAt)}{event.feederWeightGrams ? ` · ${event.feederWeightGrams} g ${event.feederSizeClass ?? ""} ${event.feederSpecies ?? "feeder"}` : ""}{event.notes ? ` · ${event.notes}` : ""}{event.voidReason ? ` · ${event.voidReason}` : ""}</small>
                       </p>
                     </div>

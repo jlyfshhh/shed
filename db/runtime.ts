@@ -119,7 +119,18 @@ async function applySchema(db: D1Database) {
     ["enclosure_id", "TEXT"], ["created_at", "TEXT"], ["updated_at", "TEXT"],
     ["earning_enabled", "INTEGER NOT NULL DEFAULT 1"],
   ]);
-  await addMissingColumns(db, "care_tasks", [["task_type", "TEXT NOT NULL DEFAULT 'general'"], ["schedule_id", "TEXT"], ["missed_at", "TEXT"], ["missed_by_member_id", "TEXT"], ["missed_by_name", "TEXT"]]);
+  await addMissingColumns(db, "care_tasks", [["task_type", "TEXT NOT NULL DEFAULT 'general'"], ["schedule_id", "TEXT"], ["missed_at", "TEXT"], ["missed_by_member_id", "TEXT"], ["missed_by_name", "TEXT"],
+    // Skipped is a third disposition, not a flavour of missed. Missed means the
+    // care should have happened and did not; skipped means the keeper judged it
+    // did not need doing — a damp enclosure, or an animal being left alone to
+    // settle. Only one of those is a lapse, so they must be distinguishable.
+    ["skipped_at", "TEXT"], ["skipped_by_member_id", "TEXT"], ["skipped_by_name", "TEXT"], ["skip_reason", "TEXT"]]);
+  // A completion records what the keeper did; the outcome records what the
+  // animal did. A refused meal is still husbandry performed — the rat was
+  // thawed, offered, and wasted — but it is not a meal eaten, and for a snake
+  // that distinction is the whole point of keeping records. The animal simply
+  // waits for its next scheduled meal; a refusal does not move any dates.
+  await addMissingColumns(db, "husbandry_events", [["outcome", "TEXT NOT NULL DEFAULT 'done'"]]);
   await addMissingColumns(db, "care_schedules", [["prey_species", "TEXT"], ["prey_description", "TEXT"], ["prey_size_class", "TEXT"], ["target_percent", "REAL"], ["minimum_percent", "REAL"], ["maximum_percent", "REAL"], ["buy_as_needed", "INTEGER NOT NULL DEFAULT 0"]]);
   await addMissingColumns(db, "husbandry_events", [
     ["task_type", "TEXT NOT NULL DEFAULT 'general'"], ["notes", "TEXT"], ["completed_by_member_id", "TEXT"],

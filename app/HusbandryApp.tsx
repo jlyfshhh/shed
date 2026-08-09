@@ -494,13 +494,13 @@ export default function HusbandryApp() {
     window.setTimeout(() => setToast(null), 2800);
   };
 
-  const completeTask = async (task: Task) => {
+  const completeTask = async (task: Task, outcome: "done" | "refused" = "done") => {
     setBusyTask(task.id);
     try {
       const response = await fetch("/api/tasks/complete", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ taskId: task.id, dueDate: task.dueDate, actorRole: viewer?.role ?? "Owner" }),
+        body: JSON.stringify({ taskId: task.id, dueDate: task.dueDate, actorRole: viewer?.role ?? "Owner", outcome }),
       });
       const payload = (await response.json()) as { error?: string; allocatedFeeder?: { weightGrams: number; sizeClass: string; preySpecies: string } | null; feederShortage?: string | null };
       if (!response.ok) throw new Error(payload.error ?? "Unable to save");
@@ -583,6 +583,41 @@ export default function HusbandryApp() {
     } finally {
       setBusyTask(null);
     }
+  };
+
+  const skipTask = async (task: Task) => {
+    // A reason is optional but strongly worth having: in three months "skipped"
+    // alone tells the keeper nothing, and "already damp" tells them everything.
+    const reason = window.prompt(
+      `Skip “${task.title}” for ${task.animalName}?\n\nThis records that it did not need doing, so it will not count against ${task.animalName}'s husbandry score. Add a reason if you like:`,
+      "",
+    );
+    if (reason === null) return;
+    setBusyTask(task.id);
+    try {
+      const response = await fetch("/api/tasks/skip", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ taskId: task.id, dueDate: task.dueDate, reason: reason.trim() }),
+      });
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "Unable to skip");
+      await refresh();
+      setToast(`${task.animalName}: ${task.title} skipped${reason.trim() ? ` — ${reason.trim()}` : ""}`);
+      window.setTimeout(() => setToast(null), 2800);
+    } catch (skipError) {
+      setToast(skipError instanceof Error ? skipError.message : "Unable to skip");
+      window.setTimeout(() => setToast(null), 2800);
+    } finally {
+      setBusyTask(null);
+    }
+  };
+
+  const refuseMeal = async (task: Task) => {
+    if (!window.confirm(
+      `Record that ${task.animalName} refused this meal?\n\nThe feeder is still used up, and the care counts as done — you offered it. The refusal is kept in ${task.animalName}'s feeding history, and the next meal stays on its normal date.`,
+    )) return;
+    await completeTask(task, "refused");
   };
 
   const missTask = async (task: Task) => {
@@ -772,6 +807,8 @@ export default function HusbandryApp() {
                       </div>
                       <div className="overdue-actions">
                         <button className="complete-button" disabled={busyTask === task.id} onClick={() => completeTask(task)}>{busyTask === task.id ? "Saving…" : "Mark done"}<span>✓</span></button>
+                        {task.taskType === "feeding" && <button className="refuse-button" disabled={busyTask === task.id} onClick={() => refuseMeal(task)}>Refused</button>}
+                        <button className="skip-button" disabled={busyTask === task.id} onClick={() => skipTask(task)}>Skip</button>
                         {can("care.miss") && <button className="miss-button" disabled={busyTask === task.id} onClick={() => missTask(task)}>Missed</button>}
                       </div>
                     </article>
@@ -788,9 +825,17 @@ export default function HusbandryApp() {
                   <div className="task-copy">
                     <span>{task.species}</span><h3>{task.animalName}</h3><p><b>{task.title}</b>{taskDetails(task) ? ` · ${taskDetails(task)}` : ""}</p>
                   </div>
-                  <button className="complete-button" disabled={busyTask === task.id} onClick={() => completeTask(task)}>
-                    {busyTask === task.id ? "Saving…" : "Mark done"}<span>✓</span>
-                  </button>
+                  <div className="task-actions">
+                    <button className="complete-button" disabled={busyTask === task.id} onClick={() => completeTask(task)}>
+                      {busyTask === task.id ? "Saving…" : "Mark done"}<span>✓</span>
+                    </button>
+                    <div className="task-alt-actions">
+                      {task.taskType === "feeding" && (
+                        <button className="refuse-button" disabled={busyTask === task.id} onClick={() => refuseMeal(task)}>Refused</button>
+                      )}
+                      <button className="skip-button" disabled={busyTask === task.id} onClick={() => skipTask(task)}>Skip</button>
+                    </div>
+                  </div>
                 </article>
               ))}
               {!pending.length && <div className="empty-card"><span>✓</span><h3>That’s everything</h3><p>There are no remaining scheduled tasks today.</p></div>}

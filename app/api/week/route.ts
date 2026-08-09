@@ -17,6 +17,8 @@ type WeekTask = {
   complete: number;
   completedBy: string | null;
   missedAt: string | null;
+  skippedAt: string | null;
+  skipReason: string | null;
 };
 
 export async function GET(request: Request) {
@@ -37,7 +39,7 @@ export async function GET(request: Request) {
     // rewrite last week.
     const recorded = await db.prepare(
       `SELECT t.id, t.schedule_id AS scheduleId, t.animal_id AS animalId, a.name AS animalName,
-              t.task_type AS taskType, t.title, t.due_date AS dueDate, t.missed_at AS missedAt,
+              t.task_type AS taskType, t.title, t.due_date AS dueDate, t.missed_at AS missedAt, t.skipped_at AS skippedAt, t.skip_reason AS skipReason,
               CASE WHEN e.id IS NULL THEN 0 ELSE 1 END AS complete,
               COALESCE(e.completed_by_name, e.actor_role) AS completedBy
          FROM care_tasks t
@@ -77,6 +79,8 @@ export async function GET(request: Request) {
           complete: 0,
           completedBy: null,
           missedAt: null,
+          skippedAt: null,
+          skipReason: null,
         })));
       }
     }
@@ -86,9 +90,13 @@ export async function GET(request: Request) {
       const tasks: WeekTask[] = (byDate.get(date) ?? []).map((row) => ({
         id: row.id, animalName: row.animalName, taskType: row.taskType, title: row.title,
         complete: row.complete, completedBy: row.completedBy, missedAt: row.missedAt,
+        skippedAt: row.skippedAt, skipReason: row.skipReason,
       }));
       const done = tasks.filter((task) => task.complete).length;
       const missed = tasks.filter((task) => !task.complete && task.missedAt).length;
+      // Skipped is neither done nor outstanding — it is care that was judged
+      // unnecessary, so it must not read as a shortfall in the day's tally.
+      const skipped = tasks.filter((task) => !task.complete && task.skippedAt).length;
       return {
         date,
         weekday: WEEKDAY_LABELS[weekdayIndex(date)],
@@ -97,7 +105,7 @@ export async function GET(request: Request) {
         isPast: date < today,
         isFuture: date > today,
         tasks,
-        counts: { total: tasks.length, done, missed, pending: tasks.length - done - missed },
+        counts: { total: tasks.length, done, missed, skipped, pending: tasks.length - done - missed - skipped },
       };
     });
 
