@@ -3,6 +3,11 @@ import { attributedTo, requireCapability } from "@/lib/household-auth";
 import { getDefaultRewardCents, memberBalance, rewardForCompletion } from "@/lib/rewards";
 import { loadFeederForecast } from "@/lib/feeder-forecast-data";
 import { feederGuidance } from "@/lib/feeder-guidance";
+import {
+  CompletionCorrectionError,
+  correctCompletionAttribution,
+  undoCompletion,
+} from "@/lib/completion-corrections";
 
 type CompletionPayload = {
   taskId?: string;
@@ -14,6 +19,10 @@ type CorrectionPayload = {
   taskId?: string;
   dueDate?: string;
   reason?: string;
+};
+
+type AttributionPayload = CorrectionPayload & {
+  targetMemberId?: string;
 };
 
 const noStore = { "Cache-Control": "no-store" };
@@ -119,6 +128,40 @@ async function completionForTask(db: D1Database, taskId: string, dueDate: string
   ).bind(taskId, dueDate).first<{ rewardCents: number }>();
 }
 
+/**
+ * Correct who performed care without undoing the care itself.
+ *
+ * The completion, reward snapshot, consumed feeder and feeding assignment all
+ * remain active. Only the member receiving credit changes, and the old row is
+ * captured in the revision audit trail.
+ */
+export async function PATCH(request: Request) {
+  try {
+    const db = await ensureDatabase();
+    const auth = await requireCapability(request, db, "care.correct");
+    if (auth.response) return auth.response;
+    const actor = attributedTo(auth.member);
+    const payload = await request.json() as AttributionPayload;
+    if (!payload.taskId || !payload.dueDate || !payload.targetMemberId) {
+      return Response.json(
+        { error: "Task, due date, and household member are required" },
+        { status: 400, headers: noStore },
+      );
+    }
+
+    const correction = await correctCompletionAttribution(db, {
+      taskId: payload.taskId,
+      dueDate: payload.dueDate,
+      targetMemberId: payload.targetMemberId,
+      actor,
+      reason: payload.reason,
+    });
+    return Response.json({ saved: true, correction }, { headers: noStore });
+  } catch (error) {
+    return correctionFailure(error, "Unable to change completion credit");
+  }
+}
+
 export async function DELETE(request: Request) {
   try {
     const db = await ensureDatabase();
@@ -131,20 +174,24 @@ export async function DELETE(request: Request) {
       return Response.json({ error: "Task and due date are required" }, { status: 400, headers: noStore });
     }
     const reason = payload.reason?.trim().slice(0, 500) || "Marked incomplete by the Head Keeper.";
-    const event = await db.prepare(
-      "SELECT id FROM husbandry_events WHERE task_id = ? AND due_date = ? AND voided_at IS NULL",
-    ).bind(payload.taskId, payload.dueDate).first<{ id: string }>();
-    if (!event) {
-      return Response.json({ error: "No active completion was found for this task" }, { status: 404, headers: noStore });
-    }
-
-    const voidedAt = new Date().toISOString();
-    await db.prepare(
-      "UPDATE husbandry_events SET voided_at = ?, voided_by_member_id = ?, voided_by_name = ?, void_reason = ? WHERE id = ? AND voided_at IS NULL",
-    ).bind(voidedAt, actor.id, actor.name, reason, event.id).run();
-
-    return Response.json({ saved: true, correction: { eventId: event.id, taskId: payload.taskId, dueDate: payload.dueDate, voidedAt, voidedBy: actor.name, reason } }, { headers: noStore });
+    const correction = await undoCompletion(db, {
+      taskId: payload.taskId,
+      dueDate: payload.dueDate,
+      actor,
+      reason,
+    });
+    return Response.json({ saved: true, correction }, { headers: noStore });
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Unable to mark the task incomplete" }, { status: 500, headers: noStore });
+    return correctionFailure(error, "Unable to mark the task incomplete");
   }
+}
+
+function correctionFailure(error: unknown, fallback: string) {
+  if (error instanceof CompletionCorrectionError) {
+    return Response.json({ error: error.message }, { status: error.status, headers: noStore });
+  }
+  return Response.json(
+    { error: error instanceof Error ? error.message : fallback },
+    { status: 500, headers: noStore },
+  );
 }

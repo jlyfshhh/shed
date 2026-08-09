@@ -88,6 +88,7 @@ const PROTECTED_ROUTES: RoutePolicy[] = [
   { file: "app/api/manage/route.ts", method: "PATCH", capabilities: ["records.manage"] },
   { file: "app/api/manage/route.ts", method: "DELETE", capabilities: ["records.manage"] },
   { file: "app/api/tasks/complete/route.ts", method: "POST", capabilities: ["care.complete"] },
+  { file: "app/api/tasks/complete/route.ts", method: "PATCH", capabilities: ["care.correct"] },
   { file: "app/api/tasks/complete/route.ts", method: "DELETE", capabilities: ["care.correct"] },
   { file: "app/api/tasks/miss/route.ts", method: "POST", capabilities: ["care.miss", "care.missAll"] },
   { file: "app/api/week/route.ts", method: "GET", capabilities: ["care.read"] },

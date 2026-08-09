@@ -200,6 +200,9 @@ export default function HusbandryApp() {
   const [newMemberName, setNewMemberName] = useState("");
   const [memberBusy, setMemberBusy] = useState<string | null>(null);
   const [invite, setInvite] = useState<Invite | null>(null);
+  const [attributionTask, setAttributionTask] = useState<Task | null>(null);
+  const [attributionMemberId, setAttributionMemberId] = useState("");
+  const [attributionReason, setAttributionReason] = useState("Wrong household member was credited.");
   // ── Task earnings ("allowance") ──
   const [rewardInput, setRewardInput] = useState("0.25");
   const [rewardBusy, setRewardBusy] = useState(false);
@@ -519,7 +522,7 @@ export default function HusbandryApp() {
 
   const undoTask = async (task: Task) => {
     if (!window.confirm(
-      `Mark “${task.title}” for ${task.animalName} as not done?\n\nThis returns it to today’s list and removes the completion and allowance credit from ${task.completedBy ?? "the recorded keeper"}. The correction stays in history.${task.taskType === "feeding" ? " The assigned feeder remains consumed so you can safely correct who completed the task; restore it in Manage → Feeders only if it was not actually used." : ""}`,
+      `Mark “${task.title}” for ${task.animalName} as NOT DONE?\n\nUse this only when the care itself did not happen. It returns the task to today’s list, removes the allowance credit from ${task.completedBy ?? "the recorded keeper"}, and keeps an audited correction in history.${task.taskType === "feeding" ? " The feeder deducted for this feeding will be returned to available inventory." : ""}\n\nTo fix only who received credit, cancel and choose “Change keeper” instead.`,
     )) return;
     setBusyTask(task.id);
     try {
@@ -529,16 +532,54 @@ export default function HusbandryApp() {
         body: JSON.stringify({
           taskId: task.id,
           dueDate: task.dueDate,
-          reason: "Completion removed from Today by the Head Keeper.",
+          reason: "Marked not done from Today by the Head Keeper; care did not occur.",
         }),
       });
-      const payload = (await response.json()) as { error?: string };
+      const payload = (await response.json()) as { error?: string; correction?: { restoredFeederCount?: number } };
       if (!response.ok) throw new Error(payload.error ?? "Unable to undo");
       await refresh();
-      setToast(`${task.animalName}: ${task.title} returned to today’s list`);
+      void loadMembers().catch(() => undefined);
+      const restored = payload.correction?.restoredFeederCount ?? 0;
+      setToast(`${task.animalName}: ${task.title} marked not done${restored ? ` · ${restored} feeder returned to inventory` : ""}`);
       window.setTimeout(() => setToast(null), 2800);
     } catch (undoError) {
       setToast(undoError instanceof Error ? undoError.message : "That correction didn’t save. Please try again.");
+    } finally {
+      setBusyTask(null);
+    }
+  };
+
+  const openAttributionCorrection = (task: Task) => {
+    setAttributionTask(task);
+    setAttributionMemberId(task.completedByMemberId ?? "");
+    setAttributionReason("Wrong household member was credited.");
+    if (!members) void loadMembers();
+  };
+
+  const correctAttribution = async (event: FormEvent) => {
+    event.preventDefault();
+    const task = attributionTask;
+    if (!task || !attributionMemberId || attributionMemberId === task.completedByMemberId) return;
+    setBusyTask(task.id);
+    try {
+      const response = await fetch("/api/tasks/complete", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          taskId: task.id,
+          dueDate: task.dueDate,
+          targetMemberId: attributionMemberId,
+          reason: attributionReason,
+        }),
+      });
+      const payload = (await response.json()) as { error?: string; correction?: { completedBy?: string } };
+      if (!response.ok) throw new Error(payload.error ?? "Unable to change completion credit");
+      setAttributionTask(null);
+      await Promise.all([refresh(), loadMembers()]);
+      setToast(`${task.animalName}: completion credit moved to ${payload.correction?.completedBy ?? "the selected keeper"}`);
+      window.setTimeout(() => setToast(null), 3200);
+    } catch (correctionError) {
+      setToast(correctionError instanceof Error ? correctionError.message : "That correction didn’t save. Please try again.");
     } finally {
       setBusyTask(null);
     }
@@ -763,9 +804,16 @@ export default function HusbandryApp() {
                   <b>{task.animalName}</b>
                   <p>{task.title}{task.completedBy ? ` · ${task.completedBy}` : ""}</p>
                   {can("care.correct") && (
-                    <button className="undo-task" disabled={busyTask === task.id} onClick={() => void undoTask(task)}>
-                      {busyTask === task.id ? "Undoing…" : "Undo"}
-                    </button>
+                    <span className="completion-correction-actions">
+                      {authRequired && (
+                        <button disabled={busyTask === task.id} onClick={() => openAttributionCorrection(task)}>
+                          Change keeper
+                        </button>
+                      )}
+                      <button className="mark-not-done" disabled={busyTask === task.id} onClick={() => void undoTask(task)}>
+                        {busyTask === task.id ? "Saving…" : "Mark not done"}
+                      </button>
+                    </span>
                   )}
                 </div>
               ))}
@@ -1093,6 +1141,49 @@ export default function HusbandryApp() {
       {weekOpen && <WeekView onClose={() => setWeekOpen(false)} />}
       {forecastOpen && <FeederForecast onClose={() => { setForecastOpen(false); void loadForecast().catch(() => undefined); }} />}
       {bulkFeedersOpen && can("feeders.manage") && <BulkFeederIntake onClose={() => setBulkFeedersOpen(false)} onSaved={(message) => { setBulkFeedersOpen(false); notify(message); void refresh().catch(() => undefined); void loadForecast().catch(() => undefined); }} />}
+      {attributionTask && can("care.correct") && (
+        <div className="sheet-backdrop attribution-backdrop" role="dialog" aria-modal="true" aria-labelledby="attribution-title" onClick={() => setAttributionTask(null)}>
+          <form className="sheet attribution-sheet" onSubmit={correctAttribution} onClick={(event) => event.stopPropagation()}>
+            <header className="sheet-head">
+              <div>
+                <h2 id="attribution-title">Change who gets credit</h2>
+                <p>{attributionTask.animalName} · {attributionTask.title}</p>
+              </div>
+              <button type="button" className="sheet-close" onClick={() => setAttributionTask(null)} aria-label="Close">✕</button>
+            </header>
+            <div className="attribution-body">
+              <div className="correction-notice">
+                <b>The care stays completed.</b>
+                <span>Only the credited keeper changes. Any feeder deduction and the original task reward stay attached to this completion.</span>
+              </div>
+              <label>
+                <span>Credit this completion to</span>
+                <select required disabled={!members} value={attributionMemberId} onChange={(event) => setAttributionMemberId(event.target.value)}>
+                  <option value="">Choose a household member</option>
+                  {(members ?? []).filter((member) => member.active).map((member) => (
+                    <option key={member.id} value={member.id}>{member.displayName} · {roleLabel(member.role)}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Audit note</span>
+                <input maxLength={500} value={attributionReason} onChange={(event) => setAttributionReason(event.target.value)} />
+              </label>
+              {!members && <p className="member-note">Loading household members…</p>}
+              {membersError && <p className="form-error" role="alert">{membersError}</p>}
+              <div className="sheet-actions">
+                <button type="button" className="ghost" onClick={() => setAttributionTask(null)}>Cancel</button>
+                <button disabled={busyTask === attributionTask.id || !attributionMemberId || attributionMemberId === attributionTask.completedByMemberId}>
+                  {busyTask === attributionTask.id ? "Saving…" : "Move completion credit"}
+                </button>
+              </div>
+              {attributionMemberId === attributionTask.completedByMemberId && (
+                <small className="same-keeper-note">Choose someone other than the currently credited keeper.</small>
+              )}
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }

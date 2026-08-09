@@ -68,11 +68,21 @@ inventory row for every individual whole-gram weight (maximum 500 per request).
 
 Completing an inventory-tracked feeding atomically creates the husbandry event,
 links its forecast-selected feeder in `feeding_assignments`, and marks that feeder
-consumed. A tracked feeding with no suitable available feeder returns HTTP 409 instead
-of recording an unlinked completion. Plans marked `buyAsNeeded` remain intentionally
-untracked. Undo keeps the feeder consumed so completion attribution can be corrected
-without double-allocating it; explicitly returning that feeder to `available` in Manage
-releases its assignment when the feeder was not actually used.
+consumed. If no suitable feeder is in tracked stock, Shed still records the care and
+returns a shortage note so real husbandry is never lost; plans marked `buyAsNeeded`
+remain intentionally untracked.
+
+Completion corrections are two distinct Head Keeper-only operations on
+`/api/tasks/complete`:
+
+- `PATCH { taskId, dueDate, targetMemberId, reason? }` changes who receives credit.
+  The completion remains active, the captured reward amount transfers with that
+  attribution, the consumed feeder stays consumed, and the previous event row is
+  written to `husbandry_event_revisions`.
+- `DELETE { taskId, dueDate, reason? }` means the care did not happen. It voids the
+  completion with correcting actor/reason, removes it from allowance calculations,
+  and atomically releases its feeding assignment and returns its feeder to available
+  inventory.
 
 ## Animal profile
 

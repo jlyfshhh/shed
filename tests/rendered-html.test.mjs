@@ -14,8 +14,9 @@ test("Shed replaces the starter with its husbandry surface", async () => {
   assert.match(layout, /Good care shows/);
   assert.match(app, /Today’s care/);
   assert.match(app, /Weight trends/);
-  assert.match(app, /returned to today’s list/);
-  assert.match(app, /Undo/);
+  assert.match(app, /marked not done/);
+  assert.match(app, /Change keeper/);
+  assert.match(app, /Mark not done/);
   assert.match(css, /--moss: #e0701a/);
   assert.match(hosting, /"d1": "DB"/);
   assert.doesNotMatch(`${page}${layout}${app}`, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
