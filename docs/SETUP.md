@@ -50,7 +50,7 @@ Already added an animal without routines? Open it, tap **Edit → Care plans**, 
 
 ### Add a photo
 
-Open the animal from the **Animals** tab and tap **＋ Add photo** under its portrait. Any keeper can add or replace one — take it on your phone and pick it straight from your camera roll.
+As the Head Keeper, open the animal from the **Animals** tab and tap **＋ Add photo** under its portrait. Take it on your phone and pick it straight from your camera roll. Keepers can see the portrait but cannot add, replace, or remove it.
 
 Shed shrinks the picture in your browser before it's uploaded, so a multi-megabyte phone photo is stored as a few tens of kilobytes. Photos live in your own database and travel with your JSON backup.
 
@@ -78,7 +78,7 @@ Active care plans generate the tasks on **Today**. If Today is empty on a new in
 
 ### Complete the first task
 
-On **Today**, choose **Mark done**. Shed records who completed it and keeps the completion in the animal's history. If a task was marked accidentally, correct the entry from History; Shed retains an audit trail rather than silently erasing it.
+On **Today**, choose **Mark done**. Shed records who completed it and keeps the completion in the animal's history. If a task was marked accidentally, the Head Keeper can use **Undo**; Shed retains the correction in its audit history rather than silently erasing it.
 
 ### See the whole week
 
@@ -126,7 +126,7 @@ On their phone, the keeper opens Shed, signs in with their code, and can add it 
 - **iPhone/iPad:** open Shed in Safari, tap Share, then **Add to Home Screen**.
 - **Android:** open Shed in Chrome, open the browser menu, then choose **Install app** or **Add to Home screen**.
 
-Every completed scheduled task is credited to the signed-in keeper. The Head Keeper can review totals under **More → Contributions**, issue a new code, disable an account, or re-enable it later.
+Every completed scheduled task is credited to the signed-in keeper. Keeper accounts are deliberately completion-only: they can view Shed and mark scheduled care done, but they cannot mark tasks missed, change photos or weights, correct history, or manage any records. The Head Keeper can review totals under **More → Contributions**, issue a new code, disable an account, or re-enable it later.
 
 ## 6. Back up and restore
 
@@ -164,5 +164,11 @@ Either downloads the current version and restarts it. Your database, your settin
   curl -fsSL https://animalroom.app/doctor.sh | bash
   ```
 - **I need to move servers:** export JSON (and preferably copy the SQLite backup), install Shed on the new server, then restore the JSON file.
+
+Advanced reverse-proxy note: keep `SHED_TRUSTED_PROXY_IP_HEADER` blank for a
+normal LAN install. Set it only when clients cannot reach Shed except through a
+proxy that removes and rewrites that exact IP header; otherwise a client can forge
+the value. This option only improves per-source sign-in throttling and is not
+required for household authentication.
 
 For technical details, see the [backend contract](backend-contract.md) and the main [README](../README.md).

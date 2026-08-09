@@ -5,10 +5,11 @@ import WeekView from "./week-view";
 import { AnimalProfile, BulkFeederIntake, FeederForecast, GettingStartedGuide, ManageConsole, RestorePanel, SetupGate, type FeederForecastData, type ResourceKey, type SetupSummary } from "./manage";
 import { animalPhotoUrl } from "./animal-photo";
 import { animalFacts, speciesGlyph } from "@/lib/animal-traits";
+import type { Capability } from "@/lib/capabilities";
 
 type Role = "Owner" | "Zookeeper";
 type Viewer = { id: string; displayName: string; role: Role; earningEnabled?: boolean; balanceCents?: number | null };
-type Session = { authenticated: boolean; authRequired: boolean; setupRequired: boolean; member: Viewer | null };
+type Session = { authenticated: boolean; authRequired: boolean; setupRequired: boolean; capabilities: Capability[]; member: Viewer | null };
 type Member = {
   id: string;
   displayName: string;
@@ -84,6 +85,7 @@ type WeightTrend = {
 };
 type DashboardData = {
   date: string;
+  capabilities: Capability[];
   viewer: Viewer | null;
   tasks: Task[];
   overdue: Task[];
@@ -210,7 +212,12 @@ export default function HusbandryApp() {
   const viewer = session?.member ?? data?.viewer ?? null;
   const authRequired = session?.authRequired ?? false;
   const signedIn = Boolean(session?.member);
-  const isOwner = viewer ? viewer.role === "Owner" : !authRequired;
+  // The backend returns the same capability names its route gates enforce. UI
+  // controls key off those names instead of reinterpreting a role locally.
+  // Session wins over older dashboard data during account changes so an Owner
+  // control can never flash for a Keeper while the dashboard is refreshing.
+  const capabilities = session?.capabilities ?? data?.capabilities ?? [];
+  const can = (capability: Capability) => capabilities.includes(capability);
   const gateOpen = Boolean(session && session.authRequired && !session.member);
   // The signed-in keeper's own balance (from the dashboard viewer), shown by their name.
   const earnerBalanceCents = data?.viewer?.earningEnabled ? (data.viewer.balanceCents ?? 0) : null;
@@ -221,7 +228,7 @@ export default function HusbandryApp() {
       if (!response.ok) throw new Error("Session unavailable");
       setSession((await response.json()) as Session);
     } catch {
-      setSession({ authenticated: false, authRequired: false, setupRequired: false, member: null });
+      setSession({ authenticated: false, authRequired: false, setupRequired: false, capabilities: [], member: null });
     }
   };
 
@@ -362,7 +369,7 @@ export default function HusbandryApp() {
 
   const openTab = (tab: Tab) => {
     setActiveTab(tab);
-    if (tab === "more" && signedIn && viewer?.role === "Owner") {
+    if (tab === "more" && can("household.manage")) {
       if (!members) void loadMembers();
       if (!report && !reportBusy) void loadReport();
     }
@@ -392,17 +399,18 @@ export default function HusbandryApp() {
         return;
       }
       if (!response.ok) throw new Error("Sign-in failed");
-      const payload = (await response.json()) as { member: Viewer };
+      const payload = (await response.json()) as { member: Viewer; capabilities: Capability[] };
       setSession((previous) => ({
         authenticated: true,
         authRequired: previous?.authRequired ?? false,
         setupRequired: false,
+        capabilities: payload.capabilities,
         member: payload.member,
       }));
       setToast(`Signed in as ${payload.member.displayName}`);
       window.setTimeout(() => setToast(null), 2800);
       await refresh().catch(() => undefined);
-      if (payload.member.role === "Owner") {
+      if (payload.capabilities.includes("household.manage")) {
         await Promise.all([loadMembers(), loadReport()]);
       }
     } catch {
@@ -640,8 +648,8 @@ export default function HusbandryApp() {
 
         {session?.setupRequired ? (
           <SetupGate
-            onReady={(member) => {
-              setSession((previous) => ({ authenticated: true, authRequired: previous?.authRequired ?? true, setupRequired: false, member }));
+            onReady={(member, memberCapabilities) => {
+              setSession((previous) => ({ authenticated: true, authRequired: previous?.authRequired ?? true, setupRequired: false, capabilities: memberCapabilities, member }));
               notify(`Welcome, ${member.displayName}`);
               setGuideOpen(true);
               void refresh().catch(() => undefined);
@@ -673,11 +681,11 @@ export default function HusbandryApp() {
               <div><h1>Today’s care</h1><p>{pending.length ? (pending.length === 1 ? "1 thing still needs a keeper." : `${pending.length} things still need a keeper.`) : "Everything is tucked in for today."}</p></div>
               <div className="page-heading-actions">
                 <button className="week-button" onClick={() => setWeekOpen(true)}>See the week</button>
-                {isOwner && <button className="quiet-button" onClick={() => openManager()}>Manage records</button>}
+                {can("records.manage") && <button className="quiet-button" onClick={() => openManager()}>Manage records</button>}
               </div>
             </div>
 
-            {isOwner && (data.setupSummary.animalCount === 0 || data.setupSummary.scheduleCount === 0) && (
+            {can("records.manage") && (data.setupSummary.animalCount === 0 || data.setupSummary.scheduleCount === 0) && (
               <article className="onboarding-card">
                 <div><span className="onboarding-glyph">↗</span><p className="eyebrow">New keeper setup</p><h2>Let’s build your care list</h2><p>Add a habitat and its animal, then create a repeating care plan. Once a care plan exists, its tasks appear here on the right days.</p></div>
                 <div className="onboarding-actions"><button onClick={() => setGuideOpen(true)}>Continue setup</button><button onClick={() => openManager(data.setupSummary.animalCount ? "schedule" : data.setupSummary.enclosureCount ? "animal" : "enclosure")}>Jump to next step</button></div>
@@ -703,7 +711,7 @@ export default function HusbandryApp() {
                   </div>
                   <span className="feeder-nudge-go" aria-hidden="true">›</span>
                 </button>
-                {isOwner && forecast.orderNeeded && (
+                {can("feeders.manage") && forecast.orderNeeded && (
                   <button className="feeder-nudge-done" disabled={orderBusy} onClick={markOrderPlaced}>
                     {orderBusy ? "Saving…" : "I’ve placed an order"}
                   </button>
@@ -713,7 +721,7 @@ export default function HusbandryApp() {
 
             {overdue.length > 0 && (
               <>
-                <div className="section-title compact"><h2>Overdue</h2><div className="section-actions"><span>{overdue.length} from earlier days</span><button disabled={busyTask === "__all__"} onClick={startFresh}>{busyTask === "__all__" ? "Clearing…" : "Start fresh from today"}</button></div></div>
+                <div className="section-title compact"><h2>Overdue</h2><div className="section-actions"><span>{overdue.length} from earlier days</span>{can("care.startFresh") && <button disabled={busyTask === "__all__"} onClick={startFresh}>{busyTask === "__all__" ? "Clearing…" : "Start fresh from today"}</button>}</div></div>
                 <div className="task-list">
                   {overdue.map((task) => (
                     <article className="task-card overdue" key={task.id}>
@@ -723,7 +731,7 @@ export default function HusbandryApp() {
                       </div>
                       <div className="overdue-actions">
                         <button className="complete-button" disabled={busyTask === task.id} onClick={() => completeTask(task)}>{busyTask === task.id ? "Saving…" : "Mark done"}<span>✓</span></button>
-                        <button className="miss-button" disabled={busyTask === task.id} onClick={() => missTask(task)}>Missed</button>
+                        {can("care.miss") && <button className="miss-button" disabled={busyTask === task.id} onClick={() => missTask(task)}>Missed</button>}
                       </div>
                     </article>
                   ))}
@@ -754,7 +762,7 @@ export default function HusbandryApp() {
                   <span>✓</span>
                   <b>{task.animalName}</b>
                   <p>{task.title}{task.completedBy ? ` · ${task.completedBy}` : ""}</p>
-                  {isOwner && (
+                  {can("care.correct") && (
                     <button className="undo-task" disabled={busyTask === task.id} onClick={() => void undoTask(task)}>
                       {busyTask === task.id ? "Undoing…" : "Undo"}
                     </button>
@@ -855,16 +863,16 @@ export default function HusbandryApp() {
             </article>
 
             <div className="settings-grid">
-              <article className={`settings-card ${isOwner ? "" : "locked"}`}><span className="settings-icon">?</span><h2>Getting started</h2><p>Follow the setup checklist and learn where recurring care, one-time history, notes, equipment, and weights belong.</p><button disabled={!isOwner} onClick={() => setGuideOpen(true)}>{isOwner ? "Open guide" : "Head Keeper access required"}</button></article>
-              <article className={`settings-card ${isOwner ? "" : "locked"}`}><span className="settings-icon">☷</span><h2>Manage records</h2><p>Add and edit animals, enclosures, care plans, notes, equipment, weights, feeders, and history.</p><button disabled={!isOwner} onClick={() => openManager()}>{isOwner ? "Open manager" : "Head Keeper access required"}</button></article>
+              {can("records.manage") && <article className="settings-card"><span className="settings-icon">?</span><h2>Getting started</h2><p>Follow the setup checklist and learn where recurring care, one-time history, notes, equipment, and weights belong.</p><button onClick={() => setGuideOpen(true)}>Open guide</button></article>}
+              {can("records.manage") && <article className="settings-card"><span className="settings-icon">☷</span><h2>Manage records</h2><p>Add and edit animals, enclosures, care plans, notes, equipment, weights, feeders, and history.</p><button onClick={() => openManager()}>Open manager</button></article>}
               <article className="settings-card"><span className="settings-icon">◷</span><h2>Feeding forecast</h2><p>Upcoming feeds by animal, which feeder in stock covers each, shortage dates, and when to reorder.</p><button onClick={() => setForecastOpen(true)}>Open forecast</button></article>
-              <article className={`settings-card ${isOwner ? "" : "locked"}`}><span className="settings-icon">＋</span><h2>Bulk add feeders</h2><p>Paste a shipment of individual gram weights into inventory at once.</p><button disabled={!isOwner} onClick={() => setBulkFeedersOpen(true)}>{isOwner ? "Add weighed feeders" : "Head Keeper access required"}</button></article>
-              {isOwner && (
+              {can("feeders.manage") && <article className="settings-card"><span className="settings-icon">＋</span><h2>Bulk add feeders</h2><p>Paste a shipment of individual gram weights into inventory at once.</p><button onClick={() => setBulkFeedersOpen(true)}>Add weighed feeders</button></article>}
+              {can("records.export") && (
                 <article className="settings-card"><span className="settings-icon">↥</span><h2>Your data, always portable</h2><p>Download a complete open-format copy any time — stable identifiers, ISO dates, numeric gram values.</p><div className="export-actions"><a href="/api/export?format=json">Download JSON</a><a href="/api/export?format=csv">Download CSV</a></div></article>
               )}
             </div>
 
-            {isOwner && (
+            {can("records.manage") && (
               <article className="settings-card wide">
                 <span className="settings-icon">↺</span>
                 <h2>Restore from backup</h2>
@@ -873,7 +881,7 @@ export default function HusbandryApp() {
               </article>
             )}
 
-            {isOwner && (
+            {can("household.manage") && (
               <article className="settings-card wide">
                 <span className="settings-icon">⌗</span>
                 <h2>Household access</h2>
@@ -965,7 +973,7 @@ export default function HusbandryApp() {
               </article>
             )}
 
-            {isOwner && (
+            {can("household.manage") && (
               <article className="settings-card wide">
                 <span className="settings-icon">✶</span>
                 <h2>Contributions</h2>
@@ -1049,7 +1057,7 @@ export default function HusbandryApp() {
         {toast && <div className="toast" role="status">{toast}</div>}
       </main>
 
-      {manageOpen && isOwner && (
+      {manageOpen && can("records.manage") && (
         <ManageConsole
           onClose={() => {
             setManageOpen(false);
@@ -1064,7 +1072,7 @@ export default function HusbandryApp() {
           focusAnimalId={manageFocusAnimal}
         />
       )}
-      {guideOpen && data && (
+      {guideOpen && data && can("records.manage") && (
         <GettingStartedGuide
           summary={data.setupSummary}
           onClose={() => setGuideOpen(false)}
@@ -1076,13 +1084,15 @@ export default function HusbandryApp() {
         <AnimalProfile
           animalId={profileId}
           onClose={() => setProfileId(null)}
-          onEdit={isOwner ? () => { const id = profileId; setProfileId(null); openManager("animal", id); } : undefined}
+          onEdit={can("records.manage") ? () => { const id = profileId; setProfileId(null); openManager("animal", id); } : undefined}
+          canWritePhoto={can("animal.photo.write")}
+          canRecordWeight={can("weights.record")}
           onPhotoChange={() => { void refresh().catch(() => undefined); }}
         />
       )}
       {weekOpen && <WeekView onClose={() => setWeekOpen(false)} />}
       {forecastOpen && <FeederForecast onClose={() => { setForecastOpen(false); void loadForecast().catch(() => undefined); }} />}
-      {bulkFeedersOpen && isOwner && <BulkFeederIntake onClose={() => setBulkFeedersOpen(false)} onSaved={(message) => { setBulkFeedersOpen(false); notify(message); void refresh().catch(() => undefined); void loadForecast().catch(() => undefined); }} />}
+      {bulkFeedersOpen && can("feeders.manage") && <BulkFeederIntake onClose={() => setBulkFeedersOpen(false)} onSaved={(message) => { setBulkFeedersOpen(false); notify(message); void refresh().catch(() => undefined); void loadForecast().catch(() => undefined); }} />}
     </div>
   );
 }

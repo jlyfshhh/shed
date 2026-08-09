@@ -1,13 +1,13 @@
 // Task earnings ("allowance") — added by Claude 2026-07-21 while Codex was out.
 import { ensureDatabase } from "@/db/runtime";
-import { requireHouseholdMember } from "@/lib/household-auth";
+import { requireCapability } from "@/lib/household-auth";
 import { getDefaultRewardCents, MAX_REWARD_CENTS, setDefaultRewardCents } from "@/lib/rewards";
 
 const noStore = { "Cache-Control": "no-store" };
 
 export async function GET(request: Request) {
   const db = await ensureDatabase();
-  const auth = await requireHouseholdMember(request, db, ["Owner"]);
+  const auth = await requireCapability(request, db, "household.manage");
   if (auth.response) return auth.response;
   return Response.json({ defaultRewardCents: await getDefaultRewardCents(db) }, { headers: noStore });
 }
@@ -15,7 +15,7 @@ export async function GET(request: Request) {
 export async function PATCH(request: Request) {
   try {
     const db = await ensureDatabase();
-    const auth = await requireHouseholdMember(request, db, ["Owner"]);
+    const auth = await requireCapability(request, db, "household.manage");
     if (auth.response) return auth.response;
     const payload = await request.json() as { defaultRewardCents?: number };
     const cents = Math.round(Number(payload.defaultRewardCents));

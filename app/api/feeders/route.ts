@@ -1,5 +1,5 @@
 import { ensureDatabase } from "@/db/runtime";
-import { householdAuthRequired, memberFromRequest } from "@/lib/household-auth";
+import { requireCapability } from "@/lib/household-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -20,9 +20,8 @@ type FeederRow = {
 export async function GET(request: Request) {
   try {
     const db = await ensureDatabase();
-    if (householdAuthRequired() && !(await memberFromRequest(request, db))) {
-      return Response.json({ error: "Sign in to Shed first" }, { status: 401 });
-    }
+    const auth = await requireCapability(request, db, "care.read");
+    if (auth.response) return auth.response;
     const result = await db.prepare(
       `SELECT f.id, f.prey_species AS preySpecies, f.size_class AS sizeClass,
         f.weight_grams AS weightGrams, f.status, f.added_on AS addedOn,

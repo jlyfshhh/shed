@@ -1,5 +1,5 @@
 import { ensureDatabase } from "@/db/runtime";
-import { householdAuthRequired, memberFromRequest, attributedTo, requireHouseholdMember } from "@/lib/household-auth";
+import { attributedTo, requireCapability } from "@/lib/household-auth";
 import { getDefaultRewardCents, memberBalance, rewardForCompletion } from "@/lib/rewards";
 import { loadFeederForecast } from "@/lib/feeder-forecast-data";
 import { feederGuidance } from "@/lib/feeder-guidance";
@@ -26,10 +26,9 @@ export async function POST(request: Request) {
     }
 
     const db = await ensureDatabase();
-    const member = await memberFromRequest(request, db);
-    if (householdAuthRequired() && !member) {
-      return Response.json({ error: "Sign in to Shed first" }, { status: 401, headers: noStore });
-    }
+    const auth = await requireCapability(request, db, "care.complete");
+    if (auth.response) return auth.response;
+    const member = auth.member;
 
     const task = await db.prepare(
       "SELECT t.id, t.schedule_id AS scheduleId, t.animal_id AS animalId, t.task_type AS taskType, t.title, t.details, s.reward_cents AS scheduleReward, s.prey_species AS preySpecies, COALESCE(s.buy_as_needed, 0) AS buyAsNeeded, COALESCE(a.earning_enabled, 1) AS animalEarningEnabled FROM care_tasks t LEFT JOIN care_schedules s ON s.id = t.schedule_id LEFT JOIN animals a ON a.id = t.animal_id WHERE t.id=? AND t.due_date=?",
@@ -123,7 +122,7 @@ async function completionForTask(db: D1Database, taskId: string, dueDate: string
 export async function DELETE(request: Request) {
   try {
     const db = await ensureDatabase();
-    const auth = await requireHouseholdMember(request, db, ["Owner"]);
+    const auth = await requireCapability(request, db, "care.correct");
     if (auth.response) return auth.response;
     const actor = attributedTo(auth.member);
 

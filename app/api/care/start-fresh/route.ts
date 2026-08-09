@@ -6,14 +6,14 @@
 import { ensureDatabase } from "@/db/runtime";
 import { dateInTimeZone } from "@/lib/date";
 import { setCareStartDate } from "@/lib/care-settings";
-import { requireHouseholdMember } from "@/lib/household-auth";
+import { requireCapability } from "@/lib/household-auth";
 
 const noStore = { "Cache-Control": "no-store" };
 
 export async function POST(request: Request) {
   try {
     const db = await ensureDatabase();
-    const auth = await requireHouseholdMember(request, db, ["Owner"]);
+    const auth = await requireCapability(request, db, "care.startFresh");
     if (auth.response) return auth.response;
 
     const today = dateInTimeZone();

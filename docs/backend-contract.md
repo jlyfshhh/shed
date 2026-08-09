@@ -5,14 +5,20 @@ are server-authorized; hiding a control is never the authorization boundary.
 
 ## First-run and roles
 
-- `GET /api/auth/session` returns `{ authenticated, authRequired, setupRequired, member }`.
+- `GET /api/auth/session` returns `{ authenticated, authRequired, setupRequired, capabilities, member }`.
+  `GET /api/dashboard`, successful login, and first-run bootstrap expose the same
+  capability names so the UI renders from the server policy rather than inferring
+  permissions from a role label.
 - When `setupRequired` is true, show Head Keeper setup. Submit the display name to
   `POST /api/auth/bootstrap` with `X-Shed-Bootstrap-Token`. Show the returned recovery
   access code once and keep the returned cookie session.
 - Internal `Owner` is displayed as **Head Keeper**. Internal `Zookeeper` is displayed
   as **Keeper**.
-- Keepers view records and complete scheduled tasks. Only the Head Keeper may use the
-  management, import/export, household, history correction, or feeder mutation APIs.
+- Keepers have exactly `care.read` and `care.complete`: they view records and complete
+  scheduled tasks under their own identity. Misses, photos, weights, corrections,
+  management, import/export, household, lighting, and feeder mutations are Head Keeper-only.
+  Every protected route names a capability from `lib/capabilities.ts`; hiding a UI
+  control is defense-in-depth, not the authorization boundary.
 
 ## Owner management API
 
@@ -89,7 +95,7 @@ One portrait per animal, stored base64 in `animal_photos` keyed by `animal_id`.
 - `POST` accepts `{ dataUrl }` — a base64 `data:` URL limited to JPEG, PNG, or WebP. SVG is refused, since it would be served back under its own mime type. The client downscales to a 1200px JPEG first; the server caps the encoded payload at 2.8 MB as a backstop.
 - `DELETE` removes it.
 
-Both writes use the keeper-level gate (enforced only when `SHED_AUTH_REQUIRED`), matching `POST /api/weights` — keepers take the pictures, and a self-hosted install without auth still works.
+Both photo writes and `POST /api/weights` are Head Keeper-only when authentication is enabled. Keepers receive the portrait and weight history from the read APIs but are not shown write controls. A deliberately auth-off install still exposes the full management surface because it has no accounts to elevate.
 
 `GET /api/animals/:id` and `GET /api/dashboard` expose `photoUpdatedAt` (null when unset) rather than image bytes, so the dashboard payload stays small. The rows are portable-backup data in the JSON bundle and are deliberately excluded from the CSV export.
 
@@ -135,8 +141,8 @@ visible to anyone standing in the room.
 
 ## Copying care routines to a new animal
 
-Purely a client-side convenience over `POST /api/manage` — no new route. When an
-animal is created, or from the empty state of its Care plans tab, Shed offers the
+`POST /api/care/copy-routines` is Head Keeper-only and creates the selected plans in
+one idempotent D1 batch. When an animal is created, or from the empty state of its Care plans tab, Shed offers the
 active plans kept by other animals of the same species, deduplicated on
 `task_type` + lowercased `title`.
 
@@ -176,8 +182,8 @@ materialisation then clamp to the new baseline.
 
 ## Marking work missed
 
-`POST /api/tasks/miss` uses the keeper-level gate. With `{ taskId, dueDate }` it
-marks one task; with no body it sweeps every task due before today that has no
+`POST /api/tasks/miss` is Head Keeper-only. With `{ taskId, dueDate }` it
+marks one task; with `{ all: true }` it sweeps every task due before today that has no
 completion event. Both set `missed_at` plus the member id and name, and both
 skip tasks that already have an event, so marking missed can never overwrite
 recorded care.
@@ -206,10 +212,24 @@ touches the database and returns `{ "status": "ok" }`, or `503` with
 
 ## Sign-in throttling
 
-`POST /api/auth/login` allows up to 10 failed household-code attempts in 10 minutes,
-then returns HTTP 429 with `Retry-After` for a 15-minute cooldown. A successful login
-clears the in-memory household throttle. This is intentionally process-local for the
-single-container home-server deployment.
+`POST /api/auth/login` uses bounded in-memory limits for the exact submitted code
+(5 failures in 10 minutes), an optional trusted source (10 in 10 minutes), and a
+loose household-wide work ceiling (120 in 10 minutes, with a one-minute block).
+Blocked responses are HTTP 429 with `Retry-After` and `Cache-Control: no-store`.
+
+Direct LAN mode does **not** trust `CF-Connecting-IP`, `X-Real-IP`, or
+`X-Forwarded-For`: Fetch does not expose the TCP peer, so those values are
+caller-controlled. It omits the source scope rather than grouping every phone into
+one `unknown` bucket; per-code and global protection remain active. An administrator
+may set `SHED_TRUSTED_PROXY_IP_HEADER` to exactly one allowlisted header only when
+the Shed origin cannot be reached except through a trusted proxy that strips and
+overwrites it. Valid values are `cf-connecting-ip`, `x-real-ip`, and
+`x-forwarded-for`.
+
+Throttle maps are capped at 512 source/code keys and state is intentionally
+process-local. A container or Worker restart clears it. Persisting every failed
+unauthenticated request would turn login into a database-write amplifier; the
+24-random-byte access codes remain the primary credential defense.
 
 ## Backups and restore
 

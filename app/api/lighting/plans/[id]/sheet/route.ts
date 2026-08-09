@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { ensureDatabase } from "@/db/runtime";
-import { householdAuthRequired, memberFromRequest, requireHouseholdMember } from "@/lib/household-auth";
+import { requireCapability } from "@/lib/household-auth";
 import { attachmentHeaders, checkAttachment } from "@/lib/attachments";
 
 export const dynamic = "force-dynamic";
@@ -10,8 +10,8 @@ const MAX_BYTES = 5 * 1024 * 1024;
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   const db = await ensureDatabase();
-  const member = await memberFromRequest(request, db);
-  if (householdAuthRequired() && !member) return Response.json({ error: "Sign in to Shed first" }, { status: 401 });
+  const auth = await requireCapability(request, db, "care.read");
+  if (auth.response) return auth.response;
   const { id } = await context.params;
   const plan = await db.prepare("SELECT plan_sheet_key AS sheetKey, plan_sheet_name AS sheetName, plan_sheet_type AS sheetType FROM lighting_plans WHERE id = ?").bind(id).first<{ sheetKey: string | null; sheetName: string | null; sheetType: string | null }>();
   if (!plan?.sheetKey) return Response.json({ error: "This lighting plan has no attached plan sheet" }, { status: 404 });
@@ -34,7 +34,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const db = await ensureDatabase();
-    const auth = await requireHouseholdMember(request, db, ["Owner"]);
+    const auth = await requireCapability(request, db, "lighting.manage");
     if (auth.response) return auth.response;
     const { id } = await context.params;
     const existing = await db.prepare("SELECT id, plan_sheet_key AS sheetKey FROM lighting_plans WHERE id = ?").bind(id).first<{ id: string; sheetKey: string | null }>();
@@ -66,7 +66,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
 export async function DELETE(request: Request, context: { params: Promise<{ id: string }> }) {
   const db = await ensureDatabase();
-  const auth = await requireHouseholdMember(request, db, ["Owner"]);
+  const auth = await requireCapability(request, db, "lighting.manage");
   if (auth.response) return auth.response;
   const { id } = await context.params;
   const plan = await db.prepare("SELECT plan_sheet_key AS sheetKey FROM lighting_plans WHERE id = ?").bind(id).first<{ sheetKey: string | null }>();

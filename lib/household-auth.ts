@@ -1,6 +1,13 @@
 import { binding } from "./env.ts";
 import { attributedTo } from "./attribution.ts";
 import {
+  authorize,
+  capabilitiesForContext,
+  capabilitiesForRole,
+  type Capability,
+  type HouseholdRole,
+} from "./capabilities.ts";
+import {
   ACCESS_COOKIE,
   accessCodeFromCookie,
   accessCookie,
@@ -9,9 +16,16 @@ import {
   hashAccessCode,
 } from "./access-code.ts";
 
-export { ACCESS_COOKIE, accessCookie, createAccessCode, expiredAccessCookie, hashAccessCode };
-
-export type HouseholdRole = "Owner" | "Zookeeper";
+export {
+  ACCESS_COOKIE,
+  accessCookie,
+  capabilitiesForContext,
+  capabilitiesForRole,
+  createAccessCode,
+  expiredAccessCookie,
+  hashAccessCode,
+};
+export type { Capability, HouseholdRole };
 
 export type HouseholdMember = {
   id: string;
@@ -34,35 +48,38 @@ export async function memberFromRequest(request: Request, db: D1Database): Promi
   ).bind(accessCodeHash).first<HouseholdMember>();
 }
 
+export type AuthResult = {
+  member: HouseholdMember | null;
+  capabilities: Capability[];
+  response: Response | null;
+};
+
 /**
- * Gate a route on household membership.
+ * Gate a route on one named capability from the shared matrix in
+ * `capabilities.ts`. Routes name what they are doing rather than restating a
+ * role list, so the policy lives in one place and the UI can be handed the same
+ * names the server enforces.
  *
- * When `SHED_AUTH_REQUIRED` is off there are no sign-ins to check, so every
- * caller is allowed through with a null member. Without this, an install
- * configured the way `.env.example` ships it — auth off — could read its
- * dashboard but could not manage a single record, because every write route
- * 401'd against a login the install had deliberately disabled.
- *
- * Callers must therefore treat `member` as nullable even on success. Use
- * `attributedTo(auth.member)` for the "who did this" columns.
+ * `member` is nullable even on success — an install running with
+ * `SHED_AUTH_REQUIRED` off has no accounts at all. Use `attributedTo(auth.member)`
+ * for the "who did this" columns.
  */
-export async function requireHouseholdMember(
+export async function requireCapability(
   request: Request,
   db: D1Database,
-  allowedRoles: HouseholdRole[] = ["Owner", "Zookeeper"],
-): Promise<{ member: HouseholdMember | null; response: Response | null }> {
+  capability: Capability,
+): Promise<AuthResult> {
   const member = await memberFromRequest(request, db);
-  if (!householdAuthRequired()) {
-    // Open install: no accounts exist to check a role against.
-    return { member, response: null };
-  }
-  if (!member) {
-    return { member: null, response: Response.json({ error: "Sign in to Shed first" }, { status: 401 }) };
-  }
-  if (!allowedRoles.includes(member.role)) {
-    return { member, response: Response.json({ error: "Head Keeper access required" }, { status: 403 }) };
-  }
-  return { member, response: null };
+  const context = { authRequired: householdAuthRequired(), role: member?.role ?? null };
+  const capabilities = capabilitiesForContext(context);
+  const denial = authorize(capability, context);
+  if (!denial) return { member, capabilities, response: null };
+  return {
+    member,
+    capabilities,
+    // Never cached: a 401 held in a shared cache outlives the sign-in that fixes it.
+    response: Response.json({ error: denial.error }, { status: denial.status, headers: { "Cache-Control": "no-store" } }),
+  };
 }
 
 // Re-exported so routes have a single import site for auth concerns.

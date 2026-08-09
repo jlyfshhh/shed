@@ -1,5 +1,5 @@
 import { ensureDatabase } from "@/db/runtime";
-import { accessCookie, createAccessCode, hashAccessCode } from "@/lib/household-auth";
+import { accessCookie, capabilitiesForRole, createAccessCode, hashAccessCode } from "@/lib/household-auth";
 import { binding, sharedSecretIsAuthorized } from "@/lib/env";
 
 export async function POST(request: Request) {
@@ -29,7 +29,11 @@ export async function POST(request: Request) {
     ).bind(id, displayName, accessCodeHash, now, now, now).run();
 
     return Response.json(
-      { member: { id, displayName, role: "Owner" }, accessCode },
+      {
+        capabilities: capabilitiesForRole("Owner"),
+        member: { id, displayName, role: "Owner" },
+        accessCode,
+      },
       { status: 201, headers: { "Set-Cookie": accessCookie(accessCode, request), "Cache-Control": "no-store" } },
     );
   } catch (error) {

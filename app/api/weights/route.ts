@@ -1,19 +1,20 @@
 // Quick weight logging — added by Claude 2026-07-21 while Codex was out.
-// Any signed-in keeper can record a weight (weighing is routine care); editing
-// or deleting weights stays with the Head Keeper via /api/manage.
+// A weight is a record, not a completed task: it rewrites the animal's headline
+// weight and feeds the growth trend, and there is no keeper-facing way to undo
+// one. It is Head Keeper work, alongside editing and deleting weights in
+// /api/manage.
 import { ensureDatabase } from "@/db/runtime";
 import { dateInTimeZone, isIsoDate } from "@/lib/date";
-import { householdAuthRequired, memberFromRequest } from "@/lib/household-auth";
+import { requireCapability } from "@/lib/household-auth";
 
 const noStore = { "Cache-Control": "no-store" };
 
 export async function POST(request: Request) {
   try {
     const db = await ensureDatabase();
-    const member = await memberFromRequest(request, db);
-    if (householdAuthRequired() && !member) {
-      return Response.json({ error: "Sign in to Shed first" }, { status: 401, headers: noStore });
-    }
+    const auth = await requireCapability(request, db, "weights.record");
+    if (auth.response) return auth.response;
+    const member = auth.member;
 
     const payload = await request.json() as { animalId?: string; recordedOn?: string; weightGrams?: number | string; notes?: string };
     const animalId = payload.animalId?.trim();

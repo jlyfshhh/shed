@@ -1,6 +1,6 @@
 import { ensureDatabase, invalidateMaterializedTasks } from "@/db/runtime";
 import { dateInTimeZone } from "@/lib/date";
-import { requireHouseholdMember } from "@/lib/household-auth";
+import { requireCapability } from "@/lib/household-auth";
 import { COPYABLE_SCHEDULE_COLUMNS, copySignature } from "@/lib/copy-routines";
 
 export const dynamic = "force-dynamic";
@@ -27,7 +27,7 @@ type Body = {
 export async function POST(request: Request) {
   try {
     const db = await ensureDatabase();
-    const auth = await requireHouseholdMember(request, db, ["Owner"]);
+    const auth = await requireCapability(request, db, "records.manage");
     if (auth.response) return auth.response;
 
     const body = (await request.json().catch(() => null)) as Body | null;

@@ -1,40 +1,27 @@
 import { ensureDatabase } from "@/db/runtime";
-import { accessCookie, hashAccessCode, type HouseholdMember } from "@/lib/household-auth";
-import { loginThrottle } from "@/lib/login-throttle";
+import { binding } from "@/lib/env";
+import { handleLoginRequest, type LoginMember } from "@/lib/login-route";
+import { loginThrottle, trustedProxyIpHeader } from "@/lib/login-throttle";
 
 export async function POST(request: Request) {
-  try {
-    const throttle = loginThrottle.check();
-    if (!throttle.allowed) return Response.json(
-      { error: `Too many sign-in attempts. Try again in ${Math.ceil(throttle.retryAfterSeconds / 60)} minutes.` },
-      { status: 429, headers: { "Retry-After": String(throttle.retryAfterSeconds), "Cache-Control": "no-store" } },
-    );
-    const payload = await request.json() as { accessCode?: string };
-    if (!payload.accessCode?.trim()) return Response.json({ error: "Access code is required" }, { status: 400 });
-    const db = await ensureDatabase();
-    const accessCodeHash = await hashAccessCode(payload.accessCode);
-    const member = await db.prepare(
-      "SELECT id, display_name AS displayName, role, active FROM household_members WHERE access_code_hash = ? AND active = 1",
-    ).bind(accessCodeHash).first<HouseholdMember>();
-    if (!member) {
-      const afterFailure = loginThrottle.fail();
-      if (!afterFailure.allowed) return Response.json(
-        { error: `Too many sign-in attempts. Try again in ${Math.ceil(afterFailure.retryAfterSeconds / 60)} minutes.` },
-        { status: 429, headers: { "Retry-After": String(afterFailure.retryAfterSeconds), "Cache-Control": "no-store" } },
-      );
-      return Response.json({ error: "That Shed invitation is invalid or inactive" }, { status: 401, headers: { "Cache-Control": "no-store" } });
-    }
-    loginThrottle.success();
-    await db.prepare("UPDATE household_members SET last_login_at = ?, updated_at = ? WHERE id = ?")
-      .bind(new Date().toISOString(), new Date().toISOString(), member.id).run();
-    return Response.json(
-      { member: { id: member.id, displayName: member.displayName, role: member.role } },
-      { headers: { "Set-Cookie": accessCookie(payload.accessCode.trim(), request), "Cache-Control": "no-store" } },
-    );
-  } catch (error) {
-    // Sign-in is the one route reachable with no credentials at all, so it
-    // returns a fixed message rather than echoing internal error text.
-    console.error("sign-in failed", error);
-    return Response.json({ error: "Unable to sign in" }, { status: 500, headers: { "Cache-Control": "no-store" } });
-  }
+  return handleLoginRequest(request, {
+    throttle: loginThrottle,
+    // Blank by default. Set only when the Shed origin is reachable exclusively
+    // through a proxy that strips and overwrites this exact header.
+    trustedProxyHeader: trustedProxyIpHeader(binding("SHED_TRUSTED_PROXY_IP_HEADER")),
+    openStore: async () => {
+      const db = await ensureDatabase();
+      return {
+        findActiveMember: (accessCodeHash: string) => db.prepare(
+          "SELECT id, display_name AS displayName, role FROM household_members WHERE access_code_hash = ? AND active = 1",
+        ).bind(accessCodeHash).first<LoginMember>(),
+        markLogin: async (memberId: string, timestamp: string) => {
+          await db.prepare("UPDATE household_members SET last_login_at = ?, updated_at = ? WHERE id = ?")
+            .bind(timestamp, timestamp, memberId).run();
+        },
+      };
+    },
+    // Sign-in is reachable with no credentials, so never echo internal errors.
+    reportError: (error) => console.error("sign-in failed", error),
+  });
 }

@@ -1,6 +1,6 @@
 import { ensureDatabase } from "@/db/runtime";
 import { dateInTimeZone } from "@/lib/date";
-import { requireHouseholdMember } from "@/lib/household-auth";
+import { requireCapability } from "@/lib/household-auth";
 
 type ContributionRow = {
   eventId: string;
@@ -17,7 +17,7 @@ type ContributionRow = {
 export async function GET(request: Request) {
   try {
     const db = await ensureDatabase();
-    const auth = await requireHouseholdMember(request, db, ["Owner"]);
+    const auth = await requireCapability(request, db, "household.manage");
     if (auth.response) return auth.response;
     const url = new URL(request.url);
     const today = dateInTimeZone();

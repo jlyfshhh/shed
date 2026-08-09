@@ -1,10 +1,10 @@
 import { ensureDatabase } from "@/db/runtime";
-import { createAccessCode, hashAccessCode, requireHouseholdMember } from "@/lib/household-auth";
+import { createAccessCode, hashAccessCode, requireCapability } from "@/lib/household-auth";
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const db = await ensureDatabase();
-    const auth = await requireHouseholdMember(request, db, ["Owner"]);
+    const auth = await requireCapability(request, db, "household.manage");
     if (auth.response) return auth.response;
     const { id } = await context.params;
     const payload = await request.json() as { displayName?: string; active?: boolean; reissueAccessCode?: boolean; earningEnabled?: boolean };

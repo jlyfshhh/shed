@@ -2,7 +2,7 @@ import { ensureDatabase } from "@/db/runtime";
 import { dateInTimeZone } from "@/lib/date";
 import { overdueStartDate } from "@/lib/care-schedule";
 import { getCareStartDate } from "@/lib/care-settings";
-import { householdAuthRequired, memberFromRequest } from "@/lib/household-auth";
+import { requireCapability } from "@/lib/household-auth";
 import { memberBalance } from "@/lib/rewards";
 import { loadFeederForecast } from "@/lib/feeder-forecast-data";
 import { feederGuidance } from "@/lib/feeder-guidance";
@@ -32,10 +32,9 @@ export async function GET(request: Request) {
     const careStartDate = await getCareStartDate(db);
     // Overdue never reaches before the "start fresh" baseline.
     const overdueSince = overdueStartDate(today, careStartDate);
-    const member = await memberFromRequest(request, db);
-    if (householdAuthRequired() && !member) {
-      return Response.json({ error: "Sign in to Shed first" }, { status: 401 });
-    }
+    const auth = await requireCapability(request, db, "care.read");
+    if (auth.response) return auth.response;
+    const member = auth.member;
     const animalsResult = await db.prepare("SELECT a.id, a.name, a.species, a.group_name AS 'group', a.location, a.morph, a.sex, a.birth_date AS birthDate, a.weight_grams AS weightGrams, a.weight_date AS weightDate, a.enclosure_id AS enclosureId, e.name AS enclosureName, p.updated_at AS photoUpdatedAt FROM animals a LEFT JOIN enclosures e ON e.id = a.enclosure_id LEFT JOIN animal_photos p ON p.animal_id = a.id WHERE a.active = 1 ORDER BY CASE a.group_name WHEN 'Reptile' THEN 1 WHEN 'Amphibian' THEN 2 WHEN 'Community' THEN 3 ELSE 4 END, a.name").all();
     // Today's list.
     const tasksResult = await db.prepare("SELECT t.id, t.schedule_id AS scheduleId, t.animal_id AS animalId, a.name AS animalName, a.species, t.task_type AS taskType, t.title, t.details, t.due_date AS dueDate, CASE WHEN e.id IS NULL THEN 0 ELSE 1 END AS complete, e.id AS completionEventId, e.completed_by_member_id AS completedByMemberId, COALESCE(e.completed_by_name, e.actor_role) AS completedBy FROM care_tasks t JOIN animals a ON a.id=t.animal_id LEFT JOIN husbandry_events e ON e.task_id=t.id AND e.due_date=t.due_date AND e.voided_at IS NULL WHERE a.active = 1 AND t.due_date = ? ORDER BY complete, a.name, t.title").bind(today).all<DashboardTask>();
@@ -81,6 +80,7 @@ export async function GET(request: Request) {
 
     return Response.json({
       date: today,
+      capabilities: auth.capabilities,
       viewer: member ? { id: member.id, displayName: member.displayName, role: member.role, earningEnabled, balanceCents: viewerBalanceCents } : null,
       tasks: todayTasks.map(enrichTask),
       overdue: overdueResult.results.map(enrichTask),

@@ -1,6 +1,6 @@
 import { ensureDatabase } from "@/db/runtime";
 import { env } from "cloudflare:workers";
-import { requireHouseholdMember } from "@/lib/household-auth";
+import { requireCapability } from "@/lib/household-auth";
 import { MAX_BUNDLE_BYTES, validateBundle } from "@/lib/restore-plan";
 import {
   matchingExistingMember,
@@ -64,7 +64,7 @@ async function restoreHouseholdProfiles(
 export async function POST(request: Request) {
   try {
     const db = await ensureDatabase();
-    const auth = await requireHouseholdMember(request, db, ["Owner"]);
+    const auth = await requireCapability(request, db, "records.manage");
     if (auth.response) return auth.response;
     // Refuse an oversized bundle before it is buffered, not after. There was no
     // limit at all: a large upload was parsed in full and only then rejected.

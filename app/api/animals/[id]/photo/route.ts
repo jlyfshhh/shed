@@ -1,7 +1,7 @@
 import { ensureDatabase } from "@/db/runtime";
 import { base64ToBytes, parsePhotoDataUrl } from "@/lib/animal-photo";
 import { attachmentHeaders, checkAttachment } from "@/lib/attachments";
-import { householdAuthRequired, memberFromRequest } from "@/lib/household-auth";
+import { requireCapability } from "@/lib/household-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -16,10 +16,8 @@ type PhotoRow = { mime: string; data: string; updatedAt: string };
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const db = await ensureDatabase();
-    const member = await memberFromRequest(request, db);
-    if (householdAuthRequired() && !member) {
-      return Response.json({ error: "Sign in to Shed first" }, { status: 401, headers: noStore });
-    }
+    const auth = await requireCapability(request, db, "care.read");
+    if (auth.response) return auth.response;
 
     const { id } = await context.params;
     const row = await db.prepare(
@@ -53,16 +51,17 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   }
 }
 
-/** Save (or replace) the portrait. Any signed-in keeper can — they take the pictures. */
+/**
+ * Save (or replace) the portrait. Head Keeper only: there is one portrait per
+ * animal and POST overwrites it, so this is an edit to a record rather than a
+ * care entry — the previous picture is gone and nothing attributes the loss.
+ */
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const db = await ensureDatabase();
-    // Keeper-level write: same gate as logging a weight, so a self-hosted
-    // install that hasn't turned household auth on still works.
-    const member = await memberFromRequest(request, db);
-    if (householdAuthRequired() && !member) {
-      return Response.json({ error: "Sign in to Shed first" }, { status: 401, headers: noStore });
-    }
+    const auth = await requireCapability(request, db, "animal.photo.write");
+    if (auth.response) return auth.response;
+    const member = auth.member;
 
     const { id } = await context.params;
     const animal = await db.prepare("SELECT id FROM animals WHERE id = ?").bind(id).first<{ id: string }>();
@@ -100,12 +99,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 export async function DELETE(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const db = await ensureDatabase();
-    // Keeper-level write: same gate as logging a weight, so a self-hosted
-    // install that hasn't turned household auth on still works.
-    const member = await memberFromRequest(request, db);
-    if (householdAuthRequired() && !member) {
-      return Response.json({ error: "Sign in to Shed first" }, { status: 401, headers: noStore });
-    }
+    const auth = await requireCapability(request, db, "animal.photo.write");
+    if (auth.response) return auth.response;
 
     const { id } = await context.params;
     await db.prepare("DELETE FROM animal_photos WHERE animal_id = ?").bind(id).run();

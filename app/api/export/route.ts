@@ -1,6 +1,6 @@
 import { ensureDatabase } from "@/db/runtime";
 import { env } from "cloudflare:workers";
-import { requireHouseholdMember } from "@/lib/household-auth";
+import { requireCapability } from "@/lib/household-auth";
 import { BACKUP_SCHEMA_VERSION, PORTABLE_APP_SETTING_KEYS } from "@/lib/portable-backup";
 
 const csvCell = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
@@ -9,7 +9,7 @@ export async function GET(request: Request) {
   const db = await ensureDatabase();
   // This hands out the entire database, so it uses the same Owner gate as every
   // other Owner route rather than its own copy of the logic.
-  const auth = await requireHouseholdMember(request, db, ["Owner"]);
+  const auth = await requireCapability(request, db, "records.export");
   if (auth.response) return auth.response;
   const [animals, enclosures, careSchedules, careTasks, events, eventRevisions, notes, animalPhotos, equipment, lightingPlans, lightingPlanFixtures, lightingMeasurements, weights, feederInventory, feedingAssignments, householdMembers, appSettings, rewardPayouts] = await Promise.all([
     db.prepare("SELECT * FROM animals ORDER BY id").all(),

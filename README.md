@@ -73,7 +73,7 @@ either can still work independently and each keeps its own portable data.
 ## What's inside
 
 - **Shared daily care list** across everyone's phones, with a one-day carryover so nothing slips.
-- **Household accounts** — a Head Keeper who manages everything, and Keepers who record care from their own phones. Every completed task is credited to the person who did it, with a per-member contribution report.
+- **Household accounts** — a Head Keeper who manages everything, and completion-only Keepers who view Shed and mark scheduled care done from their own phones. Every completed task is credited to the person who did it, with a per-member contribution report.
 - **Full record management** — add and edit animals (with morph, sex, scientific name, enclosure, source, and notes), enclosures, care plans, husbandry notes, equipment, weights, and feeder inventory, all from the app.
 - **Animal profiles** — a per-animal card with a photo, weight history, care plans, equipment, notes, and full auditable event history.
 - **Photos** — add a portrait from your phone; Shed resizes it in the browser, stores it in your own database, and includes it in your backup.
@@ -99,6 +99,12 @@ either can still work independently and each keeps its own portable data.
 - **Backups:** `scripts/backup.sh` writes dated SQLite snapshots (with configurable retention) into `shed/backups`. You can also download a full JSON or CSV export from the app at any time.
 - **Restore:** the More screen accepts a Shed JSON export — merge it into your current data, or replace everything (your household sign-in stays intact).
 - **Add keepers:** as the Head Keeper, open **More → Household access** to create a keeper and share their one-time code. You can reissue or disable codes any time.
+
+Shed ignores client-supplied forwarding IP headers on a normal direct-LAN install.
+If you put it behind a reverse proxy, leave `SHED_TRUSTED_PROXY_IP_HEADER` blank
+unless the origin is reachable **only** through that proxy and the proxy strips and
+overwrites the chosen header. The setting is solely an optional per-source login
+throttle; authentication does not depend on an IP address.
 
 ## Local development
 

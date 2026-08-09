@@ -1,6 +1,6 @@
 import { ensureDatabase } from "@/db/runtime";
 import { dateInTimeZone, isIsoDate } from "@/lib/date";
-import { attributedTo, requireHouseholdMember } from "@/lib/household-auth";
+import { attributedTo, requireCapability } from "@/lib/household-auth";
 import { decodeLightMyReptileUrl, inches, unnamedFixtures, type LightMyReptileSnapshot } from "@/lib/light-my-reptile";
 
 type FixtureResolution = {
@@ -43,7 +43,7 @@ type ImportPayload = {
 export async function POST(request: Request) {
   try {
     const db = await ensureDatabase();
-    const auth = await requireHouseholdMember(request, db, ["Owner"]);
+    const auth = await requireCapability(request, db, "lighting.manage");
     if (auth.response) return auth.response;
     const actor = attributedTo(auth.member);
     const payload = await request.json() as ImportPayload;

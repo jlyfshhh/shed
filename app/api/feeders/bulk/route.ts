@@ -1,7 +1,7 @@
 import { ensureDatabase } from "@/db/runtime";
 import { normalizeBulkFeeders, type BulkFeederInput } from "@/lib/bulk-feeders";
 import { dateInTimeZone } from "@/lib/date";
-import { requireHouseholdMember } from "@/lib/household-auth";
+import { requireCapability } from "@/lib/household-auth";
 
 export const dynamic = "force-dynamic";
 const headers = { "Cache-Control": "no-store" };
@@ -9,7 +9,7 @@ const headers = { "Cache-Control": "no-store" };
 export async function POST(request: Request) {
   try {
     const db = await ensureDatabase();
-    const auth = await requireHouseholdMember(request, db, ["Owner"]);
+    const auth = await requireCapability(request, db, "feeders.manage");
     if (auth.response) return auth.response;
     const batch = normalizeBulkFeeders(await request.json() as BulkFeederInput, dateInTimeZone());
     const ids = batch.weightsGrams.map(() => crypto.randomUUID());

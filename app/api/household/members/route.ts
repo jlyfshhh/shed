@@ -1,5 +1,5 @@
 import { ensureDatabase } from "@/db/runtime";
-import { createAccessCode, hashAccessCode, requireHouseholdMember } from "@/lib/household-auth";
+import { createAccessCode, hashAccessCode, requireCapability } from "@/lib/household-auth";
 import { balancesByMember, getDefaultRewardCents } from "@/lib/rewards";
 
 type MemberRow = {
@@ -15,7 +15,7 @@ type MemberRow = {
 
 export async function GET(request: Request) {
   const db = await ensureDatabase();
-  const auth = await requireHouseholdMember(request, db, ["Owner"]);
+  const auth = await requireCapability(request, db, "household.manage");
   if (auth.response) return auth.response;
   const [members, balances, defaultRewardCents] = await Promise.all([
     db.prepare(
@@ -33,7 +33,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const db = await ensureDatabase();
-    const auth = await requireHouseholdMember(request, db, ["Owner"]);
+    const auth = await requireCapability(request, db, "household.manage");
     if (auth.response) return auth.response;
     const payload = await request.json() as { displayName?: string };
     const displayName = payload.displayName?.trim().replace(/\s+/g, " ");

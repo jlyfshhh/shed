@@ -3,8 +3,8 @@ import test from "node:test";
 import { attributedTo } from "../lib/attribution.ts";
 
 /**
- * `requireHouseholdMember` itself needs the Workers `env` binding, so the gate
- * behaviour is covered end-to-end in the route tests. What is unit-testable —
+ * `requireCapability` itself needs the Workers `env` binding, so the gate
+ * behaviour is covered by the capability and route-policy tests. What is unit-testable —
  * and what actually caused the bug — is attribution when no member exists.
  */
 

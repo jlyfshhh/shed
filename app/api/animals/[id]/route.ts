@@ -2,7 +2,7 @@ import { ensureDatabase } from "@/db/runtime";
 import { dateInTimeZone } from "@/lib/date";
 import { isoDaysAgo } from "@/lib/care-schedule";
 import { getCareStartDate } from "@/lib/care-settings";
-import { householdAuthRequired, memberFromRequest } from "@/lib/household-auth";
+import { requireCapability } from "@/lib/household-auth";
 import { equipmentAgeDays } from "@/lib/equipment-age";
 import { lightingPlanStatus } from "@/lib/lighting-plan";
 
@@ -18,10 +18,9 @@ const SCORE_WINDOW_DAYS = 30;
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const db = await ensureDatabase();
-    const member = await memberFromRequest(request, db);
-    if (householdAuthRequired() && !member) {
-      return Response.json({ error: "Sign in to Shed first" }, { status: 401, headers: { "Cache-Control": "no-store" } });
-    }
+    const auth = await requireCapability(request, db, "care.read");
+    if (auth.response) return auth.response;
+    const member = auth.member;
 
     const { id } = await context.params;
     const animal = await db.prepare(

@@ -1,6 +1,6 @@
 import { ensureDatabase, invalidateMaterializedTasks } from "@/db/runtime";
 import { dateInTimeZone, isIsoDate } from "@/lib/date";
-import { attributedTo, requireHouseholdMember } from "@/lib/household-auth";
+import { attributedTo, requireCapability } from "@/lib/household-auth";
 import { normalizedEmptyValue } from "@/lib/manage-values";
 
 type Resource = "animal" | "enclosure" | "schedule" | "note" | "equipment" | "weight" | "event" | "feeder" | "lightingPlan" | "lightingFixture" | "lightingMeasurement";
@@ -76,7 +76,7 @@ const configs: Record<Resource, Config> = {
 export async function GET(request: Request) {
   try {
     const db = await ensureDatabase();
-    const auth = await requireHouseholdMember(request, db, ["Owner"]);
+    const auth = await requireCapability(request, db, "records.manage");
     if (auth.response) return auth.response;
     const [animals, enclosures, schedules, notes, equipment, weights, events, feeders, lightingPlans, lightingFixtures, lightingMeasurements] = await Promise.all([
       db.prepare("SELECT * FROM animals ORDER BY active DESC, name").all(), db.prepare("SELECT * FROM enclosures ORDER BY active DESC, name").all(),
@@ -94,7 +94,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const db = await ensureDatabase();
-    const auth = await requireHouseholdMember(request, db, ["Owner"]);
+    const auth = await requireCapability(request, db, "records.manage");
     if (auth.response) return auth.response;
     const actor = attributedTo(auth.member);
     const payload = await request.json() as Payload;
@@ -121,7 +121,7 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   try {
     const db = await ensureDatabase();
-    const auth = await requireHouseholdMember(request, db, ["Owner"]);
+    const auth = await requireCapability(request, db, "records.manage");
     if (auth.response) return auth.response;
     const actor = attributedTo(auth.member);
     const payload = await request.json() as Payload;
@@ -164,7 +164,7 @@ export async function PATCH(request: Request) {
 export async function DELETE(request: Request) {
   try {
     const db = await ensureDatabase();
-    const auth = await requireHouseholdMember(request, db, ["Owner"]);
+    const auth = await requireCapability(request, db, "records.manage");
     if (auth.response) return auth.response;
     const actor = attributedTo(auth.member);
     const payload = await request.json() as Payload;

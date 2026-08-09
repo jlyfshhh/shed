@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { equipmentAgeLabel } from "@/lib/equipment-age";
 import { animalFacts, speciesGlyph } from "@/lib/animal-traits";
+import type { Capability } from "@/lib/capabilities";
 import { AnimalPhotoControls, animalPhotoUrl } from "./animal-photo";
 
 // ── Shared types ─────────────────────────────────────────────────────────────
@@ -313,12 +314,12 @@ function describeFrequency(row: Row): string {
 }
 
 // ── First-run Head Keeper setup ───────────────────────────────────────────────
-export function SetupGate({ onReady }: { onReady: (viewer: Viewer) => void }) {
+export function SetupGate({ onReady }: { onReady: (viewer: Viewer, capabilities: Capability[]) => void }) {
   const [displayName, setDisplayName] = useState("");
   const [token, setToken] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [recovery, setRecovery] = useState<{ code: string; viewer: Viewer } | null>(null);
+  const [recovery, setRecovery] = useState<{ code: string; viewer: Viewer; capabilities: Capability[] } | null>(null);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -334,11 +335,11 @@ export function SetupGate({ onReady }: { onReady: (viewer: Viewer) => void }) {
         headers: { "content-type": "application/json", "X-Shed-Bootstrap-Token": setupToken },
         body: JSON.stringify({ displayName: name }),
       });
-      const payload = (await response.json()) as { member?: Viewer; accessCode?: string; error?: string };
-      if (!response.ok || !payload.member || !payload.accessCode) {
+      const payload = (await response.json()) as { member?: Viewer; capabilities?: Capability[]; accessCode?: string; error?: string };
+      if (!response.ok || !payload.member || !payload.capabilities || !payload.accessCode) {
         throw new Error(payload.error ?? "Setup couldn’t be completed.");
       }
-      setRecovery({ code: payload.accessCode, viewer: payload.member });
+      setRecovery({ code: payload.accessCode, viewer: payload.member, capabilities: payload.capabilities });
     } catch (setupError) {
       setError(setupError instanceof Error ? setupError.message : "Setup couldn’t be completed.");
     } finally {
@@ -358,7 +359,7 @@ export function SetupGate({ onReady }: { onReady: (viewer: Viewer) => void }) {
             <code>{recovery.code}</code>
             <small>Store it in a password manager. You can issue a new one later from Household access.</small>
           </div>
-          <button onClick={() => onReady(recovery.viewer)}>Enter Shed →</button>
+          <button onClick={() => onReady(recovery.viewer, recovery.capabilities)}>Enter Shed →</button>
         </div>
       </section>
     );
@@ -1031,7 +1032,21 @@ type AnimalProfileData = {
   history: Array<{ id: string; title: string; taskType: string; occurredAt: string; completedBy: string; notes: string | null; voidedAt: string | null; voidReason: string | null; feederSpecies: string | null; feederSizeClass: string | null; feederWeightGrams: number | null }>;
 };
 
-export function AnimalProfile({ animalId, onClose, onEdit, onPhotoChange }: { animalId: string; onClose: () => void; onEdit?: () => void; onPhotoChange?: () => void }) {
+export function AnimalProfile({
+  animalId,
+  onClose,
+  onEdit,
+  onPhotoChange,
+  canWritePhoto = false,
+  canRecordWeight = false,
+}: {
+  animalId: string;
+  onClose: () => void;
+  onEdit?: () => void;
+  onPhotoChange?: () => void;
+  canWritePhoto?: boolean;
+  canRecordWeight?: boolean;
+}) {
   const [data, setData] = useState<AnimalProfileData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showWeight, setShowWeight] = useState(false);
@@ -1121,7 +1136,7 @@ export function AnimalProfile({ animalId, onClose, onEdit, onPhotoChange }: { an
                   // eslint-disable-next-line @next/next/no-img-element
                   ? <img className="profile-photo" src={photoUrl} alt={str(animal.name)} />
                   : <span className="profile-avatar" aria-hidden>{speciesGlyph(str(animal.species), str(animal.group))}</span>}
-                <AnimalPhotoControls animalId={animalId} hasPhoto={Boolean(photoUrl)} onChanged={async () => { await load(); onPhotoChange?.(); }} />
+                {canWritePhoto && <AnimalPhotoControls animalId={animalId} hasPhoto={Boolean(photoUrl)} onChanged={async () => { await load(); onPhotoChange?.(); }} />}
               </div>
               <div>
                 <h2>{str(animal.name)}{!bool(animal.active) && <i className="archived-flag"> archived</i>}</h2>
@@ -1157,9 +1172,9 @@ export function AnimalProfile({ animalId, onClose, onEdit, onPhotoChange }: { an
             <section className="profile-section">
               <div className="profile-section-head">
                 <h3>Weight history</h3>
-                <button className="mini-add" onClick={() => { setShowWeight((open) => !open); setWError(null); }}>{showWeight ? "Cancel" : "＋ Log weight"}</button>
+                {canRecordWeight && <button className="mini-add" onClick={() => { setShowWeight((open) => !open); setWError(null); }}>{showWeight ? "Cancel" : "＋ Log weight"}</button>}
               </div>
-              {showWeight && (
+              {canRecordWeight && showWeight && (
                 <form className="weight-form" onSubmit={logWeight}>
                   <label>Date<input type="date" value={wDate} onChange={(event) => setWDate(event.target.value)} /></label>
                   <label>Weight (g)<input type="number" step="0.1" min="0" value={wGrams} onChange={(event) => setWGrams(event.target.value)} placeholder="grams" autoFocus /></label>
@@ -1173,7 +1188,7 @@ export function AnimalProfile({ animalId, onClose, onEdit, onPhotoChange }: { an
                   {data.weightHistory.slice(0, 12).map((w) => <div key={w.id}><b>{w.weightGrams} g</b><small>{w.recordedOn}</small></div>)}
                 </div>
               ) : (
-                <p className="member-note">No weights recorded yet — log one to start a trend.</p>
+                <p className="member-note">{canRecordWeight ? "No weights recorded yet — log one to start a trend." : "No weights recorded yet."}</p>
               )}
             </section>
 

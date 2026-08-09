@@ -4,7 +4,7 @@
 // task later clears the missed mark.
 import { ensureDatabase } from "@/db/runtime";
 import { dateInTimeZone } from "@/lib/date";
-import { householdAuthRequired, memberFromRequest } from "@/lib/household-auth";
+import { requireCapability } from "@/lib/household-auth";
 
 const noStore = { "Cache-Control": "no-store" };
 
@@ -12,10 +12,12 @@ export async function POST(request: Request) {
   try {
     const payload = await request.json() as { taskId?: string; dueDate?: string; all?: boolean };
     const db = await ensureDatabase();
-    const member = await memberFromRequest(request, db);
-    if (householdAuthRequired() && !member) {
-      return Response.json({ error: "Sign in to Shed first" }, { status: 401, headers: noStore });
-    }
+    // Both actions alter the expected-care record rather than record work that
+    // happened, so they stay with the Head Keeper. The named capabilities keep
+    // the single-task action separate from the broader backlog sweep.
+    const auth = await requireCapability(request, db, payload.all ? "care.missAll" : "care.miss");
+    if (auth.response) return auth.response;
+    const member = auth.member;
 
     // Bulk clear: mark every still-open overdue task as missed in one go.
     if (payload.all) {

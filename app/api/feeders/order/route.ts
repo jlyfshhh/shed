@@ -1,6 +1,6 @@
 import { ensureDatabase } from "@/db/runtime";
 import { dateInTimeZone } from "@/lib/date";
-import { requireHouseholdMember } from "@/lib/household-auth";
+import { requireCapability } from "@/lib/household-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +14,7 @@ const noStore = { "Cache-Control": "no-store" };
 export async function POST(request: Request) {
   try {
     const db = await ensureDatabase(dateInTimeZone());
-    const auth = await requireHouseholdMember(request, db, ["Owner"]);
+    const auth = await requireCapability(request, db, "feeders.manage");
     if (auth.response) return auth.response;
 
     const placedAt = new Date().toISOString();
@@ -35,7 +35,7 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   try {
     const db = await ensureDatabase(dateInTimeZone());
-    const auth = await requireHouseholdMember(request, db, ["Owner"]);
+    const auth = await requireCapability(request, db, "feeders.manage");
     if (auth.response) return auth.response;
     await db.prepare("DELETE FROM app_settings WHERE key = 'feeder_order_placed_at'").run();
     return Response.json({ placedAt: null }, { headers: noStore });

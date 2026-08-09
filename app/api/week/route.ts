@@ -1,6 +1,6 @@
 import { ensureDatabase } from "@/db/runtime";
 import { dateInTimeZone } from "@/lib/date";
-import { householdAuthRequired, memberFromRequest } from "@/lib/household-auth";
+import { requireCapability } from "@/lib/household-auth";
 import { scheduleIsDue, type CareScheduleRow } from "@/lib/schedules";
 import { describeWeek, resolveWeekStart, shiftWeeks, weekDates, weekdayIndex, WEEKDAY_LABELS } from "@/lib/week";
 
@@ -23,10 +23,8 @@ export async function GET(request: Request) {
   try {
     const today = dateInTimeZone();
     const db = await ensureDatabase(today);
-    const member = await memberFromRequest(request, db);
-    if (householdAuthRequired() && !member) {
-      return Response.json({ error: "Sign in to Shed first" }, { status: 401 });
-    }
+    const auth = await requireCapability(request, db, "care.read");
+    if (auth.response) return auth.response;
 
     const requested = new URL(request.url).searchParams.get("start");
     const start = resolveWeekStart(requested, today);
