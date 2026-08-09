@@ -66,8 +66,12 @@ host="$(hostname)"
 # mDNS that Windows and many Android phones do not have. The LAN address always
 # works from the same network, so lead with it.
 lan_ip="$(ip -4 -o addr show scope global 2>/dev/null | awk '$2 !~ /^(docker|br-|veth|virbr|tun|tap)/ {print $4}' | cut -d/ -f1 \
-  | grep -E '^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.)' | head -n 1)"
-port="${SHED_PORT:-3000}"
+  | grep -E '^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.)' | head -n 1 || true)"
+# The installer is normally launched in a fresh shell, so a custom port lives
+# in .env rather than the process environment. Report what Compose actually
+# reads instead of silently printing the default address.
+port="${SHED_PORT:-$(sed -n 's/^SHED_PORT=//p' .env | tail -n 1)}"
+port="${port:-3000}"
 echo
 echo "Shed is running. Open it from any device on the same network:"
 if [ -n "$lan_ip" ]; then
