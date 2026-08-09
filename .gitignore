@@ -50,3 +50,6 @@ next-env.d.ts
 /outputs/
 /work/
 /.npm-cache/
+
+# Local list of identities that must never appear in this repository.
+.privacy-denylist
