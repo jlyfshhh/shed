@@ -19,8 +19,10 @@ trap cleanup EXIT
 
 # The image's dedicated account is 10001. get-shed.sh performs the equivalent
 # ownership repair for the host account selected in .env.
-sudo chown -R 10001:10001 "$data"
+# chmod first: after the chown this directory belongs to 10001, and the CI
+# runner is not that user, so chmod would fail with "Operation not permitted".
 chmod 0700 "$data"
+sudo chown -R 10001:10001 "$data"
 
 docker run -d \
   --name "$name" \
