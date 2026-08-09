@@ -1,4 +1,7 @@
 export const ACCESS_COOKIE = "shed_access";
+// Household phones stay signed in through ordinary care cycles, but a copied
+// bearer code must not remain valid in browser storage for a full year.
+export const ACCESS_COOKIE_MAX_AGE = 60 * 60 * 24 * 30;
 
 export function createAccessCode(): string {
   const bytes = new Uint8Array(24);
@@ -17,7 +20,7 @@ export async function hashAccessCode(code: string): Promise<string> {
 
 export function accessCookie(code: string, request: Request): string {
   const secure = new URL(request.url).protocol === "https:" ? "; Secure" : "";
-  return `${ACCESS_COOKIE}=${encodeURIComponent(code)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=31536000${secure}`;
+  return `${ACCESS_COOKIE}=${encodeURIComponent(code)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${ACCESS_COOKIE_MAX_AGE}${secure}`;
 }
 
 export function expiredAccessCookie(): string {

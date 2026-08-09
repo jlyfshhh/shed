@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  ACCESS_COOKIE_MAX_AGE,
   accessCodeFromCookie,
   accessCookie,
   createAccessCode,
@@ -23,6 +24,8 @@ test("access cookie is HttpOnly, readable by the server, and expirable", () => {
   const cookie = accessCookie(code, new Request("http://shed.local/api/auth/login"));
   assert.match(cookie, /HttpOnly/);
   assert.match(cookie, /SameSite=Lax/);
+  assert.equal(ACCESS_COOKIE_MAX_AGE, 2_592_000);
+  assert.match(cookie, /Max-Age=2592000/);
   assert.doesNotMatch(cookie, /; Secure/);
   assert.equal(accessCodeFromCookie(`other=x; ${cookie.split(";")[0]}`), code);
   assert.match(expiredAccessCookie(), /Max-Age=0/);
