@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { equipmentAgeLabel } from "@/lib/equipment-age";
 import { animalFacts, speciesGlyph } from "@/lib/animal-traits";
 import { AnimalPhotoControls, animalPhotoUrl } from "./animal-photo";
@@ -1509,19 +1509,7 @@ export function RestorePanel({ onDone, toast }: { onDone: () => void; toast: (me
 // the plans exist on its siblings. This offers those plans as a checklist.
 
 /** Fields copied from a sibling's plan. Dates and identity are deliberately not. */
-const COPIED_SCHEDULE_FIELDS = [
-  "taskType", "title", "details", "frequency", "intervalDays", "weekdaysJson", "dayOfMonth",
-  "preySpecies", "preyDescription", "preySizeClass", "targetPercent", "minimumPercent",
-  "maximumPercent", "buyAsNeeded", "rewardCents",
-] as const;
 
-const SCHEDULE_COLUMN_TO_KEY: Record<string, string> = {
-  task_type: "taskType", title: "title", details: "details", frequency: "frequency",
-  interval_days: "intervalDays", weekdays_json: "weekdaysJson", day_of_month: "dayOfMonth",
-  prey_species: "preySpecies", prey_description: "preyDescription", prey_size_class: "preySizeClass",
-  target_percent: "targetPercent", minimum_percent: "minimumPercent", maximum_percent: "maximumPercent",
-  buy_as_needed: "buyAsNeeded", reward_cents: "rewardCents",
-};
 
 /** Human summary of when a plan repeats, so the checklist is readable. */
 function scheduleCadence(row: Row): string {
@@ -1611,14 +1599,33 @@ function suggestedSchedules(catalog: Catalog, animal: Row): Array<{ row: Row; sh
   for (const plan of catalog.schedules) {
     const owner = siblingById.get(str(plan.animal_id));
     if (!bool(plan.active) || !owner) continue;
-    const key = `${str(plan.task_type)}::${str(plan.title).trim().toLowerCase()}`;
+    // Feeding is grouped loosely on purpose: every sibling's feeding plan is a
+    // candidate, and closestSibling picks the one that fits this animal. For
+    // every other task the cadence IS the plan — a weekly and a daily "Mist
+    // enclosure" are different jobs — and keying on the title alone collapsed
+    // them into whichever happened to come first in the catalog.
+    const key = str(plan.task_type) === "feeding"
+      ? `feeding::${str(plan.title).trim().toLowerCase()}`
+      : [
+          str(plan.task_type),
+          str(plan.title).trim().toLowerCase(),
+          str(plan.frequency),
+          str(plan.interval_days),
+          str(plan.weekdays_json),
+          str(plan.day_of_month),
+          str(plan.details).trim().toLowerCase(),
+        ].join("::");
     grouped.set(key, [...(grouped.get(key) ?? []), { plan, animal: owner }]);
   }
   return [...grouped.values()].map((candidates) => {
     const sharedBy = [...new Set(candidates.map((c) => str(c.animal.name)))];
     // Only feeding is size-dependent; the rest are the same job on any animal.
     if (str(candidates[0].plan.task_type) !== "feeding") {
-      return { row: candidates[0].plan, sharedBy, matchReason: null };
+      // Every candidate in this group is now identical in cadence and detail,
+      // so any of them copies the same plan. Sorting keeps the choice stable
+      // between renders rather than leaving it to catalog order.
+      const stable = [...candidates].sort((a, b) => str(a.plan.id).localeCompare(str(b.plan.id)));
+      return { row: stable[0].plan, sharedBy, matchReason: null };
     }
     const best = closestSibling(candidates, animal, today);
     return { row: best.plan, sharedBy, matchReason: best.reason };
@@ -1641,6 +1648,10 @@ export function CareRoutineSuggestions({ animalId, catalog, onClose, onCreated, 
   const [deselected, setDeselected] = useState<Set<string>>(() => new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Stable for the life of this sheet, so a retry after a failed or lost
+  // response is recognised as the same request rather than a new one. It has to
+  // sit above the early return — hooks must run in the same order every render.
+  const requestKey = useRef(crypto.randomUUID());
 
   if (!animal) return null;
   const name = str(animal.name);
@@ -1661,23 +1672,29 @@ export function CareRoutineSuggestions({ animalId, catalog, onClose, onCreated, 
     setBusy(true);
     setError(null);
     try {
-      for (const { row } of picked) {
-        const data: Record<string, unknown> = { animalId, startDate: todayIso() };
-        for (const [column, key] of Object.entries(SCHEDULE_COLUMN_TO_KEY)) {
-          const value = row[column];
-          if (value === null || value === undefined || value === "") continue;
-          if (!(COPIED_SCHEDULE_FIELDS as readonly string[]).includes(key)) continue;
-          data[key] = key === "buyAsNeeded" ? bool(value) : value;
-        }
-        const response = await fetch("/api/manage", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ resource: "schedule", data }),
-        });
-        const payload = (await response.json()) as { error?: string };
-        if (!response.ok) throw new Error(payload.error ?? "Couldn’t create that care plan.");
-      }
-      toast(`Added ${picked.length} care plan${picked.length === 1 ? "" : "s"} for ${name}.`);
+      // One request, one transaction. This used to be a POST per plan, so a
+      // failure part way through left some plans created and some not, and
+      // pressing the button again duplicated the ones that had already worked.
+      // The idempotency key makes a repeat return the first outcome instead of
+      // copying a second time.
+      const response = await fetch("/api/care/copy-routines", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          animalId,
+          scheduleIds: picked.map(({ row }) => str(row.id)),
+          idempotencyKey: requestKey.current,
+        }),
+      });
+      const payload = (await response.json()) as { error?: string; created?: string[]; skipped?: string[] };
+      if (!response.ok) throw new Error(payload.error ?? "Couldn’t create those care plans.");
+      const added = payload.created?.length ?? 0;
+      const already = payload.skipped?.length ?? 0;
+      toast(
+        already
+          ? `Added ${added} care plan${added === 1 ? "" : "s"} for ${name}; ${already} already existed.`
+          : `Added ${added} care plan${added === 1 ? "" : "s"} for ${name}.`,
+      );
       onCreated();
       onClose();
     } catch (createError) {
