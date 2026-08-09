@@ -4,11 +4,71 @@ import { careLookbackDates } from "@/lib/care-schedule";
 import { getCareStartDate } from "@/lib/care-settings";
 import { scheduleIsDue, type CareScheduleRow } from "@/lib/schedules";
 
+// Every API call used to run the whole of this: create-table statements for
+// every table, a PRAGMA introspection per table to add missing columns, a scan
+// of every active schedule, and an insert attempt for every task in a 14-day
+// window. Today polls every fifteen seconds, so a quiet household was doing all
+// of that four times a minute forever.
+//
+// Schema work now happens once per process. Task materialization happens once
+// per process *per date*, so it still runs when the day rolls over or a new
+// worker starts, which is what actually needs to trigger it.
+//
+// Both guards are per-isolate rather than global. A second worker repeating the
+// work is harmless: the schema statements are CREATE TABLE IF NOT EXISTS and
+// the task inserts are INSERT OR IGNORE, so the operations are idempotent by
+// construction. This trades a little duplicate work at startup for not needing
+// a distributed lock.
+let schemaReady: Promise<void> | null = null;
+let materializedFor: string | null = null;
+let materializing: Promise<void> | null = null;
+
+/**
+ * Call after anything that changes which tasks should exist — creating,
+ * editing, or deactivating a care plan. Without this a new plan produces no
+ * tasks until the date rolls over, which looks exactly like the plan not
+ * working.
+ */
+export function invalidateMaterializedTasks() {
+  materializedFor = null;
+}
+
+/** Only for tests: forget what this process thinks it has already done. */
+export function resetRuntimeCaches() {
+  schemaReady = null;
+  materializedFor = null;
+  materializing = null;
+}
+
 export async function ensureDatabase(targetDate?: string) {
   const db = env.DB;
   const timeZone = typeof env.SHED_TIME_ZONE === "string" ? env.SHED_TIME_ZONE : DEFAULT_TIME_ZONE;
   const today = targetDate ?? dateInTimeZone(timeZone);
 
+  schemaReady ??= applySchema(db);
+  try {
+    await schemaReady;
+  } catch (error) {
+    // A failed attempt must not be cached, or every later request in this
+    // isolate inherits the failure with no way to recover.
+    schemaReady = null;
+    throw error;
+  }
+
+  if (materializedFor !== today) {
+    materializing ??= materializeTasks(db, today);
+    try {
+      await materializing;
+      materializedFor = today;
+    } finally {
+      materializing = null;
+    }
+  }
+
+  return db;
+}
+
+async function applySchema(db: D1Database) {
   await db.batch([
     db.prepare("CREATE TABLE IF NOT EXISTS animals (id TEXT PRIMARY KEY, name TEXT NOT NULL, species TEXT NOT NULL, group_name TEXT NOT NULL DEFAULT 'Reptile', location TEXT NOT NULL DEFAULT '', weight_grams INTEGER, weight_date TEXT, scientific_name TEXT, morph TEXT, sex TEXT, birth_date TEXT, acquired_date TEXT, source TEXT, notes TEXT, active INTEGER NOT NULL DEFAULT 1, enclosure_id TEXT, created_at TEXT, updated_at TEXT, earning_enabled INTEGER NOT NULL DEFAULT 1)"),
     db.prepare("CREATE TABLE IF NOT EXISTS enclosures (id TEXT PRIMARY KEY, name TEXT NOT NULL, enclosure_type TEXT, manufacturer TEXT, model TEXT, width REAL, depth REAL, height REAL, dimension_unit TEXT NOT NULL DEFAULT 'in', location TEXT, substrate TEXT, bioactive INTEGER NOT NULL DEFAULT 0, shared_habitat_id TEXT, notes TEXT, active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"),
@@ -80,6 +140,10 @@ export async function ensureDatabase(targetDate?: string) {
   await db.prepare("INSERT OR IGNORE INTO app_settings (key, value) VALUES ('default_reward_cents', '25')").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS animals_active_name_idx ON animals(active, name)").run();
 
+  return;
+}
+
+async function materializeTasks(db: D1Database, today: string) {
   const schedules = await db.prepare(
     "SELECT id, animal_id AS animalId, task_type AS taskType, title, details, frequency, interval_days AS intervalDays, weekdays_json AS weekdaysJson, day_of_month AS dayOfMonth, start_date AS startDate, end_date AS endDate FROM care_schedules WHERE active = 1",
   ).all<CareScheduleRow>();
@@ -93,7 +157,6 @@ export async function ensureDatabase(targetDate?: string) {
       .bind(`${schedule.id}:${date}`, schedule.id, schedule.animalId, schedule.taskType, schedule.title, schedule.details, date),
   ));
   if (taskStatements.length) await db.batch(taskStatements);
-  return db;
 }
 
 async function addMissingColumns(db: D1Database, table: string, columns: Array<[string, string]>) {

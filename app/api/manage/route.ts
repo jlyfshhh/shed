@@ -1,4 +1,4 @@
-import { ensureDatabase } from "@/db/runtime";
+import { ensureDatabase, invalidateMaterializedTasks } from "@/db/runtime";
 import { dateInTimeZone, isIsoDate } from "@/lib/date";
 import { attributedTo, requireHouseholdMember } from "@/lib/household-auth";
 import { normalizedEmptyValue } from "@/lib/manage-values";
@@ -107,6 +107,8 @@ export async function POST(request: Request) {
     const columns = ["id", ...Object.keys(normalized).map((key) => configs[resource].fields[key].column)];
     const values = [id, ...Object.values(normalized)];
     await db.prepare(`INSERT INTO ${configs[resource].table} (${columns.join(", ")}) VALUES (${columns.map(() => "?").join(", ")})`).bind(...values).run();
+    // A new care plan must produce its tasks on the next request, not tomorrow.
+    if (resource === "schedule") invalidateMaterializedTasks();
     if (resource === "weight") await refreshAnimalWeight(db, String(normalized.animalId));
     if (resource === "lightingPlan") await queueLightingVerification(db, String(normalized.enclosureId), String(normalized.name));
     if (resource === "lightingFixture") await touchAndQueueLightingVerificationForPlan(db, String(normalized.planId), now);
@@ -140,7 +142,11 @@ export async function PATCH(request: Request) {
     if (!Object.keys(normalized).length) return Response.json({ error: "No editable fields supplied" }, { status: 400 });
     const assignments = Object.keys(normalized).map((key) => `${configs[resource].fields[key].column} = ?`);
     await db.prepare(`UPDATE ${configs[resource].table} SET ${assignments.join(", ")} WHERE id = ?`).bind(...Object.values(normalized), id).run();
-    if (resource === "schedule") await db.prepare("DELETE FROM care_tasks WHERE schedule_id = ? AND due_date >= ? AND id NOT IN (SELECT task_id FROM husbandry_events WHERE task_id IS NOT NULL)").bind(id, dateInTimeZone()).run();
+    if (resource === "schedule") {
+      await db.prepare("DELETE FROM care_tasks WHERE schedule_id = ? AND due_date >= ? AND id NOT IN (SELECT task_id FROM husbandry_events WHERE task_id IS NOT NULL)").bind(id, dateInTimeZone()).run();
+      // The task window must be rebuilt on the next request, not tomorrow.
+      invalidateMaterializedTasks();
+    }
     if (resource === "weight") await refreshAnimalWeight(db, String(normalized.animalId ?? existing.animal_id));
     if (resource === "lightingPlan") await queueLightingVerification(db, String(normalized.enclosureId ?? existing.enclosure_id), String(normalized.name ?? existing.name));
     if (resource === "lightingFixture") await touchAndQueueLightingVerificationForPlan(db, String(normalized.planId ?? existing.plan_id), now);
@@ -169,7 +175,11 @@ export async function DELETE(request: Request) {
         .bind(new Date().toISOString(), actor.id, actor.name, cleanText(payload.reason, 500) ?? "Voided by the Head Keeper.", id).run();
     } else if (configs[resource].softDelete) {
       await db.prepare(`UPDATE ${configs[resource].table} SET active = 0 WHERE id = ?`).bind(id).run();
-      if (resource === "schedule") await db.prepare("DELETE FROM care_tasks WHERE schedule_id = ? AND due_date >= ? AND id NOT IN (SELECT task_id FROM husbandry_events WHERE task_id IS NOT NULL)").bind(id, dateInTimeZone()).run();
+      if (resource === "schedule") {
+      await db.prepare("DELETE FROM care_tasks WHERE schedule_id = ? AND due_date >= ? AND id NOT IN (SELECT task_id FROM husbandry_events WHERE task_id IS NOT NULL)").bind(id, dateInTimeZone()).run();
+      // The task window must be rebuilt on the next request, not tomorrow.
+      invalidateMaterializedTasks();
+    }
     } else {
       const existing = await db.prepare(`SELECT * FROM ${configs[resource].table} WHERE id = ?`).bind(id).first<Record<string, unknown>>();
       await db.prepare(`DELETE FROM ${configs[resource].table} WHERE id = ?`).bind(id).run();

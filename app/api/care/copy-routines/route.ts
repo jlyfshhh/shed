@@ -1,4 +1,4 @@
-import { ensureDatabase } from "@/db/runtime";
+import { ensureDatabase, invalidateMaterializedTasks } from "@/db/runtime";
 import { dateInTimeZone } from "@/lib/date";
 import { requireHouseholdMember } from "@/lib/household-auth";
 import { COPYABLE_SCHEDULE_COLUMNS, copySignature } from "@/lib/copy-routines";
@@ -108,6 +108,8 @@ export async function POST(request: Request) {
     }
     // One batch, one transaction: either every plan is created or none is.
     if (statements.length) await db.batch(statements);
+    // Copied plans need their tasks materialized on the next request.
+    if (created.length) invalidateMaterializedTasks();
 
     return Response.json(result, { headers: noStore });
   } catch (error) {
