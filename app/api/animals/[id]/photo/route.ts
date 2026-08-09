@@ -1,5 +1,6 @@
 import { ensureDatabase } from "@/db/runtime";
 import { base64ToBytes, parsePhotoDataUrl } from "@/lib/animal-photo";
+import { attachmentHeaders, checkAttachment } from "@/lib/attachments";
 import { householdAuthRequired, memberFromRequest } from "@/lib/household-auth";
 
 export const dynamic = "force-dynamic";
@@ -35,7 +36,11 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     // these bytes — Uint8Array itself is not a BodyInit in the type defs.
     return new Response(base64ToBytes(row.data).buffer as ArrayBuffer, {
       headers: {
-        "Content-Type": row.mime,
+        // Sent through the shared helper so the photo carries nosniff and a
+        // sandbox policy: a restored bundle could once claim any mime type it
+        // liked, and this route handed that value straight back as the
+        // Content-Type from Shed's own origin.
+        ...attachmentHeaders(row.mime, { filename: "animal-photo", inline: true }),
         "Cache-Control": "private, max-age=31536000",
         ETag: etag,
       },
@@ -67,6 +72,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const parsed = parsePhotoDataUrl(body?.dataUrl);
     if ("error" in parsed) return Response.json({ error: parsed.error }, { status: 400, headers: noStore });
 
+    // parsePhotoDataUrl checks what the data URL *claims*. This checks what the
+    // bytes actually are, through the same validator the restore path uses, and
+    // stores the detected type rather than the declared one.
+    const verified = checkAttachment(base64ToBytes(parsed.photo.base64), "image", parsed.photo.mime);
+    if (!verified.ok) return Response.json({ error: verified.error }, { status: 400, headers: noStore });
+
     const updatedAt = new Date().toISOString();
     await db.prepare(
       `INSERT INTO animal_photos (animal_id, mime, data, byte_size, updated_at, updated_by_member_id, updated_by_name)
@@ -75,7 +86,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
          mime = excluded.mime, data = excluded.data, byte_size = excluded.byte_size,
          updated_at = excluded.updated_at, updated_by_member_id = excluded.updated_by_member_id,
          updated_by_name = excluded.updated_by_name`,
-    ).bind(id, parsed.photo.mime, parsed.photo.base64, parsed.photo.byteSize, updatedAt, member?.id ?? null, member?.displayName ?? null).run();
+    ).bind(id, verified.mime, parsed.photo.base64, verified.byteSize, updatedAt, member?.id ?? null, member?.displayName ?? null).run();
 
     return Response.json({ photoUpdatedAt: updatedAt, byteSize: parsed.photo.byteSize }, { headers: noStore });
   } catch (error) {

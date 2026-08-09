@@ -1,6 +1,7 @@
 import { ensureDatabase } from "@/db/runtime";
 import { env } from "cloudflare:workers";
 import { requireHouseholdMember } from "@/lib/household-auth";
+import { MAX_BUNDLE_BYTES, validateBundle } from "@/lib/restore-plan";
 import {
   matchingExistingMember,
   PORTABLE_APP_SETTING_KEYS,
@@ -65,24 +66,43 @@ export async function POST(request: Request) {
     const db = await ensureDatabase();
     const auth = await requireHouseholdMember(request, db, ["Owner"]);
     if (auth.response) return auth.response;
-    const payload = await request.json() as { mode?: "merge" | "replace"; confirmation?: string; bundle?: Record<string, unknown> };
+    // Refuse an oversized bundle before it is buffered, not after. There was no
+    // limit at all: a large upload was parsed in full and only then rejected.
+    const declaredLength = Number(request.headers.get("content-length") ?? 0);
+    if (declaredLength > MAX_BUNDLE_BYTES) {
+      return Response.json(
+        { error: `A backup larger than ${Math.floor(MAX_BUNDLE_BYTES / (1024 * 1024))} MB cannot be restored here.` },
+        { status: 413, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    const payload = await request.json() as { mode?: "merge" | "replace"; confirmation?: string; dryRun?: boolean; bundle?: Record<string, unknown> };
     const bundle = payload.bundle;
     if (!bundle || Number(bundle.schemaVersion) < 8) return Response.json({ error: "A Shed schema version 8+ JSON export is required" }, { status: 400 });
-    if (payload.mode === "replace" && payload.confirmation !== "REPLACE") return Response.json({ error: "Type REPLACE to confirm a full data restore" }, { status: 400 });
+    if (payload.mode === "replace" && !payload.dryRun && payload.confirmation !== "REPLACE") return Response.json({ error: "Type REPLACE to confirm a full data restore" }, { status: 400 });
 
-    if (payload.mode === "replace") {
-      const deleteOrder = ["reward_payouts", "feeding_assignments", "feeder_inventory", "lighting_measurements", "lighting_plan_fixtures", "lighting_plans", "husbandry_event_revisions", "husbandry_events", "care_tasks", "care_schedules", "weight_events", "animal_notes", "animal_photos", "equipment", "animals", "enclosures"];
-      await db.batch(deleteOrder.map((table) => db.prepare(`DELETE FROM ${table}`)));
-      await deleteLightingPlanSheets();
-      await db.prepare(`DELETE FROM app_settings WHERE key IN (${PORTABLE_APP_SETTING_KEYS.map(() => "?").join(", ")})`)
-        .bind(...PORTABLE_APP_SETTING_KEYS).run();
-      await db.prepare("UPDATE household_members SET earning_enabled = 0").run();
+    // ── Validate everything before touching anything ─────────────────────────
+    // Replace used to delete first and validate as it went, so a bad row late
+    // in a bundle — or an attachment that would not decode — left a half
+    // restored database with no way back.
+    const plan = validateBundle(bundle);
+    if (plan.errors.length) {
+      return Response.json(
+        { error: "This backup cannot be restored.", problems: plan.errors.slice(0, 20), checked: plan.counts },
+        { status: 422, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    if (payload.dryRun) {
+      return Response.json(
+        { dryRun: true, wouldRestore: plan.counts, mode: payload.mode ?? "merge" },
+        { headers: { "Cache-Control": "no-store" } },
+      );
     }
 
     const household = await restoreHouseholdProfiles(db, bundle);
     const portableSheets = (Array.isArray(bundle.lightingPlanSheets) ? bundle.lightingPlanSheets : []).filter((sheet): sheet is Record<string, unknown> => Boolean(sheet) && typeof sheet === "object");
     const sheetPlanIds = new Set(portableSheets.map((sheet) => typeof sheet.planId === "string" ? sheet.planId : "").filter(Boolean));
     let imported = household.restored;
+    const writes: D1PreparedStatement[] = [];
     for (const [bundleKey, definition] of Object.entries(PORTABLE_RESOURCES) as Array<[keyof typeof PORTABLE_RESOURCES, (typeof PORTABLE_RESOURCES)[keyof typeof PORTABLE_RESOURCES]]>) {
       const rows = (Array.isArray(bundle[bundleKey]) ? bundle[bundleKey] as Array<Record<string, unknown>> : [])
         .filter((row) => bundleKey !== "appSettings" || PORTABLE_APP_SETTING_KEYS.includes(String(row.key) as (typeof PORTABLE_APP_SETTING_KEYS)[number]));
@@ -100,9 +120,28 @@ export async function POST(request: Request) {
         if (!present.includes(key)) throw new Error(`${bundleKey} contains a row without its ${key}`);
         return db.prepare(`INSERT OR REPLACE INTO ${table} (${present.join(", ")}) VALUES (${present.map(() => "?").join(", ")})`).bind(...present.map((column) => row[column] ?? null));
       });
-      for (let offset = 0; offset < statements.length; offset += 100) await db.batch(statements.slice(offset, offset + 100));
+      writes.push(...statements);
       imported += statements.length;
     }
+
+    // Deletes and inserts go into one batch. D1 runs a batch as a single
+    // transaction, so a failure anywhere rolls the whole thing back and the
+    // database is left exactly as it was. Previously the deletes ran first and
+    // the inserts followed in separate hundred-statement batches, so any error
+    // after the first batch left a partially restored database.
+    if (payload.mode === "replace") {
+      const deleteOrder = ["reward_payouts", "feeding_assignments", "feeder_inventory", "lighting_measurements", "lighting_plan_fixtures", "lighting_plans", "husbandry_event_revisions", "husbandry_events", "care_tasks", "care_schedules", "weight_events", "animal_notes", "animal_photos", "equipment", "animals", "enclosures"];
+      writes.unshift(
+        db.prepare("UPDATE household_members SET earning_enabled = 0"),
+        db.prepare(`DELETE FROM app_settings WHERE key IN (${PORTABLE_APP_SETTING_KEYS.map(() => "?").join(", ")})`)
+          .bind(...PORTABLE_APP_SETTING_KEYS),
+        ...deleteOrder.map((table) => db.prepare(`DELETE FROM ${table}`)),
+      );
+    }
+    if (writes.length) await db.batch(writes);
+    // Stored files are outside the transaction, so they are cleared only once
+    // the database change has committed.
+    if (payload.mode === "replace") await deleteLightingPlanSheets();
     for (const sheet of portableSheets) {
       const planId = typeof sheet.planId === "string" ? sheet.planId : "";
       const encoded = typeof sheet.dataBase64 === "string" ? sheet.dataBase64 : "";
