@@ -98,6 +98,7 @@ const PROTECTED_ROUTES: RoutePolicy[] = [
   { file: "app/api/tasks/skip/route.ts", method: "DELETE", capabilities: ["care.complete"] },
   { file: "app/api/week/route.ts", method: "GET", capabilities: ["care.read"] },
   { file: "app/api/weights/route.ts", method: "POST", capabilities: ["weights.record"] },
+  { file: "app/api/sheds/route.ts", method: "POST", capabilities: ["sheds.record"] },
 ];
 
 const TOKEN_OR_SESSION_ROUTES = [

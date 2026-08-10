@@ -103,6 +103,11 @@ async function applySchema(db: D1Database) {
     db.prepare("CREATE INDEX IF NOT EXISTS reward_payouts_member_idx ON reward_payouts(member_id, paid_at)"),
     db.prepare("CREATE TABLE IF NOT EXISTS weight_events (id TEXT PRIMARY KEY, animal_id TEXT NOT NULL, recorded_on TEXT NOT NULL, weight_grams INTEGER NOT NULL, notes TEXT, recorded_by_member_id TEXT, recorded_by_name TEXT, created_at TEXT)"),
     db.prepare("CREATE INDEX IF NOT EXISTS weight_events_animal_date_idx ON weight_events(animal_id, recorded_on)"),
+    // A shed is noticed rather than scheduled, so it is its own record instead
+    // of a care task. Quality is the part worth keeping: a run of patchy or
+    // stuck sheds is usually the first sign humidity has drifted.
+    db.prepare("CREATE TABLE IF NOT EXISTS shed_events (id TEXT PRIMARY KEY, animal_id TEXT NOT NULL, recorded_on TEXT NOT NULL, quality TEXT NOT NULL DEFAULT 'complete', notes TEXT, recorded_by_member_id TEXT, recorded_by_name TEXT, created_at TEXT)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS shed_events_animal_date_idx ON shed_events(animal_id, recorded_on)"),
     db.prepare("CREATE TABLE IF NOT EXISTS feeder_inventory (id TEXT PRIMARY KEY, prey_species TEXT NOT NULL, size_class TEXT NOT NULL, weight_grams INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'available', added_on TEXT NOT NULL, consumed_at TEXT, animal_id TEXT, husbandry_event_id TEXT, notes TEXT)"),
     db.prepare("CREATE INDEX IF NOT EXISTS feeder_inventory_status_idx ON feeder_inventory(status)"),
     db.prepare("CREATE INDEX IF NOT EXISTS feeder_inventory_size_weight_idx ON feeder_inventory(prey_species, size_class, weight_grams)"),

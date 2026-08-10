@@ -39,10 +39,21 @@ command -v sqlite3 >/dev/null 2>&1 || {
 # "the first .sqlite found anywhere", which on the keeper's own Pi selected a
 # 340 KB snapshot from July instead of the 2.4 MB live database.
 d1_dir="$data/v3/d1/miniflare-D1DatabaseObject"
-[ -d "$d1_dir" ] || {
-  echo "No Shed database directory at $d1_dir — is SHED_DATA_PATH right?" >&2
+# "Not there" and "there but not readable by you" need different answers. The
+# data directory belongs to the container's user and is mode 0700, so running
+# this by hand as the login user gets permission denied on a directory that is
+# perfectly fine — and being told to check SHED_DATA_PATH sends you looking for
+# a problem that does not exist. The scheduled backup runs as root and is
+# unaffected either way.
+if [ ! -d "$d1_dir" ]; then
+  if [ -e "$data" ] && [ ! -r "$data" ]; then
+    echo "Cannot read $data — it belongs to the container's user." >&2
+    echo "Run this with sudo, or let the scheduled backup handle it." >&2
+  else
+    echo "No Shed database directory at $d1_dir — is SHED_DATA_PATH right?" >&2
+  fi
   exit 1
-}
+fi
 
 live=""
 found=0

@@ -12,8 +12,8 @@ export const PORTABLE_RESOURCES = {
   animals: { table: "animals", key: "id", columns: ["id", "name", "species", "group_name", "location", "weight_grams", "weight_date", "scientific_name", "morph", "sex", "birth_date", "acquired_date", "source", "notes", "active", "enclosure_id", "created_at", "updated_at", "earning_enabled"] },
   enclosures: { table: "enclosures", key: "id", columns: ["id", "name", "enclosure_type", "manufacturer", "model", "width", "depth", "height", "dimension_unit", "location", "substrate", "bioactive", "shared_habitat_id", "notes", "active", "created_at", "updated_at"] },
   careSchedules: { table: "care_schedules", key: "id", columns: ["id", "animal_id", "task_type", "title", "details", "frequency", "interval_days", "weekdays_json", "day_of_month", "start_date", "end_date", "active", "created_at", "updated_at", "prey_species", "prey_description", "prey_size_class", "target_percent", "minimum_percent", "maximum_percent", "buy_as_needed", "reward_cents"] },
-  careTasks: { table: "care_tasks", key: "id", columns: ["id", "schedule_id", "animal_id", "task_type", "title", "details", "due_date", "missed_at", "missed_by_member_id", "missed_by_name"] },
-  husbandryEvents: { table: "husbandry_events", key: "id", columns: ["id", "task_id", "animal_id", "task_type", "title", "notes", "due_date", "occurred_at", "actor_role", "completed_by_member_id", "completed_by_name", "voided_at", "voided_by_member_id", "voided_by_name", "void_reason", "edited_at", "edited_by_member_id", "edited_by_name", "reward_cents"] },
+  careTasks: { table: "care_tasks", key: "id", columns: ["id", "schedule_id", "animal_id", "task_type", "title", "details", "due_date", "missed_at", "missed_by_member_id", "missed_by_name", "skipped_at", "skipped_by_member_id", "skipped_by_name", "skip_reason"] },
+  husbandryEvents: { table: "husbandry_events", key: "id", columns: ["id", "task_id", "animal_id", "task_type", "title", "notes", "due_date", "occurred_at", "actor_role", "completed_by_member_id", "completed_by_name", "voided_at", "voided_by_member_id", "voided_by_name", "void_reason", "edited_at", "edited_by_member_id", "edited_by_name", "reward_cents", "outcome"] },
   husbandryEventRevisions: { table: "husbandry_event_revisions", key: "id", columns: ["id", "event_id", "changed_at", "changed_by_member_id", "changed_by_name", "previous_json"] },
   animalNotes: { table: "animal_notes", key: "id", columns: ["id", "animal_id", "enclosure_id", "category", "title", "body", "pinned", "created_at", "updated_at", "created_by_member_id", "created_by_name"] },
   equipment: { table: "equipment", key: "id", columns: ["id", "animal_id", "enclosure_id", "category", "name", "brand", "model", "installed_on", "replace_on", "source_name", "source_ref", "active", "notes", "created_at", "updated_at"] },
@@ -21,6 +21,7 @@ export const PORTABLE_RESOURCES = {
   lightingPlanFixtures: { table: "lighting_plan_fixtures", key: "id", columns: ["id", "plan_id", "equipment_id", "role", "position_cm", "mounting_height_cm", "quantity", "source_ref", "notes", "created_at", "updated_at"] },
   lightingMeasurements: { table: "lighting_measurements", key: "id", columns: ["id", "plan_id", "metric", "value", "unit", "measured_at", "position", "height", "height_unit", "instrument", "notes", "measured_by_member_id", "measured_by_name", "created_at"] },
   weightEvents: { table: "weight_events", key: "id", columns: ["id", "animal_id", "recorded_on", "weight_grams", "notes", "recorded_by_member_id", "recorded_by_name", "created_at"] },
+  shedEvents: { table: "shed_events", key: "id", columns: ["id", "animal_id", "recorded_on", "quality", "notes", "recorded_by_member_id", "recorded_by_name", "created_at"] },
   feederInventory: { table: "feeder_inventory", key: "id", columns: ["id", "prey_species", "size_class", "weight_grams", "status", "added_on", "consumed_at", "animal_id", "husbandry_event_id", "notes"] },
   feedingAssignments: { table: "feeding_assignments", key: "id", columns: ["id", "animal_id", "feeder_id", "planned_for", "status", "created_at", "consumed_at", "husbandry_event_id"] },
   animalPhotos: { table: "animal_photos", key: "animal_id", columns: ["animal_id", "mime", "data", "byte_size", "updated_at", "updated_by_member_id", "updated_by_name"] },
@@ -29,12 +30,13 @@ export const PORTABLE_RESOURCES = {
 } as const satisfies Record<string, ResourceDefinition>;
 
 const MEMBER_REFERENCE_COLUMNS: Partial<Record<keyof typeof PORTABLE_RESOURCES, readonly string[]>> = {
-  careTasks: ["missed_by_member_id"],
+  careTasks: ["missed_by_member_id", "skipped_by_member_id"],
   husbandryEvents: ["completed_by_member_id", "voided_by_member_id", "edited_by_member_id"],
   husbandryEventRevisions: ["changed_by_member_id"],
   animalNotes: ["created_by_member_id"],
   animalPhotos: ["updated_by_member_id"],
   weightEvents: ["recorded_by_member_id"],
+  shedEvents: ["recorded_by_member_id"],
   lightingMeasurements: ["measured_by_member_id"],
   rewardPayouts: ["member_id", "paid_by_member_id"],
 };

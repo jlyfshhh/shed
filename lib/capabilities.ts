@@ -34,6 +34,9 @@ export type Capability =
   | "records.export"
   | "animal.photo.write"
   | "weights.record"
+  /** Log a shed when someone notices one. Owner-only for the same reason as
+      weights: there is no keeper-facing way to correct a shed once saved. */
+  | "sheds.record"
   | "feeders.manage"
   | "lighting.manage"
   /** Members, invitations, allowance rates and payouts. */
@@ -50,6 +53,7 @@ const CAPABILITY_ROLES: Record<Capability, readonly HouseholdRole[]> = {
   "records.export": ["Owner"],
   "animal.photo.write": ["Owner"],
   "weights.record": ["Owner"],
+  "sheds.record": ["Owner"],
   "feeders.manage": ["Owner"],
   "lighting.manage": ["Owner"],
   "household.manage": ["Owner"],

@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { equipmentAgeLabel } from "@/lib/equipment-age";
 import { animalFacts, speciesGlyph } from "@/lib/animal-traits";
 import type { Capability } from "@/lib/capabilities";
+import { SHED_QUALITIES, SHED_QUALITY_LABELS, isPoorShed, shedIntervalDays, type ShedQuality } from "@/lib/shed-quality";
 import { AnimalPhotoControls, animalPhotoUrl } from "./animal-photo";
 
 // ── Shared types ─────────────────────────────────────────────────────────────
@@ -1016,6 +1017,7 @@ type AnimalProfileData = {
   animal: Row & { enclosureName?: string | null };
   husbandryScore?: HusbandryScore;
   weightHistory: Array<{ id: string; recordedOn: string; weightGrams: number }>;
+  shedHistory: Array<{ id: string; recordedOn: string; quality: string; notes: string | null; recordedBy: string | null }>;
   notes: Array<{ id: string; category: string; title: string; body: string; pinned: number; createdBy: string; updatedAt: string }>;
   equipment: Array<{ id: string; category: string; name: string; brand: string | null; installedOn: string | null; inUseDays: number | null; scope: "animal" | "enclosure"; active: number }>;
   lighting: Array<{
@@ -1039,6 +1041,7 @@ export function AnimalProfile({
   onPhotoChange,
   canWritePhoto = false,
   canRecordWeight = false,
+  canRecordShed = false,
 }: {
   animalId: string;
   onClose: () => void;
@@ -1046,6 +1049,7 @@ export function AnimalProfile({
   onPhotoChange?: () => void;
   canWritePhoto?: boolean;
   canRecordWeight?: boolean;
+  canRecordShed?: boolean;
 }) {
   const [data, setData] = useState<AnimalProfileData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -1055,6 +1059,12 @@ export function AnimalProfile({
   const [wNotes, setWNotes] = useState("");
   const [wBusy, setWBusy] = useState(false);
   const [wError, setWError] = useState<string | null>(null);
+  const [showShed, setShowShed] = useState(false);
+  const [sDate, setSDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [sQuality, setSQuality] = useState<ShedQuality>("complete");
+  const [sNotes, setSNotes] = useState("");
+  const [sBusy, setSBusy] = useState(false);
+  const [sError, setSError] = useState<string | null>(null);
 
   const load = async () => {
     try {
@@ -1098,8 +1108,32 @@ export function AnimalProfile({
     }
   };
 
+  const logShed = async (event: FormEvent) => {
+    event.preventDefault();
+    setSBusy(true);
+    setSError(null);
+    try {
+      const response = await fetch("/api/sheds", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ animalId, recordedOn: sDate, quality: sQuality, notes: sNotes.trim() || undefined }),
+      });
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "Couldn’t save the shed.");
+      setSNotes("");
+      setSQuality("complete");
+      setShowShed(false);
+      await load();
+    } catch (saveError) {
+      setSError(saveError instanceof Error ? saveError.message : "Couldn’t save the shed.");
+    } finally {
+      setSBusy(false);
+    }
+  };
+
   const animal = data?.animal;
   const peakWeight = data?.weightHistory.length ? Math.max(...data.weightHistory.map((w) => w.weightGrams)) : null;
+  const lastShed = data?.shedHistory?.[0] ?? null;
   const photoUrl = animal ? animalPhotoUrl(animalId, animal.photoUpdatedAt ? str(animal.photoUpdatedAt) : null) : null;
   const profileFacts = animal
     ? animalFacts({
@@ -1189,6 +1223,43 @@ export function AnimalProfile({
                 </div>
               ) : (
                 <p className="member-note">{canRecordWeight ? "No weights recorded yet — log one to start a trend." : "No weights recorded yet."}</p>
+              )}
+            </section>
+
+            <section className="profile-section">
+              <div className="profile-section-head">
+                <h3>Shed history</h3>
+                {canRecordShed && <button className="mini-add" onClick={() => { setShowShed((open) => !open); setSError(null); }}>{showShed ? "Cancel" : "＋ Log shed"}</button>}
+              </div>
+              {canRecordShed && showShed && (
+                <form className="weight-form" onSubmit={logShed}>
+                  <label>Date<input type="date" value={sDate} max={new Date().toISOString().slice(0, 10)} onChange={(event) => setSDate(event.target.value)} /></label>
+                  <label>How did it come off?
+                    <select value={sQuality} onChange={(event) => setSQuality(event.target.value as ShedQuality)} autoFocus>
+                      {SHED_QUALITIES.map((quality) => <option key={quality} value={quality}>{SHED_QUALITY_LABELS[quality]}</option>)}
+                    </select>
+                  </label>
+                  <label className="wide">Notes<input value={sNotes} onChange={(event) => setSNotes(event.target.value)} placeholder="optional" /></label>
+                  <button disabled={sBusy}>{sBusy ? "Saving…" : "Save shed"}</button>
+                </form>
+              )}
+              {sError && <p className="form-error">{sError}</p>}
+              {data.shedHistory?.length ? (
+                <div className="profile-rows">
+                  {data.shedHistory.slice(0, 12).map((shed) => (
+                    <div key={shed.id}>
+                      <b>{SHED_QUALITY_LABELS[shed.quality as ShedQuality] ?? shed.quality}{isPoorShed(shed.quality) ? " ⚠" : ""}</b>
+                      <small>{shed.recordedOn}{shed.recordedBy ? ` · ${shed.recordedBy}` : ""}{shed.notes ? ` · ${shed.notes}` : ""}</small>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="member-note">{canRecordShed ? "No sheds logged yet — log one when you spot it." : "No sheds logged yet."}</p>
+              )}
+              {/* Intervals are the useful signal, but two dates are the minimum
+                  needed to have one, so this only appears once there are two. */}
+              {data.shedHistory?.length > 1 && (
+                <p className="member-note">Last shed {lastShed?.recordedOn}, {shedIntervalDays(data.shedHistory)} days after the one before.</p>
               )}
             </section>
 
