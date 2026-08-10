@@ -30,9 +30,12 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       return Response.json({ error: "Animal not found" }, { status: 404, headers: { "Cache-Control": "no-store" } });
     }
 
-    const [weights, events, tasks, notes, equipment, schedules, enclosure, lightingPlans, lightingFixtures, lightingMeasurements] = await Promise.all([
+    const [weights, sheds, events, tasks, notes, equipment, schedules, enclosure, lightingPlans, lightingFixtures, lightingMeasurements] = await Promise.all([
       db.prepare(
         "SELECT id, recorded_on AS recordedOn, weight_grams AS weightGrams FROM weight_events WHERE animal_id = ? ORDER BY recorded_on DESC",
+      ).bind(id).all(),
+      db.prepare(
+        "SELECT id, recorded_on AS recordedOn, quality, notes, recorded_by_name AS recordedBy FROM shed_events WHERE animal_id = ? ORDER BY recorded_on DESC",
       ).bind(id).all(),
       db.prepare(
         "SELECT e.id, e.outcome AS outcome, e.task_id AS taskId, e.task_type AS taskType, e.title, e.notes, e.due_date AS dueDate, e.occurred_at AS occurredAt, e.actor_role AS actorRole, e.completed_by_member_id AS completedByMemberId, COALESCE(e.completed_by_name, e.actor_role) AS completedBy, e.voided_at AS voidedAt, e.voided_by_member_id AS voidedByMemberId, e.voided_by_name AS voidedBy, e.void_reason AS voidReason, f.id AS feederId, f.prey_species AS feederSpecies, f.size_class AS feederSizeClass, f.weight_grams AS feederWeightGrams FROM husbandry_events e LEFT JOIN feeding_assignments fa ON fa.husbandry_event_id = e.id AND fa.status = 'consumed' LEFT JOIN feeder_inventory f ON f.id = fa.feeder_id WHERE e.animal_id = ? ORDER BY COALESCE(e.voided_at, e.occurred_at) DESC",
@@ -112,6 +115,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       animal,
       husbandryScore,
       weightHistory: weights.results,
+      shedHistory: sheds.results,
       notes: notes.results,
       legacyEventNotes: activeEvents.filter((event) => Boolean(event.notes?.trim())),
       equipment: equipmentWithAge,
