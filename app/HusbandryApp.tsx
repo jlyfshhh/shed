@@ -807,9 +807,11 @@ export default function HusbandryApp() {
                       </div>
                       <div className="overdue-actions">
                         <button className="complete-button" disabled={busyTask === task.id} onClick={() => completeTask(task)}>{busyTask === task.id ? "Saving…" : "Mark done"}<span>✓</span></button>
-                        {task.taskType === "feeding" && <button className="refuse-button" disabled={busyTask === task.id} onClick={() => refuseMeal(task)}>Refused</button>}
-                        <button className="skip-button" disabled={busyTask === task.id} onClick={() => skipTask(task)}>Skip</button>
-                        {can("care.miss") && <button className="miss-button" disabled={busyTask === task.id} onClick={() => missTask(task)}>Missed</button>}
+                        <div className="task-alt-actions">
+                          {task.taskType === "feeding" && <button className="refuse-button" disabled={busyTask === task.id} onClick={() => refuseMeal(task)}>Refused</button>}
+                          <button className="skip-button" disabled={busyTask === task.id} onClick={() => skipTask(task)}>Skip</button>
+                          {can("care.miss") && <button className="miss-button" disabled={busyTask === task.id} onClick={() => missTask(task)}>Missed</button>}
+                        </div>
                       </div>
                     </article>
                   ))}
@@ -1180,6 +1182,7 @@ export default function HusbandryApp() {
           onEdit={can("records.manage") ? () => { const id = profileId; setProfileId(null); openManager("animal", id); } : undefined}
           canWritePhoto={can("animal.photo.write")}
           canRecordWeight={can("weights.record")}
+          canRecordShed={can("sheds.record")}
           onPhotoChange={() => { void refresh().catch(() => undefined); }}
         />
       )}
