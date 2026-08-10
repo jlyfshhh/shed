@@ -173,7 +173,14 @@ h1, h2, h3, p { margin-top: 0; }
 .animal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(206px, 1fr)); gap: 14px; }
 .animal-card { background: var(--translucent-card); border: 1px solid var(--line); border-radius: 19px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(43,61,48,.035); }
 .animal-photo { position: relative; aspect-ratio: 3 / 2; background: radial-gradient(120% 100% at 50% 22%, var(--accent-wash), var(--accent-chip) 78%); display: grid; place-items: center; overflow: hidden; }
-.animal-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* Fill the frame by position rather than by percentage height. The box gets
+   its height from aspect-ratio, and a percentage height against that is not
+   reliably resolved, so height: 100% could come out as auto — the image then
+   kept its own proportions and object-fit had no work to do. Portrait photos
+   happened to overflow and looked right; a wide one rendered short and left
+   a band of empty gradient above it. Insetting the image to the edges makes
+   the box its frame in every engine, so cover always crops to fit. */
+.animal-photo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
 .animal-photo-glyph { font-size: 50px; line-height: 1; opacity: .62; }
 .animal-group { position: absolute; top: 8px; right: 8px; background: rgba(19,31,25,.6); color: #f4f2e8; border-radius: 999px; padding: 4px 9px; text-transform: uppercase; font-size: 9px; font-weight: 800; letter-spacing: .09em; }
 .animal-card-body { padding: 13px 15px 15px; display: flex; flex-direction: column; flex: 1; }
@@ -572,13 +579,13 @@ button.primary:disabled { opacity: .6; cursor: wait; }
   .task-card { grid-template-columns: auto 1fr; padding: 15px; }.complete-button { justify-content: center; padding: 10px; }.animal-badge { width: 44px; height: 44px; }.task-copy p { padding-right: 2px; }
   /* The buttons live in a wrapper now, so the wrapper is what has to span the
      full card width — a grid-column on the button itself does nothing once it
-     is a flex child rather than a direct grid item of the card. */
-  .task-actions, .overdue-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
-  /* Mark done keeps the generous tap target and takes the space left over.
-     If the quieter buttons cannot fit beside it they wrap to their own row
-     rather than squeezing, which is what narrow phones end up doing. */
-  .task-actions > .complete-button, .overdue-actions > .complete-button { flex: 1 1 122px; width: auto; }
-  .task-alt-actions { flex: 1 1 auto; }
+     is a flex child rather than a direct grid item of the card.
+     Only the span belongs here. The stacking comes from the .task-actions
+     grid further down this file, which wins over anything set in here anyway:
+     a media query adds no specificity, so the later rule takes it. Mark done
+     therefore keeps the full-width tap target it always had on phones, and
+     the quieter buttons sit under it on their own row. */
+  .task-actions, .overdue-actions { grid-column: 1 / -1; }
   .weight-form { grid-template-columns: 1fr; }
   .completed-list, .trend-grid, .settings-grid { grid-template-columns: 1fr; }.animal-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .role-panel { display: block; }.role-panel button { width: 100%; margin-top: 17px; }.role-panel .panel-login { margin-top: 15px; }.trend-summary { display: block; }.trend-summary b { display: block; margin-top: 4px; }.toast { left: 14px; right: 14px; bottom: 84px; text-align: center; }
