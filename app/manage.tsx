@@ -1163,7 +1163,11 @@ export function AnimalProfile({
           <p className="member-note">Loading…</p>
         ) : (
           <div className="profile">
-            <div className="profile-hero">
+            {/* With a real portrait the hero leads with it at full width. Without
+                one there is only a species glyph, and blowing that up to banner
+                size would be a lot of empty gradient, so the compact layout
+                stays for animals that have no photo yet. */}
+            <div className={photoUrl ? "profile-hero has-photo" : "profile-hero"}>
               <div className="profile-portrait">
                 {photoUrl
                   // Served from our own API at a fixed small size; next/image would only add a hop.
