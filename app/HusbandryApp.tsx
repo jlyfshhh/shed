@@ -52,6 +52,8 @@ type Task = {
   complete: boolean;
   completedByMemberId: string | null;
   completedBy: string | null;
+  skippedAt: string | null;
+  skipReason: string | null;
 };
 type Animal = {
   id: string;
@@ -613,6 +615,30 @@ export default function HusbandryApp() {
     }
   };
 
+  // Skipping is a judgement call, and judgement calls get reconsidered — the
+  // enclosure turns out to be drier than it looked. This puts the task back on
+  // the list exactly as it was.
+  const unskipTask = async (task: Task) => {
+    setBusyTask(task.id);
+    try {
+      const response = await fetch("/api/tasks/skip", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ taskId: task.id, dueDate: task.dueDate }),
+      });
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "Unable to undo the skip");
+      await refresh();
+      setToast(`${task.animalName}: ${task.title} back on the list`);
+      window.setTimeout(() => setToast(null), 2800);
+    } catch (unskipError) {
+      setToast(unskipError instanceof Error ? unskipError.message : "Unable to undo the skip");
+      window.setTimeout(() => setToast(null), 2800);
+    } finally {
+      setBusyTask(null);
+    }
+  };
+
   const refuseMeal = async (task: Task) => {
     if (!window.confirm(
       `Record that ${task.animalName} refused this meal?\n\nThe feeder is still used up, and the care counts as done — you offered it. The refusal is kept in ${task.animalName}'s feeding history, and the next meal stays on its normal date.`,
@@ -655,10 +681,17 @@ export default function HusbandryApp() {
     }
   };
 
-  const pending = data?.tasks.filter((task) => !task.complete) ?? [];
-  const completed = data?.tasks.filter((task) => task.complete) ?? [];
+  // A skipped task has been dealt with: the keeper decided it did not need
+  // doing. It leaves the list rather than sitting there asking to be actioned,
+  // and it leaves the day's totals too, the same way it leaves the husbandry
+  // score's denominator — otherwise skipping everything would show a day stuck
+  // at 0% forever. It stays visible below, undoable, rather than vanishing.
+  const skipped = data?.tasks.filter((task) => task.skippedAt && !task.complete) ?? [];
+  const accountable = data?.tasks.filter((task) => !task.skippedAt || task.complete) ?? [];
+  const pending = accountable.filter((task) => !task.complete);
+  const completed = accountable.filter((task) => task.complete);
   const overdue = data?.overdue ?? [];
-  const completionPercent = data?.tasks.length ? Math.round((completed.length / data.tasks.length) * 100) : 0;
+  const completionPercent = accountable.length ? Math.round((completed.length / accountable.length) * 100) : 0;
   const filteredAnimals = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return data?.animals ?? [];
@@ -771,7 +804,7 @@ export default function HusbandryApp() {
             <article className="progress-card">
               <div className="progress-copy">
                 <span className="sun-disc" aria-hidden="true">☀</span>
-                <div><strong>{completed.length} of {data.tasks.length} complete</strong><span>{pending.length ? "A tidy little list today" : "All care completed"}</span></div>
+                <div><strong>{completed.length} of {accountable.length} complete</strong><span>{pending.length ? "A tidy little list today" : skipped.length ? "Everything else was skipped" : "All care completed"}</span></div>
               </div>
               <div className="progress-track" aria-label={`${completionPercent}% complete`}><span style={{ width: `${completionPercent}%` }} /></div>
               <b>{completionPercent}%</b>
@@ -865,6 +898,30 @@ export default function HusbandryApp() {
                 </div>
               ))}
             </div>
+
+            {/* Skipped work is off the list but not hidden: the keeper should be
+                able to see what they set aside today, and change their mind. */}
+            {skipped.length > 0 && (
+              <>
+                <div className="section-title compact"><h2>Skipped today</h2><span>{skipped.length}</span></div>
+                <div className="completed-list skipped-list">
+                  {skipped.map((task) => (
+                    <div key={task.id}>
+                      <span>–</span>
+                      <b>{task.animalName}</b>
+                      <p>{task.title}{task.skipReason ? ` · ${task.skipReason}` : ""}</p>
+                      {can("care.complete") && (
+                        <span className="completion-correction-actions">
+                          <button disabled={busyTask === task.id} onClick={() => void unskipTask(task)}>
+                            {busyTask === task.id ? "Saving…" : "Put back"}
+                          </button>
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
 
             <div className="section-title compact"><h2>Recent activity</h2><button onClick={() => openTab("animals")}>View all</button></div>
             <div className="activity-list">
