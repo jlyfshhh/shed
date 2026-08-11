@@ -74,7 +74,51 @@ check.
 | `469a44e` | Dependabot: workflow action bumps |
 | `447d954` | Portrait-led profile hero |
 | `f675a35` | Repeated name removed, sex symbols aligned |
-| this branch | Privacy scan no longer passes silently when unconfigured |
+| `f41a772` | Privacy scan no longer passes silently when unconfigured |
+| `43d1f01` | Skipped work leaves the day's list; lights stop raising a chore |
+
+### Skip did not actually remove the task (`43d1f01`)
+
+Shipped on 2026-08-09, reported by the keeper on 2026-08-11. The overdue query
+excluded skipped work but the today query did not, and the day view never read
+the column, so a skipped task stayed on the list, stayed in "N remaining", and
+stayed in the completion percentage — a day containing a skip could not reach
+100%. The wall display had the same gap.
+
+Worth noting for the sweep: this is the third time today a disposition was
+handled in one query and missed in another. `skipped_at` is now honoured in the
+dashboard today list, the dashboard overdue list, the display today list, the
+display overdue list, and the husbandry score. **If a fourth surface appears,
+it needs the same treatment, and there is no single place that enforces it.**
+A shared helper for "tasks that still need doing" would be the real fix.
+
+### Adding a light raised a chore (`43d1f01`)
+
+Creating or editing lighting equipment queued a "Verify lighting" care task for
+every resident animal of the enclosure, due that day. Recording a fixture is
+bookkeeping and the keeper had to clear the task by hand. Equipment changes now
+only touch the enclosure's lighting plans. **Plan changes still queue
+verification** — a plan states the targets a measurement is checked against —
+which is a judgement call the keeper may want revisited.
+
+### Rue's feeding moved to Mon/Wed/Fri (live data, 2026-08-11)
+
+Not a code change: `cgd-rue` went from `interval`/2 days to `weekly` with
+`[1,3,5]`. Two things came out of it that generalise:
+
+- The lookback window **materialised the new pattern backwards** and created a
+  Monday task for the previous day, inventing a feeding that was never on the
+  plan. Moving the schedule's `start_date` to the changeover date stops that.
+  Any schedule reshape has the same hazard.
+- The task the old rule had already generated for today was no longer a
+  feeding day. It was marked skipped with a reason rather than deleted, as was
+  the back-filled artefact, so the history stays honest and neither counts
+  against Rue's husbandry score.
+
+**There is no UI for changing a schedule's shape safely** — this was done in
+SQL against the live database, with a backup taken first and the result checked
+through `scheduleIsDue` rather than by reading the rule. Worth considering
+whether the manage console should handle the start-date move itself.
 
 ### Skip and refused (`d4ffdcc`)
 
