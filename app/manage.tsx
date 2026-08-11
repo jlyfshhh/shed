@@ -1176,11 +1176,17 @@ export function AnimalProfile({
                   : <span className="profile-avatar" aria-hidden>{speciesGlyph(str(animal.species), str(animal.group))}</span>}
                 {canWritePhoto && <AnimalPhotoControls animalId={animalId} hasPhoto={Boolean(photoUrl)} onChanged={async () => { await load(); onPhotoChange?.(); }} />}
               </div>
+              {/* The name is already in the header above, which stays on screen
+                  while this scrolls, so repeating it here just pushed the real
+                  detail further down. What is left is what the header does not
+                  say: the scientific name, the morph, and the chips. */}
               <div>
-                <h2>{str(animal.name)}{!bool(animal.active) && <i className="archived-flag"> archived</i>}</h2>
-                <p>{str(animal.scientificName) || str(animal.species)}{animal.morph ? ` · ${str(animal.morph)}` : ""}</p>
+                <p className="profile-latin">
+                  {str(animal.scientificName) || str(animal.species)}{animal.morph ? ` · ${str(animal.morph)}` : ""}
+                  {!bool(animal.active) && <i className="archived-flag"> archived</i>}
+                </p>
                 <div className="profile-tags">
-                  {profileFacts.map((fact) => <span key={fact}>{fact}</span>)}
+                  {profileFacts.map((fact) => <span key={fact.label}>{fact.symbol && <i className="chip-mark" aria-hidden>{fact.symbol}</i>}{fact.label}</span>)}
                 </div>
               </div>
               {data.husbandryScore && (

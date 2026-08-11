@@ -895,7 +895,7 @@ export default function HusbandryApp() {
                     <div className="animal-card-body">
                       <h2>{animal.name}</h2>
                       <p>{animal.species}{animal.morph ? ` · ${animal.morph}` : ""}</p>
-                      {facts.length > 0 && <div className="animal-meta">{facts.map((fact) => <span key={fact}>{fact}</span>)}</div>}
+                      {facts.length > 0 && <div className="animal-meta">{facts.map((fact) => <span key={fact.label}>{fact.symbol && <i className="chip-mark" aria-hidden>{fact.symbol}</i>}{fact.label}</span>)}</div>}
                     </div>
                   </article>
                 );

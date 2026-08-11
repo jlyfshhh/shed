@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ageLabel, animalFacts, habitatLabel, sexLabel, speciesGlyph } from "../lib/animal-traits.ts";
+import { ageLabel, animalFacts, habitatLabel, sexLabel, sexMark, speciesGlyph } from "../lib/animal-traits.ts";
 
 test("habitat drops the placeholder location every animal shared", () => {
   // The whole reason for this helper: "Indoor habitat" is the schema default.
@@ -35,10 +35,21 @@ test("species glyphs pick the animal, not the group default", () => {
 });
 
 test("sex is normalised and unknowns are dropped", () => {
-  assert.equal(sexLabel("male"), "♂ Male");
-  assert.equal(sexLabel("Female"), "♀ Female");
+  assert.deepEqual(sexMark("male"), { symbol: "♂︎", label: "Male" });
+  assert.deepEqual(sexMark("Female"), { symbol: "♀︎", label: "Female" });
+  assert.equal(sexMark("Unknown"), null);
+  assert.equal(sexMark(null), null);
+  // The joined form keeps working for anywhere that cannot draw two elements.
+  assert.equal(sexLabel("male"), "♂︎ Male");
   assert.equal(sexLabel("Unknown"), null);
-  assert.equal(sexLabel(null), null);
+});
+
+test("the sex symbol asks for text rendering, not emoji", () => {
+  // U+FE0E. Without it iOS may swap in a colour emoji whose size and baseline
+  // differ from the label beside it, which is the bug this shape exists to fix.
+  for (const sex of ["male", "female"]) {
+    assert.ok(sexMark(sex)!.symbol.includes("︎"), `${sex} lost its text-presentation selector`);
+  }
 });
 
 test("age counts calendar months, not day arithmetic", () => {
@@ -57,12 +68,12 @@ test("age counts calendar months, not day arithmetic", () => {
 test("facts skip everything blank instead of printing placeholders", () => {
   assert.deepEqual(
     animalFacts({ name: "Achilles", sex: "male", weightGrams: 425, birthDate: "2025-07-03", location: "Animal Room", enclosureName: "Achilles enclosure" }, "2026-08-05"),
-    ["♂ Male", "425 g", "13mo", "Animal Room"],
+    [{ label: "Male", symbol: "♂︎" }, { label: "425 g" }, { label: "13mo" }, { label: "Animal Room" }],
   );
   // Ares: no sex, no birth date, placeholder location, echoing enclosure.
   assert.deepEqual(
     animalFacts({ name: "Ares", sex: null, weightGrams: 1257, birthDate: null, location: "Indoor habitat", enclosureName: "Ares enclosure" }, "2026-08-05"),
-    ["1257 g"],
+    [{ label: "1257 g" }],
   );
   assert.deepEqual(
     animalFacts({ name: "Pascal", location: "Indoor habitat", enclosureName: "Pascal enclosure" }, "2026-08-05"),
