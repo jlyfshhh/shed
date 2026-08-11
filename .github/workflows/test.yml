@@ -5,6 +5,10 @@ on:
   pull_request:
   # Publication depends on this workflow, so a red build cannot ship an image.
   workflow_call:
+    secrets:
+      PRIVACY_DENYLIST:
+        description: Private identities to reject; stored only as a repository secret
+        required: false
 
 permissions:
   contents: read
@@ -27,19 +31,22 @@ jobs:
       - name: Lint
         run: npm run lint
       - name: Shell syntax
-        run: bash -n get-shed.sh docker-entrypoint.sh scripts/backup.sh scripts/privacy-scan.sh tests/backup.sh tests/installer.sh tests/container-boundary.sh tests/container-smoke.sh
-      # The forbidden values live in a repository secret, never in the tree —
-      # committing them here would publish exactly what the scan protects. It
-      # passes when unset so forks and outside pull requests are not blocked.
+        run: bash -n get-shed.sh docker-entrypoint.sh scripts/backup.sh scripts/privacy-scan.sh tests/backup.sh tests/installer.sh tests/container-boundary.sh tests/container-smoke.sh tests/privacy-scan.sh
       - name: Backup behaviour
         run: bash tests/backup.sh
       - name: Installer behaviour
         run: bash tests/installer.sh
       - name: Container security boundary
         run: bash tests/container-boundary.sh
+      - name: Privacy scan behavior
+        run: bash tests/privacy-scan.sh
       - name: Privacy scan
         env:
           PRIVACY_DENYLIST: ${{ secrets.PRIVACY_DENYLIST }}
+          # GitHub withholds secrets from forks and Dependabot. Those runs warn
+          # and continue; every trusted run fails if the repository secret is
+          # missing, preventing a green check that scanned nothing.
+          PRIVACY_SCAN_STRICT: ${{ github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && '0' || '1' }}
         run: bash scripts/privacy-scan.sh
       - name: Compose configuration
         run: |

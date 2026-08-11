@@ -1,4 +1,5 @@
 import { ensureDatabase } from "@/db/runtime";
+import { internalErrorResponse } from "@/lib/api-errors";
 import { base64ToBytes, parsePhotoDataUrl } from "@/lib/animal-photo";
 import { attachmentHeaders, checkAttachment } from "@/lib/attachments";
 import { requireCapability } from "@/lib/household-auth";
@@ -44,10 +45,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       },
     });
   } catch (error) {
-    return Response.json(
-      { error: error instanceof Error ? error.message : "Unable to load the photo" },
-      { status: 500, headers: noStore },
-    );
+    return internalErrorResponse(error, { context: "Animal photo read failed", message: "Unable to load the photo", headers: noStore });
   }
 }
 
@@ -89,10 +87,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
     return Response.json({ photoUpdatedAt: updatedAt, byteSize: parsed.photo.byteSize }, { headers: noStore });
   } catch (error) {
-    return Response.json(
-      { error: error instanceof Error ? error.message : "Unable to save the photo" },
-      { status: 500, headers: noStore },
-    );
+    return internalErrorResponse(error, { context: "Animal photo write failed", message: "Unable to save the photo", headers: noStore });
   }
 }
 
@@ -106,9 +101,6 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
     await db.prepare("DELETE FROM animal_photos WHERE animal_id = ?").bind(id).run();
     return Response.json({ photoUpdatedAt: null }, { headers: noStore });
   } catch (error) {
-    return Response.json(
-      { error: error instanceof Error ? error.message : "Unable to remove the photo" },
-      { status: 500, headers: noStore },
-    );
+    return internalErrorResponse(error, { context: "Animal photo deletion failed", message: "Unable to remove the photo", headers: noStore });
   }
 }

@@ -1,4 +1,4 @@
-export const BACKUP_SCHEMA_VERSION = 13;
+export const BACKUP_SCHEMA_VERSION = 14;
 
 export const PORTABLE_APP_SETTING_KEYS = ["default_reward_cents", "care_start_date"] as const;
 
@@ -28,6 +28,34 @@ export const PORTABLE_RESOURCES = {
   appSettings: { table: "app_settings", key: "key", columns: ["key", "value"] },
   rewardPayouts: { table: "reward_payouts", key: "id", columns: ["id", "member_id", "amount_cents", "note", "paid_at", "paid_by_member_id", "paid_by_name"] },
 } as const satisfies Record<string, ResourceDefinition>;
+
+/**
+ * Tables cleared by a replace restore, dependants before their parents.
+ *
+ * Keep this next to PORTABLE_RESOURCES and test the two as a set. Export and
+ * import used to maintain independent handwritten lists; that let shed_events
+ * be declared portable while both the export and replace-delete paths quietly
+ * omitted it.
+ */
+export const PORTABLE_REPLACE_DELETE_ORDER = [
+  "reward_payouts",
+  "feeding_assignments",
+  "feeder_inventory",
+  "lighting_measurements",
+  "lighting_plan_fixtures",
+  "lighting_plans",
+  "husbandry_event_revisions",
+  "husbandry_events",
+  "care_tasks",
+  "care_schedules",
+  "shed_events",
+  "weight_events",
+  "animal_notes",
+  "animal_photos",
+  "equipment",
+  "animals",
+  "enclosures",
+] as const;
 
 const MEMBER_REFERENCE_COLUMNS: Partial<Record<keyof typeof PORTABLE_RESOURCES, readonly string[]>> = {
   careTasks: ["missed_by_member_id", "skipped_by_member_id"],

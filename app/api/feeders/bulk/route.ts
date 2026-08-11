@@ -1,4 +1,5 @@
 import { ensureDatabase } from "@/db/runtime";
+import { safeErrorResponse } from "@/lib/api-errors";
 import { normalizeBulkFeeders, type BulkFeederInput } from "@/lib/bulk-feeders";
 import { dateInTimeZone } from "@/lib/date";
 import { requireCapability } from "@/lib/household-auth";
@@ -28,9 +29,6 @@ export async function POST(request: Request) {
       maximumWeightGrams: Math.max(...batch.weightsGrams),
     }, { status: 201, headers });
   } catch (error) {
-    return Response.json(
-      { error: error instanceof Error ? error.message : "Unable to add feeder inventory" },
-      { status: 400, headers },
-    );
+    return safeErrorResponse(error, { context: "Bulk feeder inventory write failed", message: "Unable to add feeder inventory", headers });
   }
 }

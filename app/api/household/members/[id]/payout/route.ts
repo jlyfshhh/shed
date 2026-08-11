@@ -1,5 +1,6 @@
 // Task earnings ("allowance") — added by Claude 2026-07-21 while Codex was out.
 import { ensureDatabase } from "@/db/runtime";
+import { internalErrorResponse } from "@/lib/api-errors";
 import { attributedTo, requireCapability } from "@/lib/household-auth";
 import { MAX_REWARD_CENTS, memberBalance } from "@/lib/rewards";
 
@@ -40,7 +41,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       { headers: noStore },
     );
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Unable to record the payout" }, { status: 500, headers: noStore });
+    return internalErrorResponse(error, { context: "Household payout failed", message: "Unable to record the payout", headers: noStore });
   }
 }
 

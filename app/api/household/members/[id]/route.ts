@@ -1,4 +1,5 @@
 import { ensureDatabase } from "@/db/runtime";
+import { internalErrorResponse } from "@/lib/api-errors";
 import { createAccessCode, hashAccessCode, requireCapability } from "@/lib/household-auth";
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -28,6 +29,6 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     ).bind(id).first<{ active?: number; earningEnabled?: number }>();
     return Response.json({ member: { ...member, active: Boolean(member?.active), earningEnabled: Boolean(member?.earningEnabled) }, accessCode }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Unable to update the household member" }, { status: 500 });
+    return internalErrorResponse(error, { context: "Household member update failed", message: "Unable to update the household member" });
   }
 }

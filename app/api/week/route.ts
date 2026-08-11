@@ -1,4 +1,5 @@
 import { ensureDatabase } from "@/db/runtime";
+import { internalErrorResponse } from "@/lib/api-errors";
 import { dateInTimeZone } from "@/lib/date";
 import { requireCapability } from "@/lib/household-auth";
 import { scheduleIsDue, type CareScheduleRow } from "@/lib/schedules";
@@ -15,6 +16,7 @@ type WeekTask = {
   taskType: string;
   title: string;
   complete: number;
+  outcome: string | null;
   completedBy: string | null;
   missedAt: string | null;
   skippedAt: string | null;
@@ -40,7 +42,7 @@ export async function GET(request: Request) {
     const recorded = await db.prepare(
       `SELECT t.id, t.schedule_id AS scheduleId, t.animal_id AS animalId, a.name AS animalName,
               t.task_type AS taskType, t.title, t.due_date AS dueDate, t.missed_at AS missedAt, t.skipped_at AS skippedAt, t.skip_reason AS skipReason,
-              CASE WHEN e.id IS NULL THEN 0 ELSE 1 END AS complete,
+              CASE WHEN e.id IS NULL THEN 0 ELSE 1 END AS complete, e.outcome AS outcome,
               COALESCE(e.completed_by_name, e.actor_role) AS completedBy
          FROM care_tasks t
          JOIN animals a ON a.id = t.animal_id
@@ -77,6 +79,7 @@ export async function GET(request: Request) {
           taskType: schedule.taskType,
           title: schedule.title,
           complete: 0,
+          outcome: null,
           completedBy: null,
           missedAt: null,
           skippedAt: null,
@@ -89,11 +92,15 @@ export async function GET(request: Request) {
       // dueDate is only needed to bucket the rows; the day already carries it.
       const tasks: WeekTask[] = (byDate.get(date) ?? []).map((row) => ({
         id: row.id, animalName: row.animalName, taskType: row.taskType, title: row.title,
-        complete: row.complete, completedBy: row.completedBy, missedAt: row.missedAt,
+        complete: row.complete, outcome: row.outcome, completedBy: row.completedBy, missedAt: row.missedAt,
         skippedAt: row.skippedAt, skipReason: row.skipReason,
       }));
       const done = tasks.filter((task) => task.complete).length;
-      const missed = tasks.filter((task) => !task.complete && task.missedAt).length;
+      const refused = tasks.filter((task) => task.complete && task.outcome === "refused").length;
+      // Skip wins over a legacy miss if an older database contains both. New
+      // writes enforce exclusivity, but aggregates should remain sane while a
+      // restored pre-fix backup is being read.
+      const missed = tasks.filter((task) => !task.complete && task.missedAt && !task.skippedAt).length;
       // Skipped is neither done nor outstanding — it is care that was judged
       // unnecessary, so it must not read as a shortfall in the day's tally.
       const skipped = tasks.filter((task) => !task.complete && task.skippedAt).length;
@@ -105,7 +112,7 @@ export async function GET(request: Request) {
         isPast: date < today,
         isFuture: date > today,
         tasks,
-        counts: { total: tasks.length, done, missed, skipped, pending: tasks.length - done - missed - skipped },
+        counts: { total: tasks.length, done, refused, missed, skipped, pending: Math.max(0, tasks.length - done - missed - skipped) },
       };
     });
 
@@ -113,10 +120,12 @@ export async function GET(request: Request) {
       (sum, day) => ({
         total: sum.total + day.counts.total,
         done: sum.done + day.counts.done,
+        refused: sum.refused + day.counts.refused,
         missed: sum.missed + day.counts.missed,
+        skipped: sum.skipped + day.counts.skipped,
         pending: sum.pending + day.counts.pending,
       }),
-      { total: 0, done: 0, missed: 0, pending: 0 },
+      { total: 0, done: 0, refused: 0, missed: 0, skipped: 0, pending: 0 },
     );
 
     return Response.json({
@@ -131,6 +140,6 @@ export async function GET(request: Request) {
       totals,
     });
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Unable to load the week" }, { status: 500 });
+    return internalErrorResponse(error, { context: "Week view query failed", message: "Unable to load the week" });
   }
 }

@@ -1,5 +1,11 @@
 import { ensureDatabase } from "@/db/runtime";
+import { internalErrorResponse } from "@/lib/api-errors";
 import { attributedTo, requireCapability } from "@/lib/household-auth";
+import {
+  skipScheduledTask,
+  TaskDispositionError,
+  unskipScheduledTask,
+} from "@/lib/task-dispositions";
 
 export const dynamic = "force-dynamic";
 
@@ -33,35 +39,16 @@ export async function POST(request: Request) {
       return Response.json({ error: "Which task, and for which day?" }, { status: 400, headers: noStore });
     }
 
-    // A completed task is not skippable — that would quietly discard a record of
-    // work someone actually did.
-    const completed = await db.prepare(
-      "SELECT id FROM husbandry_events WHERE task_id = ? AND due_date = ? AND voided_at IS NULL",
-    ).bind(taskId, dueDate).first<{ id: string }>();
-    if (completed) {
-      return Response.json(
-        { error: "That task is already recorded as done. Correct the completion instead." },
-        { status: 409, headers: noStore },
-      );
-    }
-
     const actor = attributedTo(auth.member);
-    const result = await db.prepare(
-      `UPDATE care_tasks
-          SET skipped_at = ?, skipped_by_member_id = ?, skipped_by_name = ?, skip_reason = ?,
-              missed_at = NULL, missed_by_member_id = NULL, missed_by_name = NULL
-        WHERE id = ? AND due_date = ?`,
-    ).bind(new Date().toISOString(), actor.id, actor.name, reason || null, taskId, dueDate).run();
-
-    if (!result.meta.changes) {
-      return Response.json({ error: "That task could not be found." }, { status: 404, headers: noStore });
-    }
-    return Response.json({ skipped: true, by: actor.name, reason: reason || null }, { headers: noStore });
-  } catch (error) {
     return Response.json(
-      { error: error instanceof Error ? error.message : "Could not skip that task." },
-      { status: 400, headers: noStore },
+      await skipScheduledTask(db, { taskId, dueDate, reason: reason || null, actor }),
+      { headers: noStore },
     );
+  } catch (error) {
+    if (error instanceof TaskDispositionError) {
+      return Response.json({ error: error.message }, { status: error.status, headers: noStore });
+    }
+    return internalErrorResponse(error, { context: "Task skip failed", message: "Could not skip that task.", headers: noStore });
   }
 }
 
@@ -79,20 +66,11 @@ export async function DELETE(request: Request) {
       return Response.json({ error: "Which task, and for which day?" }, { status: 400, headers: noStore });
     }
 
-    const result = await db.prepare(
-      `UPDATE care_tasks
-          SET skipped_at = NULL, skipped_by_member_id = NULL, skipped_by_name = NULL, skip_reason = NULL
-        WHERE id = ? AND due_date = ?`,
-    ).bind(taskId, dueDate).run();
-
-    if (!result.meta.changes) {
-      return Response.json({ error: "That task could not be found." }, { status: 404, headers: noStore });
-    }
-    return Response.json({ skipped: false }, { headers: noStore });
+    return Response.json(await unskipScheduledTask(db, taskId, dueDate), { headers: noStore });
   } catch (error) {
-    return Response.json(
-      { error: error instanceof Error ? error.message : "Could not restore that task." },
-      { status: 400, headers: noStore },
-    );
+    if (error instanceof TaskDispositionError) {
+      return Response.json({ error: error.message }, { status: error.status, headers: noStore });
+    }
+    return internalErrorResponse(error, { context: "Task unskip failed", message: "Could not restore that task.", headers: noStore });
   }
 }

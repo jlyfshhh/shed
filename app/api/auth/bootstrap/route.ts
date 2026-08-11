@@ -1,32 +1,45 @@
 import { ensureDatabase } from "@/db/runtime";
 import { accessCookie, capabilitiesForRole, createAccessCode, hashAccessCode } from "@/lib/household-auth";
+import { createInitialOwner } from "@/lib/bootstrap-owner";
 import { binding, sharedSecretIsAuthorized } from "@/lib/env";
+
+const noStore = { "Cache-Control": "no-store" };
 
 export async function POST(request: Request) {
   try {
     const bootstrapToken = binding("SHED_BOOTSTRAP_TOKEN");
     if (!bootstrapToken) {
-      return Response.json({ error: "Head Keeper setup is not enabled" }, { status: 503 });
+      return Response.json({ error: "Head Keeper setup is not enabled" }, { status: 503, headers: noStore });
     }
     if (!(await sharedSecretIsAuthorized(request, bootstrapToken, "X-Shed-Bootstrap-Token"))) {
-      return Response.json({ error: "Invalid bootstrap token" }, { status: 401 });
+      return Response.json({ error: "Invalid bootstrap token" }, { status: 401, headers: noStore });
     }
-    const db = await ensureDatabase();
-    const existing = await db.prepare("SELECT COUNT(*) AS count FROM household_members").first<{ count: number }>();
-    if ((existing?.count ?? 0) > 0) {
-      return Response.json({ error: "The Shed household already has an owner" }, { status: 409 });
+
+    let payload: { displayName?: unknown };
+    try {
+      const value = await request.json();
+      if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("invalid body");
+      payload = value as { displayName?: unknown };
+    } catch {
+      return Response.json({ error: "A valid setup request is required" }, { status: 400, headers: noStore });
     }
-    const payload = await request.json() as { displayName?: string };
     const displayName = cleanDisplayName(payload.displayName);
-    if (!displayName) return Response.json({ error: "Display name is required" }, { status: 400 });
+    if (!displayName) {
+      return Response.json({ error: "Display name is required" }, { status: 400, headers: noStore });
+    }
 
     const id = crypto.randomUUID();
     const accessCode = createAccessCode();
     const accessCodeHash = await hashAccessCode(accessCode);
     const now = new Date().toISOString();
-    await db.prepare(
-      "INSERT INTO household_members (id, display_name, role, access_code_hash, active, created_at, updated_at, last_login_at) VALUES (?, ?, 'Owner', ?, 1, ?, ?, ?)",
-    ).bind(id, displayName, accessCodeHash, now, now, now).run();
+    const db = await ensureDatabase();
+    const created = await createInitialOwner(db, { id, displayName, accessCodeHash, timestamp: now });
+    if (!created) {
+      return Response.json(
+        { error: "The Shed household already has an owner" },
+        { status: 409, headers: noStore },
+      );
+    }
 
     return Response.json(
       {
@@ -34,14 +47,15 @@ export async function POST(request: Request) {
         member: { id, displayName, role: "Owner" },
         accessCode,
       },
-      { status: 201, headers: { "Set-Cookie": accessCookie(accessCode, request), "Cache-Control": "no-store" } },
+      { status: 201, headers: { "Set-Cookie": accessCookie(accessCode, request), ...noStore } },
     );
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Unable to create the owner" }, { status: 500 });
+    console.error("Head Keeper setup failed", error);
+    return Response.json({ error: "Unable to create the owner" }, { status: 500, headers: noStore });
   }
 }
 
-function cleanDisplayName(value: string | undefined): string | null {
-  const cleaned = value?.trim().replace(/\s+/g, " ");
+function cleanDisplayName(value: unknown): string | null {
+  const cleaned = typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
   return cleaned && cleaned.length <= 40 ? cleaned : null;
 }

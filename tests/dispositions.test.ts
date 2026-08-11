@@ -19,7 +19,8 @@ type Task = { dueDate: string; completed: boolean; missed?: boolean; skipped?: b
 /** Mirrors the husbandry-score query: skipped tasks leave the denominator. */
 function score(tasks: Task[], today: string) {
   const past = tasks.filter((task) => task.dueDate < today);
-  const accountable = past.filter((task) => !task.skipped).length
+  // Completion wins defensively if an older/restored row carries both flags.
+  const accountable = past.filter((task) => !task.skipped || task.completed).length
     + tasks.filter((task) => task.dueDate === today && task.completed).length;
   const done = past.filter((task) => task.completed).length
     + tasks.filter((task) => task.dueDate === today && task.completed).length;
@@ -27,7 +28,7 @@ function score(tasks: Task[], today: string) {
     percent: accountable > 0 ? Math.round((done / accountable) * 100) : null,
     done,
     accountable,
-    skipped: tasks.filter((task) => task.skipped).length,
+    skipped: tasks.filter((task) => task.skipped && !task.completed).length,
   };
 }
 
@@ -87,6 +88,16 @@ test("a refused meal counts as done, because the care happened", () => {
   assert.equal(withRefusal.percent, 100);
 });
 
+test("a legacy completed-and-skipped row cannot push the score over 100", () => {
+  const legacyRace = score([
+    { dueDate: "2026-08-08", completed: true, skipped: true },
+  ], TODAY);
+  assert.equal(legacyRace.percent, 100);
+  assert.equal(legacyRace.done, 1);
+  assert.equal(legacyRace.accountable, 1);
+  assert.equal(legacyRace.skipped, 0);
+});
+
 test("today's outstanding work is not yet a failure", () => {
   // Pre-existing behaviour worth pinning: the day is not over.
   const midday = score([
@@ -122,4 +133,8 @@ test("a skipped task leaves the day's list and the day's totals", () => {
   const allSkipped = [{ id: "x", complete: false, skippedAt: "2026-08-10T10:00:00Z" }];
   const noneAccountable = allSkipped.filter((t) => !t.skippedAt || t.complete);
   assert.equal(noneAccountable.length, 0, "a fully skipped day must not divide by zero");
+  const allSkippedPercent = noneAccountable.length
+    ? Math.round((noneAccountable.filter((task) => task.complete).length / noneAccountable.length) * 100)
+    : allSkipped.length ? 100 : 0;
+  assert.equal(allSkippedPercent, 100, "a fully skipped day is settled, not zero percent");
 });

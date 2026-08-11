@@ -38,9 +38,16 @@ The installer downloads a prebuilt Shed image, turns on sign-in, and saves a **o
 3. Save the recovery access code it shows you (once).
 4. Add your animals, enclosures, and care plans — then invite the rest of the household.
 
-Re-run the same command any time to update Shed **without touching your database or settings**.
+Re-run the same command any time to update Shed. Before interrupting a running
+install it verifies a SQLite backup, and if startup fails it restores the exact
+previous Compose settings, image, and running state.
 
-**Requirements:** Docker with the Compose plugin, and a machine that stays on. Shed is published as a multi-architecture image, so 64-bit Raspberry Pi OS, a NAS, and an x86 box all pull the right build automatically.
+**Requirements:** Docker with the Compose plugin, and a machine that stays on.
+Once Shed contains records, safe updates also require the small `sqlite3` command
+(`sudo apt-get install -y sqlite3` on Raspberry Pi OS/Debian). If it is missing,
+the installer leaves the current service running and tells you how to add it.
+Shed is published as a multi-architecture image, so 64-bit Raspberry Pi OS, a
+NAS, and an x86 box all pull the right build automatically.
 
 Prefer to write the two files yourself? That works too — Shed is an ordinary
 compose service:
@@ -49,7 +56,7 @@ compose service:
 mkdir -p ~/shed && cd ~/shed
 curl -fsSLO https://raw.githubusercontent.com/jlyfshhh/shed/main/compose.yaml
 curl -fsSL https://raw.githubusercontent.com/jlyfshhh/shed/main/.env.example -o .env
-# edit the secrets and set SHED_UID/SHED_GID to the output of `id -u`/`id -g`
+# replace both example secrets and set SHED_UID/SHED_GID to `id -u`/`id -g`
 mkdir -p data backups && chmod 700 data backups && chmod 600 .env compose.yaml
 docker compose up -d
 ```
@@ -102,7 +109,11 @@ either can still work independently and each keeps its own portable data.
 
 ## Managing your install
 
-- **Update:** `docker compose pull && docker compose up -d` in your install directory, or re-run the install command. Either downloads the current image and keeps your data and settings.
+- **Update:** re-run the install command. It validates the new configuration,
+  takes a verified backup, migrates older ownership safely, and restores the
+  prior image and settings if the new service does not become healthy. A raw
+  `docker compose pull` is not a safe substitute when crossing a runtime or
+  storage migration.
 - **Backups:** `scripts/backup.sh` writes dated SQLite snapshots (with configurable retention) into `shed/backups`. You can also download a full JSON or CSV export from the app at any time.
 - **Restore:** the More screen accepts a Shed JSON export — merge it into your current data, or replace everything (your household sign-in stays intact).
 - **Add keepers:** as the Head Keeper, open **More → Household access** to create a keeper and share their one-time code. You can reissue or disable codes any time.

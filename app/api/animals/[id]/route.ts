@@ -1,4 +1,5 @@
 import { ensureDatabase } from "@/db/runtime";
+import { internalErrorResponse } from "@/lib/api-errors";
 import { dateInTimeZone } from "@/lib/date";
 import { isoDaysAgo } from "@/lib/care-schedule";
 import { getCareStartDate } from "@/lib/care-settings";
@@ -89,10 +90,10 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     // the feeding history, not in a score about whether the household keeps up.
     const scoreRow = await db.prepare(
       `SELECT
-         COALESCE(SUM(CASE WHEN t.due_date < ? AND t.skipped_at IS NULL THEN 1 ELSE 0 END), 0) AS pastDue,
+         COALESCE(SUM(CASE WHEN t.due_date < ? AND (t.skipped_at IS NULL OR e.id IS NOT NULL) THEN 1 ELSE 0 END), 0) AS pastDue,
          COALESCE(SUM(CASE WHEN t.due_date < ? AND e.id IS NOT NULL THEN 1 ELSE 0 END), 0) AS pastDone,
          COALESCE(SUM(CASE WHEN t.due_date = ? AND e.id IS NOT NULL THEN 1 ELSE 0 END), 0) AS todayDone,
-         COALESCE(SUM(CASE WHEN t.skipped_at IS NOT NULL THEN 1 ELSE 0 END), 0) AS skipped
+         COALESCE(SUM(CASE WHEN t.skipped_at IS NOT NULL AND e.id IS NULL THEN 1 ELSE 0 END), 0) AS skipped
        FROM care_tasks t
        LEFT JOIN husbandry_events e ON e.task_id = t.id AND e.due_date = t.due_date AND e.voided_at IS NULL
        WHERE t.animal_id = ? AND t.due_date >= ? AND t.due_date <= ?`,
@@ -128,6 +129,6 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       tasks: tasks.results,
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Unable to load the animal profile" }, { status: 500, headers: { "Cache-Control": "no-store" } });
+    return internalErrorResponse(error, { context: "Animal profile query failed", message: "Unable to load the animal profile" });
   }
 }

@@ -1,64 +1,50 @@
 import { ensureDatabase } from "@/db/runtime";
 import { env } from "cloudflare:workers";
 import { requireCapability } from "@/lib/household-auth";
+import { internalErrorResponse } from "@/lib/api-errors";
 import { MAX_BUNDLE_BYTES, validateBundle } from "@/lib/restore-plan";
 import {
-  matchingExistingMember,
   PORTABLE_APP_SETTING_KEYS,
+  PORTABLE_REPLACE_DELETE_ORDER,
   PORTABLE_RESOURCES,
   remapMemberReferences,
   type ExistingMember,
-  type PortableMember,
 } from "@/lib/portable-backup";
+import {
+  deleteRestoreObjects,
+  planHouseholdProfiles,
+  prepareLightingPlanSheets,
+  restoreWithStagedLightingSheets,
+  supersededLightingSheetKeys,
+  type HouseholdProfileOperation,
+  type LightingSheetReference,
+  type StagedLightingSheet,
+} from "@/lib/portable-restore";
 
-const isPortableMember = (value: Record<string, unknown>): value is Record<string, unknown> & PortableMember =>
-  typeof value.id === "string"
-  && typeof value.display_name === "string"
-  && value.display_name.trim().length > 0
-  && value.display_name.trim().length <= 40
-  && (value.role === "Owner" || value.role === "Zookeeper");
+type RestorePayload = {
+  mode?: "merge" | "replace";
+  confirmation?: string;
+  dryRun?: boolean;
+  bundle?: Record<string, unknown>;
+};
 
-async function restoreHouseholdProfiles(
-  db: D1Database,
-  bundle: Record<string, unknown>,
-): Promise<{ memberIds: Map<string, string>; restored: number }> {
-  const sourceMembers = (Array.isArray(bundle.householdMembers) ? bundle.householdMembers : [])
-    .filter((value): value is Record<string, unknown> => Boolean(value) && typeof value === "object")
-    .filter(isPortableMember);
-  const existingResult = await db.prepare(
-    "SELECT id, display_name AS displayName, role FROM household_members ORDER BY created_at",
-  ).all<ExistingMember>();
-  const existing = [...existingResult.results];
-  const memberIds = new Map<string, string>();
-  let restored = 0;
+const noStore = { "Cache-Control": "no-store" };
 
-  for (const source of sourceMembers) {
-    let target = matchingExistingMember(source, existing);
-    if (!target && source.role === "Zookeeper") {
-      const now = new Date().toISOString();
-      const restoredId = existing.some((member) => member.id === source.id) ? crypto.randomUUID() : source.id;
-      target = { id: restoredId, displayName: source.display_name.trim().replace(/\s+/g, " "), role: "Zookeeper" };
-      await db.prepare(
-        "INSERT OR IGNORE INTO household_members (id, display_name, role, access_code_hash, active, earning_enabled, created_at, updated_at) VALUES (?, ?, 'Zookeeper', ?, 0, ?, ?, ?)",
-      ).bind(
-        target.id,
-        target.displayName,
-        `restored-disabled:${crypto.randomUUID()}`,
-        Number(source.earning_enabled ?? 0) ? 1 : 0,
-        typeof source.created_at === "string" ? source.created_at : now,
-        typeof source.updated_at === "string" ? source.updated_at : now,
-      ).run();
-      existing.push(target);
-    }
-    if (!target) continue;
-    if (Object.hasOwn(source, "earning_enabled")) {
-      await db.prepare("UPDATE household_members SET earning_enabled = ?, updated_at = ? WHERE id = ?")
-        .bind(Number(source.earning_enabled ?? 0) ? 1 : 0, new Date().toISOString(), target.id).run();
-    }
-    memberIds.set(source.id, target.id);
-    restored += 1;
+function householdProfileStatement(db: D1Database, operation: HouseholdProfileOperation): D1PreparedStatement {
+  if (operation.kind === "insert") {
+    return db.prepare(
+      "INSERT INTO household_members (id, display_name, role, access_code_hash, active, earning_enabled, created_at, updated_at) VALUES (?, ?, 'Zookeeper', ?, 0, ?, ?, ?)",
+    ).bind(
+      operation.id,
+      operation.displayName,
+      operation.accessCodeHash,
+      operation.earningEnabled,
+      operation.createdAt,
+      operation.updatedAt,
+    );
   }
-  return { memberIds, restored };
+  return db.prepare("UPDATE household_members SET earning_enabled = ?, updated_at = ? WHERE id = ?")
+    .bind(operation.earningEnabled, operation.updatedAt, operation.id);
 }
 
 export async function POST(request: Request) {
@@ -66,107 +52,138 @@ export async function POST(request: Request) {
     const db = await ensureDatabase();
     const auth = await requireCapability(request, db, "records.manage");
     if (auth.response) return auth.response;
-    // Refuse an oversized bundle before it is buffered, not after. There was no
-    // limit at all: a large upload was parsed in full and only then rejected.
+
+    // Refuse an oversized bundle before it is buffered when the client sends a
+    // length. The platform request limit remains the backstop for chunked bodies.
     const declaredLength = Number(request.headers.get("content-length") ?? 0);
     if (declaredLength > MAX_BUNDLE_BYTES) {
       return Response.json(
         { error: `A backup larger than ${Math.floor(MAX_BUNDLE_BYTES / (1024 * 1024))} MB cannot be restored here.` },
-        { status: 413, headers: { "Cache-Control": "no-store" } },
+        { status: 413, headers: noStore },
       );
     }
-    const payload = await request.json() as { mode?: "merge" | "replace"; confirmation?: string; dryRun?: boolean; bundle?: Record<string, unknown> };
-    const bundle = payload.bundle;
-    if (!bundle || Number(bundle.schemaVersion) < 8) return Response.json({ error: "A Shed schema version 8+ JSON export is required" }, { status: 400 });
-    if (payload.mode === "replace" && !payload.dryRun && payload.confirmation !== "REPLACE") return Response.json({ error: "Type REPLACE to confirm a full data restore" }, { status: 400 });
 
-    // ── Validate everything before touching anything ─────────────────────────
-    // Replace used to delete first and validate as it went, so a bad row late
-    // in a bundle — or an attachment that would not decode — left a half
-    // restored database with no way back.
-    const plan = validateBundle(bundle);
-    if (plan.errors.length) {
+    let payload: RestorePayload;
+    try {
+      payload = await request.json() as RestorePayload;
+    } catch {
+      return Response.json({ error: "This backup is not valid JSON." }, { status: 400, headers: noStore });
+    }
+    const bundle = payload.bundle;
+    if (!bundle || Number(bundle.schemaVersion) < 8) {
+      return Response.json({ error: "A Shed schema version 8+ JSON export is required" }, { status: 400, headers: noStore });
+    }
+    if (payload.mode === "replace" && !payload.dryRun && payload.confirmation !== "REPLACE") {
+      return Response.json({ error: "Type REPLACE to confirm a full data restore" }, { status: 400, headers: noStore });
+    }
+
+    // Validate and decode everything before staging an object or preparing a
+    // write. A bad late row or attachment cannot partially restore a backup.
+    const validation = validateBundle(bundle);
+    if (validation.errors.length) {
       return Response.json(
-        { error: "This backup cannot be restored.", problems: plan.errors.slice(0, 20), checked: plan.counts },
-        { status: 422, headers: { "Cache-Control": "no-store" } },
+        { error: "This backup cannot be restored.", problems: validation.errors.slice(0, 20), checked: validation.counts },
+        { status: 422, headers: noStore },
       );
     }
     if (payload.dryRun) {
       return Response.json(
-        { dryRun: true, wouldRestore: plan.counts, mode: payload.mode ?? "merge" },
-        { headers: { "Cache-Control": "no-store" } },
+        { dryRun: true, wouldRestore: validation.counts, mode: payload.mode ?? "merge" },
+        { headers: noStore },
       );
     }
 
-    const household = await restoreHouseholdProfiles(db, bundle);
-    const portableSheets = (Array.isArray(bundle.lightingPlanSheets) ? bundle.lightingPlanSheets : []).filter((sheet): sheet is Record<string, unknown> => Boolean(sheet) && typeof sheet === "object");
-    const sheetPlanIds = new Set(portableSheets.map((sheet) => typeof sheet.planId === "string" ? sheet.planId : "").filter(Boolean));
-    let imported = household.restored;
-    const writes: D1PreparedStatement[] = [];
-    for (const [bundleKey, definition] of Object.entries(PORTABLE_RESOURCES) as Array<[keyof typeof PORTABLE_RESOURCES, (typeof PORTABLE_RESOURCES)[keyof typeof PORTABLE_RESOURCES]]>) {
-      const rows = (Array.isArray(bundle[bundleKey]) ? bundle[bundleKey] as Array<Record<string, unknown>> : [])
-        .filter((row) => bundleKey !== "appSettings" || PORTABLE_APP_SETTING_KEYS.includes(String(row.key) as (typeof PORTABLE_APP_SETTING_KEYS)[number]));
-      const statements = rows.map((sourceRow) => {
-        const row = remapMemberReferences(bundleKey, sourceRow, household.memberIds);
-        if (bundleKey === "lightingPlans") {
-          row.plan_sheet_key = null;
-          if (!sheetPlanIds.has(String(row.id ?? ""))) {
-            row.plan_sheet_name = null;
-            row.plan_sheet_type = null;
+    const mode = payload.mode ?? "merge";
+    const preparedSheets = prepareLightingPlanSheets(bundle.lightingPlanSheets);
+    const incomingPlanIds = new Set(
+      (Array.isArray(bundle.lightingPlans) ? bundle.lightingPlans : [])
+        .map((plan) => plan && typeof plan === "object" ? String((plan as Record<string, unknown>).id ?? "") : "")
+        .filter(Boolean),
+    );
+    const [existingMembersResult, previousSheetResult] = await Promise.all([
+      db.prepare("SELECT id, display_name AS displayName, role FROM household_members ORDER BY created_at").all<ExistingMember>(),
+      db.prepare("SELECT id, plan_sheet_key AS key FROM lighting_plans WHERE plan_sheet_key IS NOT NULL").all<LightingSheetReference>(),
+    ]);
+    const household = planHouseholdProfiles(bundle.householdMembers, existingMembersResult.results);
+    const previousSheets = previousSheetResult.results;
+
+    const result = await restoreWithStagedLightingSheets({
+      sheets: preparedSheets,
+      store: env.FILES,
+      commit: async (stagedByPlanId) => {
+        const writes: D1PreparedStatement[] = [];
+        let imported = household.restored;
+
+        // Replace-mode deletes, household changes, portable rows, and the
+        // required default setting all share this one D1 transaction.
+        if (mode === "replace") {
+          writes.push(
+            db.prepare("UPDATE household_members SET earning_enabled = 0"),
+            db.prepare(`DELETE FROM app_settings WHERE key IN (${PORTABLE_APP_SETTING_KEYS.map(() => "?").join(", ")})`)
+              .bind(...PORTABLE_APP_SETTING_KEYS),
+            ...PORTABLE_REPLACE_DELETE_ORDER.map((table) => db.prepare(`DELETE FROM ${table}`)),
+          );
+        }
+        writes.push(...household.operations.map((operation) => householdProfileStatement(db, operation)));
+
+        for (const [bundleKey, definition] of Object.entries(PORTABLE_RESOURCES) as Array<[
+          keyof typeof PORTABLE_RESOURCES,
+          (typeof PORTABLE_RESOURCES)[keyof typeof PORTABLE_RESOURCES],
+        ]>) {
+          const rows = (Array.isArray(bundle[bundleKey]) ? bundle[bundleKey] as Array<Record<string, unknown>> : [])
+            .filter((row) => bundleKey !== "appSettings" || PORTABLE_APP_SETTING_KEYS.includes(String(row.key) as (typeof PORTABLE_APP_SETTING_KEYS)[number]));
+          for (const sourceRow of rows) {
+            const row = remapMemberReferences(bundleKey, sourceRow, household.memberIds);
+            if (bundleKey === "lightingPlans") applyStagedSheet(row, stagedByPlanId);
+            const present = definition.columns.filter((column) => Object.hasOwn(row, column));
+            if (!present.includes(definition.key)) throw new Error(`Invalid ${bundleKey} row`);
+            writes.push(
+              db.prepare(`INSERT OR REPLACE INTO ${definition.table} (${present.join(", ")}) VALUES (${present.map(() => "?").join(", ")})`)
+                .bind(...present.map((column) => row[column] ?? null)),
+            );
+            imported += 1;
           }
         }
-        const { table, columns, key } = definition;
-        const present = columns.filter((column) => Object.hasOwn(row, column));
-        if (!present.includes(key)) throw new Error(`${bundleKey} contains a row without its ${key}`);
-        return db.prepare(`INSERT OR REPLACE INTO ${table} (${present.join(", ")}) VALUES (${present.map(() => "?").join(", ")})`).bind(...present.map((column) => row[column] ?? null));
-      });
-      writes.push(...statements);
-      imported += statements.length;
-    }
+        writes.push(db.prepare("INSERT OR IGNORE INTO app_settings (key, value) VALUES ('default_reward_cents', '25')"));
+        await db.batch(writes);
+        return { imported: imported + preparedSheets.length };
+      },
+      cleanupSuperseded: async () => {
+        const currentResult = await db.prepare(
+          "SELECT plan_sheet_key AS key FROM lighting_plans WHERE plan_sheet_key IS NOT NULL",
+        ).all<{ key: string }>();
+        const currentKeys = new Set(currentResult.results.map((reference) => reference.key));
+        const obsolete = supersededLightingSheetKeys(previousSheets, currentKeys, mode, incomingPlanIds);
+        if (obsolete.length) await deleteRestoreObjects(env.FILES, obsolete);
+      },
+      onCleanupError: (error, phase) => {
+        // Cleanup failure can leave an unreachable object, but must never turn
+        // a committed restore into an apparent failure that encourages a retry.
+        console.error(`Portable restore ${phase} object cleanup failed`, error);
+      },
+    });
 
-    // Deletes and inserts go into one batch. D1 runs a batch as a single
-    // transaction, so a failure anywhere rolls the whole thing back and the
-    // database is left exactly as it was. Previously the deletes ran first and
-    // the inserts followed in separate hundred-statement batches, so any error
-    // after the first batch left a partially restored database.
-    if (payload.mode === "replace") {
-      const deleteOrder = ["reward_payouts", "feeding_assignments", "feeder_inventory", "lighting_measurements", "lighting_plan_fixtures", "lighting_plans", "husbandry_event_revisions", "husbandry_events", "care_tasks", "care_schedules", "weight_events", "animal_notes", "animal_photos", "equipment", "animals", "enclosures"];
-      writes.unshift(
-        db.prepare("UPDATE household_members SET earning_enabled = 0"),
-        db.prepare(`DELETE FROM app_settings WHERE key IN (${PORTABLE_APP_SETTING_KEYS.map(() => "?").join(", ")})`)
-          .bind(...PORTABLE_APP_SETTING_KEYS),
-        ...deleteOrder.map((table) => db.prepare(`DELETE FROM ${table}`)),
-      );
-    }
-    if (writes.length) await db.batch(writes);
-    // Stored files are outside the transaction, so they are cleared only once
-    // the database change has committed.
-    if (payload.mode === "replace") await deleteLightingPlanSheets();
-    for (const sheet of portableSheets) {
-      const planId = typeof sheet.planId === "string" ? sheet.planId : "";
-      const encoded = typeof sheet.dataBase64 === "string" ? sheet.dataBase64 : "";
-      const type = typeof sheet.type === "string" ? sheet.type : "application/octet-stream";
-      const name = typeof sheet.name === "string" ? sheet.name.slice(0, 200) : "lighting-plan";
-      if (!planId || !encoded) continue;
-      const bytes = Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
-      if (bytes.byteLength > 5 * 1024 * 1024) throw new Error(`Plan sheet for ${planId} exceeds 5 MB`);
-      const key = `lighting-plans/${planId}/${crypto.randomUUID()}`;
-      await env.FILES.put(key, bytes, { httpMetadata: { contentType: type }, customMetadata: { originalName: name } });
-      await db.prepare("UPDATE lighting_plans SET plan_sheet_key = ?, plan_sheet_name = ?, plan_sheet_type = ? WHERE id = ?").bind(key, name, type, planId).run();
-      imported += 1;
-    }
-    await db.prepare("INSERT OR IGNORE INTO app_settings (key, value) VALUES ('default_reward_cents', '25')").run();
-    return Response.json({ saved: true, imported, householdProfiles: household.restored, mode: payload.mode ?? "merge" }, { headers: { "Cache-Control": "no-store" } });
+    return Response.json(
+      { saved: true, imported: result.imported, householdProfiles: household.restored, mode },
+      { headers: noStore },
+    );
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Unable to import the backup" }, { status: 400, headers: { "Cache-Control": "no-store" } });
+    // Database, R2, and schema internals should never be spoken back to a
+    // browser. Validation errors are returned explicitly above.
+    return internalErrorResponse(error, {
+      context: "Portable restore failed",
+      message: "Unable to restore this backup. Your existing records were not replaced.",
+      headers: noStore,
+    });
   }
 }
 
-async function deleteLightingPlanSheets() {
-  let cursor: string | undefined;
-  do {
-    const page = await env.FILES.list({ prefix: "lighting-plans/", cursor });
-    if (page.objects.length) await env.FILES.delete(page.objects.map((object) => object.key));
-    cursor = page.truncated ? page.cursor : undefined;
-  } while (cursor);
+function applyStagedSheet(
+  row: Record<string, unknown>,
+  stagedByPlanId: ReadonlyMap<string, StagedLightingSheet>,
+) {
+  const staged = stagedByPlanId.get(String(row.id ?? ""));
+  row.plan_sheet_key = staged?.key ?? null;
+  row.plan_sheet_name = staged?.name ?? null;
+  row.plan_sheet_type = staged?.mime ?? null;
 }

@@ -24,7 +24,7 @@ seed() {
 }
 
 run_backup() {
-  SHED_DATA_PATH="$work/data" SHED_BACKUP_PATH="$work/backups" "$@" bash "$backup"
+  SHED_INSTALL_DIR="$work" SHED_DATA_PATH=./data SHED_BACKUP_PATH=./backups "$@" bash "$backup"
 }
 
 # ── The live database is chosen, not the first file that turns up ────────────
@@ -138,7 +138,8 @@ IGNORED=$(touch /tmp/shed-env-must-not-execute)
 ENV
 rm -f /tmp/shed-env-must-not-execute
 configured_archive="$(SHED_INSTALL_DIR="$configured" bash "$backup")"
-case "$configured_archive" in "$configured/private-backups"/*) ;; *)
+configured_canonical="$(cd "$configured" && pwd -P)"
+case "$configured_archive" in "$configured_canonical/private-backups"/*) ;; *)
   echo "Backup did not resolve .env paths relative to the install directory." >&2
   exit 1
 esac
@@ -149,5 +150,67 @@ esac
 configured_mode="$(stat -c '%a' "$configured/private-backups" 2>/dev/null || stat -f '%Lp' "$configured/private-backups")"
 [ "$configured_mode" = 700 ] || { echo "Backup directory is mode $configured_mode, expected 700." >&2; exit 1; }
 echo "  .env backup paths are read as data, resolved safely, and kept private"
+
+# SQLite's dot-command parser must receive a quoted filename safely. An
+# apostrophe is an ordinary Unix filename character, not the end of an argument.
+quoted="$work/quoted-install"
+quoted_data="$quoted/data/v3/d1/miniflare-D1DatabaseObject"
+quoted_live="$quoted_data/faaf2b0445ab934c3aac48ddf0cdfade8f9bac050be98993748742cdd2cb05fb.sqlite"
+mkdir -p "$quoted_data"
+sqlite3 "$quoted_live" "CREATE TABLE animals(id TEXT); CREATE TABLE care_schedules(id TEXT); CREATE TABLE husbandry_events(id TEXT);" >/dev/null
+quoted_archive="$(
+  SHED_INSTALL_DIR="$quoted" \
+  SHED_DATA_PATH=./data \
+  SHED_BACKUP_PATH="./back'ups" \
+  bash "$backup"
+)"
+[ -f "$quoted_archive" ] || { echo "A quoted backup path did not produce an archive." >&2; exit 1; }
+quoted_canonical="$(cd "$quoted" && pwd -P)"
+case "$quoted_archive" in "$quoted_canonical/back'ups"/*) ;; *)
+  echo "The quoted backup path was parsed incorrectly." >&2
+  exit 1
+esac
+echo "  apostrophes in backup paths are encoded for SQLite safely"
+
+# External mounts require an explicit opt-in and must already exist. The same
+# policy applies when the backup job is launched independently of the installer.
+external_root="$work/external-install"
+external_data="$work/external-data"
+external_backups="$work/external-backups"
+external_d1="$external_data/v3/d1/miniflare-D1DatabaseObject"
+external_live="$external_d1/faaf2b0445ab934c3aac48ddf0cdfade8f9bac050be98993748742cdd2cb05fb.sqlite"
+mkdir -p "$external_root" "$external_d1" "$external_backups"
+sqlite3 "$external_live" "CREATE TABLE animals(id TEXT); CREATE TABLE care_schedules(id TEXT); CREATE TABLE husbandry_events(id TEXT);" >/dev/null
+if SHED_INSTALL_DIR="$external_root" SHED_DATA_PATH="$external_data" SHED_BACKUP_PATH="$external_backups" bash "$backup" >/dev/null 2>&1; then
+  echo "External backup paths were accepted without explicit opt-in." >&2
+  exit 1
+fi
+external_archive="$(
+  SHED_INSTALL_DIR="$external_root" \
+  SHED_DATA_PATH="$external_data" \
+  SHED_BACKUP_PATH="$external_backups" \
+  SHED_ALLOW_EXTERNAL_PATHS=true \
+  bash "$backup"
+)"
+[ -f "$external_archive" ] || { echo "An explicitly allowed external backup failed." >&2; exit 1; }
+echo "  external mounts require an explicit opt-in"
+
+if SHED_INSTALL_DIR="$work" SHED_DATA_PATH=-danger SHED_BACKUP_PATH=./backups bash "$backup" >/dev/null 2>&1; then
+  echo "A leading-dash storage path was accepted." >&2
+  exit 1
+fi
+if SHED_INSTALL_DIR="$work" SHED_DATA_PATH='${HOME}/data' SHED_BACKUP_PATH=./backups bash "$backup" >/dev/null 2>&1; then
+  echo "A Compose-interpolated storage path was accepted ambiguously." >&2
+  exit 1
+fi
+if SHED_INSTALL_DIR="$work" SHED_DATA_PATH=/ SHED_BACKUP_PATH=./backups SHED_ALLOW_EXTERNAL_PATHS=true bash "$backup" >/dev/null 2>&1; then
+  echo "The filesystem root was accepted as Shed data." >&2
+  exit 1
+fi
+if SHED_INSTALL_DIR="$work" SHED_DATA_PATH=./data SHED_BACKUP_PATH=./data/backups bash "$backup" >/dev/null 2>&1; then
+  echo "Nested data and backup paths were accepted." >&2
+  exit 1
+fi
+echo "  unsafe and overlapping storage paths are refused"
 
 echo "Backup tests passed."

@@ -52,6 +52,10 @@ export const careTasks = sqliteTable("care_tasks", {
   missedAt: text("missed_at"),
   missedByMemberId: text("missed_by_member_id"),
   missedByName: text("missed_by_name"),
+  skippedAt: text("skipped_at"),
+  skippedByMemberId: text("skipped_by_member_id"),
+  skippedByName: text("skipped_by_name"),
+  skipReason: text("skip_reason"),
 });
 
 export const animalNotes = sqliteTable("animal_notes", {
@@ -157,6 +161,7 @@ export const husbandryEvents = sqliteTable("husbandry_events", {
   editedByMemberId: text("edited_by_member_id"),
   editedByName: text("edited_by_name"),
   rewardCents: integer("reward_cents").notNull().default(0),
+  outcome: text("outcome").notNull().default("done"),
 }, (table) => [uniqueIndex("event_task_due_unique").on(table.taskId, table.dueDate)]);
 
 export const husbandryEventRevisions = sqliteTable("husbandry_event_revisions", {
@@ -189,6 +194,17 @@ export const weightEvents = sqliteTable("weight_events", {
   recordedByName: text("recorded_by_name"),
   createdAt: text("created_at"),
 });
+
+export const shedEvents = sqliteTable("shed_events", {
+  id: text("id").primaryKey(),
+  animalId: text("animal_id").notNull(),
+  recordedOn: text("recorded_on").notNull(),
+  quality: text("quality").notNull().default("complete"),
+  notes: text("notes"),
+  recordedByMemberId: text("recorded_by_member_id"),
+  recordedByName: text("recorded_by_name"),
+  createdAt: text("created_at"),
+}, (table) => [index("shed_events_animal_date_idx").on(table.animalId, table.recordedOn)]);
 
 export const feederInventory = sqliteTable("feeder_inventory", {
   id: text("id").primaryKey(),

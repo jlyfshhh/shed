@@ -6,11 +6,14 @@ set -euo pipefail
 image="${SHED_TEST_IMAGE:-shed:test}"
 work="$(mktemp -d)"
 data="$work/data"
+rejected_data="$work/rejected-data"
 name="shed-boundary-$RANDOM-$$"
-mkdir -p "$data"
+rejected_bootstrap="shed-example-bootstrap-$RANDOM-$$"
+rejected_display="shed-example-display-$RANDOM-$$"
+mkdir -p "$data" "$rejected_data"
 
 cleanup() {
-  docker rm -f "$name" >/dev/null 2>&1 || true
+  docker rm -f "$name" "$rejected_bootstrap" "$rejected_display" >/dev/null 2>&1 || true
   if ! rm -rf "$work" 2>/dev/null; then
     sudo rm -rf "$work"
   fi
@@ -21,8 +24,35 @@ trap cleanup EXIT
 # ownership repair for the host account selected in .env.
 # chmod first: after the chown this directory belongs to 10001, and the CI
 # runner is not that user, so chmod would fail with "Operation not permitted".
-chmod 0700 "$data"
-sudo chown -R 10001:10001 "$data"
+chmod 0700 "$data" "$rejected_data"
+sudo chown -R 10001:10001 "$data" "$rejected_data"
+
+# Copying .env.example and forgetting to replace a published credential must
+# fail closed even outside the installer. The application layer independently
+# treats the same values as unconfigured.
+if docker run --name "$rejected_bootstrap" \
+  --read-only \
+  --user 10001:10001 \
+  --mount "type=bind,src=$rejected_data,dst=/data" \
+  -e SHED_BOOTSTRAP_TOKEN=replace-with-a-different-long-random-secret \
+  -e SHED_DISPLAY_TOKEN=private-display-token \
+  "$image" >/dev/null 2>&1; then
+  echo "The image started with the published bootstrap token." >&2
+  exit 1
+fi
+docker logs "$rejected_bootstrap" 2>&1 | grep -q 'published example bootstrap token'
+
+if docker run --name "$rejected_display" \
+  --read-only \
+  --user 10001:10001 \
+  --mount "type=bind,src=$rejected_data,dst=/data" \
+  -e SHED_BOOTSTRAP_TOKEN=private-bootstrap-token \
+  -e SHED_DISPLAY_TOKEN=replace-with-a-separate-long-random-secret \
+  "$image" >/dev/null 2>&1; then
+  echo "The image started with the published display token." >&2
+  exit 1
+fi
+docker logs "$rejected_display" 2>&1 | grep -q 'published example display token'
 
 docker run -d \
   --name "$name" \

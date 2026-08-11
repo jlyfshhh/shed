@@ -1,4 +1,5 @@
 import { ensureDatabase } from "@/db/runtime";
+import { ApiInputError, safeErrorResponse } from "@/lib/api-errors";
 import { dateInTimeZone, isIsoDate } from "@/lib/date";
 import { attributedTo, requireCapability } from "@/lib/household-auth";
 import { decodeLightMyReptileUrl, inches, unnamedFixtures, type LightMyReptileSnapshot } from "@/lib/light-my-reptile";
@@ -46,9 +47,9 @@ export async function POST(request: Request) {
     const auth = await requireCapability(request, db, "lighting.manage");
     if (auth.response) return auth.response;
     const actor = attributedTo(auth.member);
-    const payload = await request.json() as ImportPayload;
+    const payload = await readPayload(request);
     const sourceUrl = text(payload.sourceUrl, "Light My Reptile share link", 4096);
-    const snapshot = decodeLightMyReptileUrl(sourceUrl);
+    const snapshot = decodeSharedSetup(sourceUrl);
     const enclosure = payload.enclosureId
       ? await db.prepare("SELECT id, name, width, depth, height, dimension_unit AS dimensionUnit FROM enclosures WHERE id = ? AND active = 1").bind(payload.enclosureId).first<Record<string, unknown>>()
       : null;
@@ -90,7 +91,7 @@ export async function POST(request: Request) {
       } else {
         // The catalog names the fixture; an explicit value from review still wins.
         const name = optionalText(resolution.name, 180) ?? fixture.product?.name;
-        if (!name) throw new Error(`Equipment name for ${fixture.fixtureKey} is required`);
+        if (!name) throw new ApiInputError(`Equipment name for ${fixture.fixtureKey} is required`);
         const brand = optionalText(resolution.brand, 100) ?? fixture.product?.brand ?? null;
         const model = optionalText(resolution.model, 160) ?? fixture.product?.model ?? null;
         equipmentId = crypto.randomUUID();
@@ -128,7 +129,7 @@ export async function POST(request: Request) {
     await queueVerification(db, enclosureId, planName);
     return Response.json({ imported: true, planId, equipmentCount: fixtureLinks.length, warnings }, { status: 201, headers: { "Cache-Control": "no-store" } });
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Unable to import this lighting setup" }, { status: 400, headers: { "Cache-Control": "no-store" } });
+    return safeErrorResponse(error, { context: "Lighting setup import failed", message: "Unable to import this lighting setup" });
   }
 }
 
@@ -158,14 +159,14 @@ function normalizeDerived(input: DerivedResults | undefined): Required<DerivedRe
     targetPowerDensityMin: number(input?.targetPowerDensityMin), targetPowerDensityMax: number(input?.targetPowerDensityMax),
   };
   for (const [minimum, maximum] of [["targetUviMin", "targetUviMax"], ["targetLuxMin", "targetLuxMax"], ["targetPowerDensityMin", "targetPowerDensityMax"]] as const) {
-    if (output[minimum] != null && output[maximum] != null && output[minimum] > output[maximum]) throw new Error(`${minimum} cannot exceed ${maximum}`);
+    if (output[minimum] != null && output[maximum] != null && output[minimum] > output[maximum]) throw new ApiInputError(`${minimum} cannot exceed ${maximum}`);
   }
   return output as Required<DerivedResults> & Record<string, number | string | null>;
 }
 
 function text(value: unknown, label: string, maximum: number) {
-  if (typeof value !== "string" || !value.trim()) throw new Error(`${label} is required`);
-  if (value.trim().length > maximum) throw new Error(`${label} is too long`);
+  if (typeof value !== "string" || !value.trim()) throw new ApiInputError(`${label} is required`);
+  if (value.trim().length > maximum) throw new ApiInputError(`${label} is too long`);
   return value.trim();
 }
 
@@ -176,8 +177,27 @@ function optionalText(value: unknown, maximum: number): string | null {
 
 function validOptionalDate(value: unknown): string | null {
   if (typeof value !== "string" || !value.trim()) return null;
-  if (!isIsoDate(value.trim())) throw new Error("Equipment installation dates must use YYYY-MM-DD");
+  if (!isIsoDate(value.trim())) throw new ApiInputError("Equipment installation dates must use YYYY-MM-DD");
   return value.trim();
+}
+
+async function readPayload(request: Request): Promise<ImportPayload> {
+  try {
+    const value = await request.json();
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw new ApiInputError("Request body must be a JSON object");
+    return value as ImportPayload;
+  } catch (error) {
+    if (error instanceof ApiInputError) throw error;
+    throw new ApiInputError("Request body must be valid JSON");
+  }
+}
+
+function decodeSharedSetup(sourceUrl: string): LightMyReptileSnapshot {
+  try {
+    return decodeLightMyReptileUrl(sourceUrl);
+  } catch (error) {
+    throw new ApiInputError(error instanceof Error ? error.message : "The Light My Reptile share link is invalid");
+  }
 }
 
 function fixtureCategory(role: "uvb" | "heat" | "daylight") {
