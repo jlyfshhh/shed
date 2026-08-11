@@ -8,6 +8,14 @@
 #
 # With neither set the scan reports that it is unconfigured and passes, so forks
 # and outside pull requests are not blocked by a secret they cannot have.
+#
+# That leniency has a sharp edge: a run that *should* have a denylist and does
+# not looks exactly like a clean scan. On 2026-08-10 the repository had no
+# secrets configured at all, so this had been passing in CI while checking
+# nothing — on the one guard that exists to keep real names out of a public
+# repository. Set PRIVACY_SCAN_STRICT=1 for runs that can reach secrets (the
+# workflow does this for pushes and same-repo pull requests) and an unconfigured
+# scan becomes a failure instead of a shrug.
 set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -36,6 +44,17 @@ while IFS= read -r term; do
 done < <(collect_terms)
 
 if ((${#terms[@]} == 0)); then
+  if [[ -n "${PRIVACY_SCAN_STRICT:-}" && "${PRIVACY_SCAN_STRICT}" != "false" && "${PRIVACY_SCAN_STRICT}" != "0" ]]; then
+    echo "privacy-scan: no denylist configured, and this run was expected to have one." >&2
+    echo "Nothing was checked. Set the PRIVACY_DENYLIST repository secret, or a" >&2
+    echo "local .privacy-denylist, so this scan can do its job." >&2
+    exit 1
+  fi
+  # Not fatal by default, but it must not be quiet either: this is the state
+  # where the scan looks green and has checked nothing.
+  if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
+    echo "::warning title=Privacy scan did nothing::No denylist configured, so no names were checked. Set the PRIVACY_DENYLIST repository secret."
+  fi
   echo "privacy-scan: no denylist configured (set PRIVACY_DENYLIST or .privacy-denylist); skipping."
   exit 0
 fi
