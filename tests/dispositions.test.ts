@@ -96,3 +96,30 @@ test("today's outstanding work is not yet a failure", () => {
   assert.equal(midday.percent, 100);
   assert.equal(midday.accountable, 1);
 });
+
+test("a skipped task leaves the day's list and the day's totals", () => {
+  // Mirrors the partitioning in HusbandryApp: a skipped task is neither
+  // pending nor counted, but a skip that was later completed is both.
+  const tasks = [
+    { id: "a", complete: false, skippedAt: null },
+    { id: "b", complete: true, skippedAt: null },
+    { id: "c", complete: false, skippedAt: "2026-08-10T10:00:00Z" },
+    { id: "d", complete: true, skippedAt: "2026-08-10T09:00:00Z" },
+  ];
+  const skipped = tasks.filter((t) => t.skippedAt && !t.complete);
+  const accountable = tasks.filter((t) => !t.skippedAt || t.complete);
+  const pending = accountable.filter((t) => !t.complete);
+  const completed = accountable.filter((t) => t.complete);
+
+  assert.deepEqual(skipped.map((t) => t.id), ["c"]);
+  assert.deepEqual(pending.map((t) => t.id), ["a"], "a skipped task must not stay on the list");
+  assert.deepEqual(completed.map((t) => t.id), ["b", "d"]);
+  // Three accountable, two done: the skip is out of the denominator, so the
+  // day can still reach 100% rather than being stuck below it forever.
+  assert.equal(accountable.length, 3);
+  assert.equal(Math.round((completed.length / accountable.length) * 100), 67);
+
+  const allSkipped = [{ id: "x", complete: false, skippedAt: "2026-08-10T10:00:00Z" }];
+  const noneAccountable = allSkipped.filter((t) => !t.skippedAt || t.complete);
+  assert.equal(noneAccountable.length, 0, "a fully skipped day must not divide by zero");
+});

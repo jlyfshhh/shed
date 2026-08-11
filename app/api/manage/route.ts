@@ -112,7 +112,7 @@ export async function POST(request: Request) {
     if (resource === "weight") await refreshAnimalWeight(db, String(normalized.animalId));
     if (resource === "lightingPlan") await queueLightingVerification(db, String(normalized.enclosureId), String(normalized.name));
     if (resource === "lightingFixture") await touchAndQueueLightingVerificationForPlan(db, String(normalized.planId), now);
-    if (resource === "equipment" && isLightingEquipment(String(normalized.category ?? ""))) await touchAndQueueLightingVerificationForEquipment(db, normalized, now);
+    if (resource === "equipment" && isLightingEquipment(String(normalized.category ?? ""))) await touchLightingPlansForEquipment(db, normalized, now);
     if (resource === "lightingMeasurement") await completeLightingVerification(db, String(normalized.planId), actor.id, actor.name, String(normalized.metric), Number(normalized.value), String(normalized.unit), String(normalized.measuredAt));
     return Response.json({ saved: true, id }, { status: 201, headers: { "Cache-Control": "no-store" } });
   } catch (error) { return failure(error); }
@@ -150,7 +150,7 @@ export async function PATCH(request: Request) {
     if (resource === "weight") await refreshAnimalWeight(db, String(normalized.animalId ?? existing.animal_id));
     if (resource === "lightingPlan") await queueLightingVerification(db, String(normalized.enclosureId ?? existing.enclosure_id), String(normalized.name ?? existing.name));
     if (resource === "lightingFixture") await touchAndQueueLightingVerificationForPlan(db, String(normalized.planId ?? existing.plan_id), now);
-    if (resource === "equipment" && equipmentLightingFieldsChanged(normalized) && isLightingEquipment(String(normalized.category ?? existing.category ?? ""))) await touchAndQueueLightingVerificationForEquipment(db, { ...existing, ...normalized }, now);
+    if (resource === "equipment" && equipmentLightingFieldsChanged(normalized) && isLightingEquipment(String(normalized.category ?? existing.category ?? ""))) await touchLightingPlansForEquipment(db, { ...existing, ...normalized }, now);
     if (resource === "feeder" && normalized.status === "available") {
       await db.batch([
         db.prepare("UPDATE feeder_inventory SET consumed_at = NULL, animal_id = NULL, husbandry_event_id = NULL WHERE id = ?").bind(id),
@@ -264,13 +264,22 @@ function equipmentLightingFieldsChanged(data: Record<string, string | number | n
   return ["name", "brand", "model", "installedOn", "animalId", "enclosureId", "category"].some((key) => Object.hasOwn(data, key));
 }
 
-async function touchAndQueueLightingVerificationForEquipment(db: D1Database, data: Record<string, unknown>, now: string) {
+/**
+ * Adding or editing a light marks the enclosure's lighting plans as touched.
+ *
+ * It deliberately does not raise a "Verify lighting" task. Recording a piece of
+ * equipment is bookkeeping, and it was putting a chore on every resident
+ * animal's list for the day — the keeper had not asked for it and had to clear
+ * it by hand. A plan change still queues verification, because a plan is the
+ * thing that states the targets a measurement is checked against; a fixture on
+ * its own is not.
+ */
+async function touchLightingPlansForEquipment(db: D1Database, data: Record<string, unknown>, now: string) {
   const animalId = String(data.animalId ?? data.animal_id ?? "");
   let enclosureId = String(data.enclosureId ?? data.enclosure_id ?? "");
   if (!enclosureId && animalId) enclosureId = String((await db.prepare("SELECT enclosure_id AS enclosureId FROM animals WHERE id = ?").bind(animalId).first<{ enclosureId: string }>())?.enclosureId ?? "");
   if (enclosureId) {
     await db.prepare("UPDATE lighting_plans SET updated_at = ? WHERE enclosure_id = ? AND active = 1").bind(now, enclosureId).run();
-    await queueLightingVerification(db, enclosureId, "lighting equipment");
   }
 }
 
