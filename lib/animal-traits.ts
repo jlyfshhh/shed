@@ -77,12 +77,29 @@ export function habitatLabel(
   return null;
 }
 
-/** ♂ / ♀ for the sexes we can recognise; null for unknown or unrecorded. */
-export function sexLabel(sex: string | null | undefined): string | null {
+/**
+ * ♂ / ♀ for the sexes we can recognise; null for unknown or unrecorded.
+ *
+ * The symbol is kept apart from the word rather than glued to the front of it,
+ * because the two need different treatment when drawn: these glyphs do not
+ * share the metrics of the surrounding text, so left inline they sit visibly
+ * off the line. Separated, the chip can centre them against the label.
+ *
+ * The trailing U+FE0E asks for the text rendering of the symbol. Without it
+ * iOS is entitled to substitute the emoji form, which arrives at a different
+ * size and baseline again.
+ */
+export function sexMark(sex: string | null | undefined): { symbol: string; label: string } | null {
   const value = `${sex ?? ""}`.trim().toLowerCase();
-  if (value === "male" || value === "m") return "♂ Male";
-  if (value === "female" || value === "f") return "♀ Female";
+  if (value === "male" || value === "m") return { symbol: "♂︎", label: "Male" };
+  if (value === "female" || value === "f") return { symbol: "♀︎", label: "Female" };
   return null;
+}
+
+/** The sex as one plain string, for places that cannot render a separate mark. */
+export function sexLabel(sex: string | null | undefined): string | null {
+  const mark = sexMark(sex);
+  return mark ? `${mark.symbol} ${mark.label}` : null;
 }
 
 /**
@@ -127,14 +144,17 @@ export function animalFacts(
     birthDate?: string | null;
   },
   today: string,
-): string[] {
-  const facts: string[] = [];
-  const sex = sexLabel(animal.sex);
-  if (sex) facts.push(sex);
-  if (typeof animal.weightGrams === "number" && animal.weightGrams > 0) facts.push(`${animal.weightGrams} g`);
+): AnimalFact[] {
+  const facts: AnimalFact[] = [];
+  const sex = sexMark(animal.sex);
+  if (sex) facts.push({ label: sex.label, symbol: sex.symbol });
+  if (typeof animal.weightGrams === "number" && animal.weightGrams > 0) facts.push({ label: `${animal.weightGrams} g` });
   const age = ageLabel(animal.birthDate, today);
-  if (age) facts.push(age);
+  if (age) facts.push({ label: age });
   const habitat = habitatLabel(animal.enclosureName, animal.name, animal.location);
-  if (habitat) facts.push(habitat);
+  if (habitat) facts.push({ label: habitat });
   return facts;
 }
+
+/** One chip. `symbol` is drawn separately so it can be aligned to the label. */
+export type AnimalFact = { label: string; symbol?: string };

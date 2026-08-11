@@ -195,7 +195,7 @@ h1, h2, h3, p { margin-top: 0; }
    one left them at different heights and the row read as ragged. Pinning the
    chips to the bottom of the body lines them up across the row. */
 .animal-meta { margin-top: auto; padding-top: 11px; display: flex; flex-wrap: wrap; gap: 5px; }
-.animal-meta span { background: var(--accent-wash); border: 1px solid var(--accent-line); color: var(--accent-ink); border-radius: 999px; padding: 3px 8px; font-size: 10.5px; font-weight: 700; white-space: nowrap; }
+.animal-meta span { display: inline-flex; align-items: center; gap: 4px; background: var(--accent-wash); border: 1px solid var(--accent-line); color: var(--accent-ink); border-radius: 999px; padding: 3px 8px; font-size: 10.5px; font-weight: 700; white-space: nowrap; }
 .trend-summary { padding: 14px 17px; background: #e9eddf; border-radius: 13px; display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; margin-bottom: 16px; }.trend-summary b { color: var(--moss); }
 .trend-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .trend-card { background: var(--paper); border: 1px solid var(--line); border-radius: 18px; padding: 18px; }
@@ -422,11 +422,30 @@ button.primary:disabled { opacity: .6; cursor: wait; }
 .photo-controls button:disabled { opacity: .6; cursor: wait; }
 .photo-controls button.photo-remove { border-color: var(--danger-line); background: var(--danger-soft); color: var(--danger-ink); }
 .photo-controls .form-error { flex: 1 0 100%; margin: 2px 0 0; font-size: 11px; text-align: center; }
-.profile-hero h2 { margin: 0; font-size: 30px; font-weight: 800; letter-spacing: -.04em; }
 .archived-flag { font-style: normal; font-size: 13px; color: var(--danger-ink); font-weight: 700; }
 .profile-hero p { margin: 3px 0 8px; color: var(--muted); }
 .profile-tags { display: flex; gap: 7px; flex-wrap: wrap; }
-.profile-tags span { background: var(--surface-sunken); color: var(--ink); border-radius: 999px; padding: 4px 11px; font-size: 12px; font-weight: 600; }
+.profile-tags span { display: inline-flex; align-items: center; gap: 5px; background: var(--surface-sunken); color: var(--ink); border-radius: 999px; padding: 4px 11px; font-size: 12px; font-weight: 600; }
+/* Without the name above it this line carries the identity, so it reads as
+   the species rather than as a caption. Scoped to the hero so it outranks the
+   plain `.profile-hero p` rule above, which would otherwise win on margin. */
+.profile-hero .profile-latin { margin: 0 0 9px; color: var(--muted); font-size: 15px; }
+
+/* The sex symbols do not sit on the same baseline as the text beside them —
+   they are a different size and ride high or low depending on the font that
+   ends up drawing them. Centring them in a flex line puts them level with the
+   label whatever their metrics, which no amount of nudging a margin does
+   reliably. Reset the italics too: the mark is an <i> only because it is an
+   icon, not because it should lean. */
+.chip-mark {
+  font-style: normal;
+  line-height: 1;
+  font-size: 1.15em;
+  /* Ask for the glyph, not the emoji: iOS may otherwise substitute a colour
+     emoji with different metrics again. */
+  font-variant-emoji: text;
+  opacity: .75;
+}
 
 /* ── Portrait-led profile hero ────────────────────────────────────────────
    The photo is the thing a keeper recognises the animal by, so when there is
@@ -631,7 +650,7 @@ button.primary:disabled { opacity: .6; cursor: wait; }
   .completed-list, .trend-grid, .settings-grid { grid-template-columns: 1fr; }.animal-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .role-panel { display: block; }.role-panel button { width: 100%; margin-top: 17px; }.role-panel .panel-login { margin-top: 15px; }.trend-summary { display: block; }.trend-summary b { display: block; margin-top: 4px; }.toast { left: 14px; right: 14px; bottom: 84px; text-align: center; }
   .role-chip { max-width: 44vw; }.role-chip em { display: none; }.member-row { grid-template-columns: auto minmax(0,1fr); }.member-actions { grid-column: 1 / -1; justify-content: start; }
-  .sheet-body { grid-template-columns: 1fr; }.sheet { border-radius: 20px 20px 0 0; max-height: 94vh; }.overlay-body { padding-bottom: 40px; }.manage-toolbar { align-items: start; }.manage-row { grid-template-columns: 1fr; }.manage-row-actions { justify-content: start; }.profile-hero h2 { font-size: 25px; }
+  .sheet-body { grid-template-columns: 1fr; }.sheet { border-radius: 20px 20px 0 0; max-height: 94vh; }.overlay-body { padding-bottom: 40px; }.manage-toolbar { align-items: start; }.manage-row { grid-template-columns: 1fr; }.manage-row-actions { justify-content: start; }
   .profile-hero { gap: 12px; }.husbandry-badge { min-width: 72px; padding: 9px 11px; }.husbandry-badge b { font-size: 21px; }.profile-avatar, .profile-photo { width: 72px; height: 72px; font-size: 30px; }.photo-controls { max-width: 96px; }
   .onboarding-card { display: block; }.onboarding-actions { margin-top: 17px; flex-wrap: wrap; }.guide-steps article { grid-template-columns: auto minmax(0,1fr); }.guide-steps button { grid-column: 1 / -1; width: 100%; }.record-cheatsheet > div { grid-template-columns: 1fr; }
   .mobile-nav { position: fixed; display: grid; grid-template-columns: repeat(4,1fr); left: 10px; right: 10px; bottom: 10px; z-index: 10; padding: 7px; background: var(--dock-bg); border-radius: 19px; box-shadow: var(--dock-shadow); backdrop-filter: blur(10px); }.mobile-nav button { border: 0; color: var(--dock-ink); background: transparent; border-radius: 13px; padding: 7px 3px 6px; display: grid; justify-items: center; gap: 2px; cursor: pointer; }.mobile-nav button b { font-size: 17px; line-height: 1; }.mobile-nav button span { font-size: 10px; }.mobile-nav button.active { background: var(--dock-active); color: var(--dock-active-ink); }
