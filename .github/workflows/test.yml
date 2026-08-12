@@ -46,7 +46,7 @@ jobs:
           # GitHub withholds secrets from forks and Dependabot. Those runs warn
           # and continue; every trusted run fails if the repository secret is
           # missing, preventing a green check that scanned nothing.
-          PRIVACY_SCAN_STRICT: ${{ github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && '0' || '1' }}
+          PRIVACY_SCAN_STRICT: ${{ (github.actor == 'dependabot[bot]' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)) && '0' || '1' }}
         run: bash scripts/privacy-scan.sh
       - name: Compose configuration
         run: |
