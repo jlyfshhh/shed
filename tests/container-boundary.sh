@@ -31,6 +31,8 @@ require 'cpus: "${SHED_CPU_LIMIT:-2.0}"' compose.yaml
 require 'mktemp /data/.shed-write-test.' docker-entrypoint.sh
 require 'SHED_AUTH_REQUIRED:-true' docker-entrypoint.sh
 require 'chmod 0600 "$runtime_env"' docker-entrypoint.sh
+require 'replace-with-a-different-long-random-secret)' docker-entrypoint.sh
+require 'replace-with-a-separate-long-random-secret)' docker-entrypoint.sh
 require 'provenance: mode=max' .github/workflows/publish-image.yml
 require 'sbom: true' .github/workflows/publish-image.yml
 require 'SHED_VCS_REF=${{ github.sha }}' .github/workflows/publish-image.yml

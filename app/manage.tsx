@@ -535,7 +535,7 @@ function ResourceForm({ def, catalog, editing, onClose, onSaved, defaults, prese
   if (presentation === "inline") return <div className="inline-form">{body}{nestedCreate}</div>;
 
   return (
-    <div className="sheet-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
+    <div className="sheet-backdrop" role="dialog" aria-modal="true" aria-label={`${editing ? "Edit" : "New"} ${def.singular}`} onClick={onClose}>
       <div className="sheet" onClick={(event) => event.stopPropagation()}>
         <header className="sheet-head">
           <h2>{editing ? "Edit" : "New"} {def.singular}</h2>
@@ -636,7 +636,14 @@ export function GettingStartedGuide({ summary, onOpenManager, onClose, onOpenHou
           <span className="mini-mark" aria-hidden="true" />
           <div><p className="eyebrow">{doneCount} of {steps.length} milestones</p><h1>From empty Shed to today’s care list</h1><p>Start with where an animal lives, add who lives there, then tell Shed what repeats. You can fill in detailed notes and equipment whenever you’re ready.</p></div>
         </section>
-        <div className="guide-progress" aria-label={`${doneCount} of ${steps.length} setup milestones complete`}><span style={{ width: `${(doneCount / steps.length) * 100}%` }} /></div>
+        <div
+          className="guide-progress"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={steps.length}
+          aria-valuenow={doneCount}
+          aria-valuetext={`${doneCount} of ${steps.length} setup milestones complete`}
+        ><span style={{ width: `${(doneCount / steps.length) * 100}%` }} /></div>
         <div className="guide-steps">
           {steps.map((step, index) => (
             <article className={step.done ? "done" : ""} key={step.title}>
@@ -1012,7 +1019,7 @@ export function ManageConsole({ onClose, onChanged, toast, initialResource = "an
 }
 
 // ── Animal profile (baseball card) ─────────────────────────────────────────────
-type HusbandryScore = { percent: number | null; done: number; accountable: number; since: string; windowDays: number };
+type HusbandryScore = { percent: number | null; done: number; accountable: number; skipped: number; since: string; windowDays: number };
 type AnimalProfileData = {
   animal: Row & { enclosureName?: string | null };
   husbandryScore?: HusbandryScore;
@@ -1190,9 +1197,10 @@ export function AnimalProfile({
                 </div>
               </div>
               {data.husbandryScore && (
-                <div className={`husbandry-badge tier-${scoreTier(data.husbandryScore.percent)}`} title={data.husbandryScore.percent === null ? "No care due yet in the tracking window" : `${data.husbandryScore.done} of ${data.husbandryScore.accountable} scheduled tasks completed`}>
+                <div className={`husbandry-badge tier-${scoreTier(data.husbandryScore.percent)}`} title={data.husbandryScore.percent === null ? `No accountable care due yet in the tracking window${data.husbandryScore.skipped ? ` · ${data.husbandryScore.skipped} skipped` : ""}` : `${data.husbandryScore.done} of ${data.husbandryScore.accountable} accountable tasks completed${data.husbandryScore.skipped ? ` · ${data.husbandryScore.skipped} skipped` : ""}`}>
                   <b>{data.husbandryScore.percent === null ? "New" : `${data.husbandryScore.percent}%`}</b>
                   <small>Husbandry</small>
+                  {data.husbandryScore.skipped ? <small>{data.husbandryScore.skipped} skipped</small> : null}
                 </div>
               )}
             </div>

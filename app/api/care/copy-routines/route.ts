@@ -1,4 +1,5 @@
 import { ensureDatabase, invalidateMaterializedTasks } from "@/db/runtime";
+import { internalErrorResponse } from "@/lib/api-errors";
 import { dateInTimeZone } from "@/lib/date";
 import { requireCapability } from "@/lib/household-auth";
 import { COPYABLE_SCHEDULE_COLUMNS, copySignature } from "@/lib/copy-routines";
@@ -113,9 +114,6 @@ export async function POST(request: Request) {
 
     return Response.json(result, { headers: noStore });
   } catch (error) {
-    return Response.json(
-      { error: error instanceof Error ? error.message : "Could not copy those routines." },
-      { status: 400, headers: noStore },
-    );
+    return internalErrorResponse(error, { context: "Care routine copy failed", message: "Could not copy those routines.", headers: noStore });
   }
 }

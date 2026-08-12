@@ -1,5 +1,6 @@
 // Task earnings ("allowance") — added by Claude 2026-07-21 while Codex was out.
 import { ensureDatabase } from "@/db/runtime";
+import { internalErrorResponse } from "@/lib/api-errors";
 import { requireCapability } from "@/lib/household-auth";
 import { getDefaultRewardCents, MAX_REWARD_CENTS, setDefaultRewardCents } from "@/lib/rewards";
 
@@ -24,6 +25,6 @@ export async function PATCH(request: Request) {
     }
     return Response.json({ defaultRewardCents: await setDefaultRewardCents(db, cents) }, { headers: noStore });
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Unable to update the default reward" }, { status: 500, headers: noStore });
+    return internalErrorResponse(error, { context: "Default reward update failed", message: "Unable to update the default reward", headers: noStore });
   }
 }

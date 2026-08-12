@@ -1,4 +1,5 @@
 import { ensureDatabase } from "@/db/runtime";
+import { internalErrorResponse } from "@/lib/api-errors";
 import { dateInTimeZone } from "@/lib/date";
 import { requireCapability } from "@/lib/household-auth";
 
@@ -49,7 +50,7 @@ export async function GET(request: Request) {
     }, {});
     return Response.json({ from, to, contributions: Object.values(contributions), completions: result.results }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Unable to load household contributions" }, { status: 500 });
+    return internalErrorResponse(error, { context: "Household contribution query failed", message: "Unable to load household contributions" });
   }
 }
 

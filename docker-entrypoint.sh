@@ -5,6 +5,19 @@ umask 077
 runtime_dir="/tmp/shed-runtime"
 runtime_env="$runtime_dir/shed-worker.env"
 
+case "${SHED_BOOTSTRAP_TOKEN:-}" in
+  replace-with-a-different-long-random-secret)
+    echo "Shed will not start with the published example bootstrap token. Generate a private token in .env or run the installer again." >&2
+    exit 1
+    ;;
+esac
+case "${SHED_DISPLAY_TOKEN:-}" in
+  replace-with-a-separate-long-random-secret)
+    echo "Shed will not start with the published example display token. Generate a private token, leave it blank, or run the installer again." >&2
+    exit 1
+    ;;
+esac
+
 mkdir -p \
   "$runtime_dir" \
   "${HOME:-/tmp/shed-home}" \

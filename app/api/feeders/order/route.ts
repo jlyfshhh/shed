@@ -1,4 +1,5 @@
 import { ensureDatabase } from "@/db/runtime";
+import { internalErrorResponse } from "@/lib/api-errors";
 import { dateInTimeZone } from "@/lib/date";
 import { requireCapability } from "@/lib/household-auth";
 
@@ -24,10 +25,7 @@ export async function POST(request: Request) {
 
     return Response.json({ placedAt }, { headers: noStore });
   } catch (error) {
-    return Response.json(
-      { error: error instanceof Error ? error.message : "Unable to record the feeder order" },
-      { status: 500, headers: noStore },
-    );
+    return internalErrorResponse(error, { context: "Feeder order acknowledgement failed", message: "Unable to record the feeder order", headers: noStore });
   }
 }
 
@@ -40,9 +38,6 @@ export async function DELETE(request: Request) {
     await db.prepare("DELETE FROM app_settings WHERE key = 'feeder_order_placed_at'").run();
     return Response.json({ placedAt: null }, { headers: noStore });
   } catch (error) {
-    return Response.json(
-      { error: error instanceof Error ? error.message : "Unable to clear the feeder order" },
-      { status: 500, headers: noStore },
-    );
+    return internalErrorResponse(error, { context: "Feeder order acknowledgement removal failed", message: "Unable to clear the feeder order", headers: noStore });
   }
 }

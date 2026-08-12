@@ -4,12 +4,13 @@ import {
   BACKUP_SCHEMA_VERSION,
   matchingExistingMember,
   PORTABLE_APP_SETTING_KEYS,
+  PORTABLE_REPLACE_DELETE_ORDER,
   PORTABLE_RESOURCES,
   remapMemberReferences,
 } from "../lib/portable-backup.ts";
 
-test("schema 13 carries feeders, allowance, lighting imports, payouts, and care-baseline data", () => {
-  assert.equal(BACKUP_SCHEMA_VERSION, 13);
+test("schema 14 carries feeders, allowance, lighting imports, sheds, payouts, and care-baseline data", () => {
+  assert.equal(BACKUP_SCHEMA_VERSION, 14);
   assert.ok(PORTABLE_RESOURCES.animalPhotos.columns.includes("data"));
   assert.equal(PORTABLE_RESOURCES.animalPhotos.key, "animal_id");
   assert.ok(PORTABLE_RESOURCES.careSchedules.columns.includes("prey_size_class"));
@@ -25,7 +26,17 @@ test("schema 13 carries feeders, allowance, lighting imports, payouts, and care-
   assert.ok(PORTABLE_RESOURCES.lightingPlanFixtures.columns.includes("equipment_id"));
   assert.ok(PORTABLE_RESOURCES.lightingPlanFixtures.columns.includes("source_ref"));
   assert.ok(PORTABLE_RESOURCES.lightingMeasurements.columns.includes("measured_by_member_id"));
+  assert.ok(PORTABLE_RESOURCES.shedEvents.columns.includes("quality"));
   assert.deepEqual(PORTABLE_APP_SETTING_KEYS, ["default_reward_cents", "care_start_date"]);
+});
+
+test("replace restore clears every portable table exactly once", () => {
+  const portableTables = Object.values(PORTABLE_RESOURCES)
+    .map((definition) => definition.table)
+    .filter((table) => table !== "app_settings")
+    .sort();
+  assert.deepEqual([...PORTABLE_REPLACE_DELETE_ORDER].sort(), portableTables);
+  assert.equal(new Set(PORTABLE_REPLACE_DELETE_ORDER).size, PORTABLE_REPLACE_DELETE_ORDER.length);
 });
 
 test("restored attribution follows the matching household profile", () => {

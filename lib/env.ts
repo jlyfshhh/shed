@@ -1,8 +1,9 @@
 import { env } from "cloudflare:workers";
+import { configuredBinding } from "@/lib/config-secrets";
 
 export function binding(name: string): string | undefined {
   const value = (env as unknown as Record<string, unknown>)[name];
-  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+  return configuredBinding(name, value);
 }
 
 export async function sharedSecretIsAuthorized(

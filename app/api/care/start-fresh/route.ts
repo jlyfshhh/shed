@@ -4,6 +4,7 @@
 // Completed history is untouched. This baseline is the anchor for the planned
 // husbandry-score / achievements work.
 import { ensureDatabase } from "@/db/runtime";
+import { internalErrorResponse } from "@/lib/api-errors";
 import { dateInTimeZone } from "@/lib/date";
 import { setCareStartDate } from "@/lib/care-settings";
 import { requireCapability } from "@/lib/household-auth";
@@ -27,6 +28,6 @@ export async function POST(request: Request) {
 
     return Response.json({ saved: true, startDate: today, cleared: cleared.meta?.changes ?? 0 }, { headers: noStore });
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Unable to start fresh" }, { status: 500, headers: noStore });
+    return internalErrorResponse(error, { context: "Care history reset failed", message: "Unable to start fresh", headers: noStore });
   }
 }

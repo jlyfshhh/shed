@@ -1,4 +1,5 @@
 import { ensureDatabase, invalidateMaterializedTasks } from "@/db/runtime";
+import { ApiInputError, safeErrorResponse } from "@/lib/api-errors";
 import { dateInTimeZone, isIsoDate } from "@/lib/date";
 import { attributedTo, requireCapability } from "@/lib/household-auth";
 import { normalizedEmptyValue } from "@/lib/manage-values";
@@ -97,7 +98,7 @@ export async function POST(request: Request) {
     const auth = await requireCapability(request, db, "records.manage");
     if (auth.response) return auth.response;
     const actor = attributedTo(auth.member);
-    const payload = await request.json() as Payload;
+    const payload = await readPayload(request);
     const resource = requireResource(payload.resource);
     const data = { ...(payload.data ?? {}) };
     const now = new Date().toISOString();
@@ -124,7 +125,7 @@ export async function PATCH(request: Request) {
     const auth = await requireCapability(request, db, "records.manage");
     if (auth.response) return auth.response;
     const actor = attributedTo(auth.member);
-    const payload = await request.json() as Payload;
+    const payload = await readPayload(request);
     const resource = requireResource(payload.resource);
     const id = requireId(payload.id);
     const existing = await db.prepare(`SELECT * FROM ${configs[resource].table} WHERE id = ?`).bind(id).first<Record<string, unknown>>();
@@ -167,7 +168,7 @@ export async function DELETE(request: Request) {
     const auth = await requireCapability(request, db, "records.manage");
     if (auth.response) return auth.response;
     const actor = attributedTo(auth.member);
-    const payload = await request.json() as Payload;
+    const payload = await readPayload(request);
     const resource = requireResource(payload.resource);
     const id = requireId(payload.id);
     if (resource === "event") {
@@ -206,50 +207,52 @@ function applyCreateDefaults(resource: Resource, data: Record<string, unknown>, 
 
 function normalize(resource: Resource, data: Record<string, unknown>, creating: boolean) {
   const config = configs[resource];
-  if (creating) for (const key of config.required) if (data[key] === undefined || data[key] === null || data[key] === "") throw new Error(`${key} is required`);
+  if (creating) for (const key of config.required) if (data[key] === undefined || data[key] === null || data[key] === "") throw new ApiInputError(`${key} is required`);
   const output: Record<string, string | number | null> = {};
   for (const [key, value] of Object.entries(data)) {
     const field = config.fields[key]; if (!field) continue;
     if (value === null || value === "") { output[key] = normalizedEmptyValue(resource, key); continue; }
     if (field.kind === "boolean") output[key] = value ? 1 : 0;
-    else if (field.kind === "number") { const number = Number(value); if (!Number.isFinite(number) || number < 0) throw new Error(`${key} must be a positive number`); output[key] = number; }
-    else if (field.kind === "date") { const text = String(value); if (!isIsoDate(text)) throw new Error(`${key} must use YYYY-MM-DD`); output[key] = text; }
-    else if (field.kind === "datetime") { const text = String(value); if (Number.isNaN(Date.parse(text))) throw new Error(`${key} must be a valid date and time`); output[key] = new Date(text).toISOString(); }
+    else if (field.kind === "number") { const number = Number(value); if (!Number.isFinite(number) || number < 0) throw new ApiInputError(`${key} must be a positive number`); output[key] = number; }
+    else if (field.kind === "date") { const text = String(value); if (!isIsoDate(text)) throw new ApiInputError(`${key} must use YYYY-MM-DD`); output[key] = text; }
+    else if (field.kind === "datetime") { const text = String(value); if (Number.isNaN(Date.parse(text))) throw new ApiInputError(`${key} must be a valid date and time`); output[key] = new Date(text).toISOString(); }
     else output[key] = cleanText(value, key === "notes" || key === "body" || key === "details" ? 5000 : 200) ?? "";
   }
   if (resource === "schedule") validateSchedule(output);
   if (resource === "lightingPlan") validateLightingPlan(output);
-  if (resource === "lightingFixture" && Object.hasOwn(output, "quantity") && (!Number.isInteger(Number(output.quantity)) || Number(output.quantity) < 1)) throw new Error("quantity must be a whole number of at least 1");
+  if (resource === "lightingFixture" && Object.hasOwn(output, "quantity") && (!Number.isInteger(Number(output.quantity)) || Number(output.quantity) < 1)) throw new ApiInputError("quantity must be a whole number of at least 1");
   return output;
 }
 
 function validateSchedule(data: Record<string, string | number | null>) {
   const frequency = data.frequency;
-  if (frequency && !["daily", "weekly", "interval", "monthly", "once"].includes(String(frequency))) throw new Error("Unsupported schedule frequency");
-  if (frequency === "interval" && Number(data.intervalDays ?? 0) < 1) throw new Error("Interval schedules need intervalDays");
+  if (frequency && !["daily", "weekly", "interval", "monthly", "once"].includes(String(frequency))) throw new ApiInputError("Unsupported schedule frequency");
+  if (frequency === "interval" && Number(data.intervalDays ?? 0) < 1) throw new ApiInputError("Interval schedules need intervalDays");
   let weekdays: number[] = [];
   if (data.weekdaysJson) {
-    const parsed = JSON.parse(String(data.weekdaysJson));
-    if (!Array.isArray(parsed) || parsed.some((day) => !Number.isInteger(day) || day < 0 || day > 6)) throw new Error("weekdaysJson must contain weekday numbers 0–6");
+    let parsed: unknown;
+    try { parsed = JSON.parse(String(data.weekdaysJson)); } catch { throw new ApiInputError("weekdaysJson must contain weekday numbers 0–6"); }
+    if (!Array.isArray(parsed) || parsed.some((day) => !Number.isInteger(day) || day < 0 || day > 6)) throw new ApiInputError("weekdaysJson must contain weekday numbers 0–6");
     weekdays = parsed;
   }
   if (frequency === "monthly") {
     const value = Number(data.dayOfMonth);
-    if (weekdays.length > 1) throw new Error("Monthly weekday schedules must choose one weekday");
-    if (weekdays.length && (value < 1 || value > 5)) throw new Error("Monthly weekday schedules need an occurrence from 1–5");
-    if (!weekdays.length && (value < 1 || value > 31)) throw new Error("Monthly schedules need a day from 1–31");
+    if (weekdays.length > 1) throw new ApiInputError("Monthly weekday schedules must choose one weekday");
+    if (weekdays.length && (value < 1 || value > 5)) throw new ApiInputError("Monthly weekday schedules need an occurrence from 1–5");
+    if (!weekdays.length && (value < 1 || value > 31)) throw new ApiInputError("Monthly schedules need a day from 1–31");
   }
-  for (const key of ["targetPercent", "minimumPercent", "maximumPercent"]) if (data[key] !== undefined && data[key] !== null && Number(data[key]) > 1) throw new Error(`${key} must be a decimal from 0 to 1`);
+  for (const key of ["targetPercent", "minimumPercent", "maximumPercent"]) if (data[key] !== undefined && data[key] !== null && Number(data[key]) > 1) throw new ApiInputError(`${key} must be a decimal from 0 to 1`);
 }
 
 function validateLightingPlan(data: Record<string, string | number | null>) {
-  if (data.meshLossPercent != null && Number(data.meshLossPercent) > 100) throw new Error("meshLossPercent cannot exceed 100");
+  if (data.meshLossPercent != null && Number(data.meshLossPercent) > 100) throw new ApiInputError("meshLossPercent cannot exceed 100");
   for (const [minimum, maximum, label] of [
     ["targetUviMin", "targetUviMax", "UVI"], ["targetLuxMin", "targetLuxMax", "lux"], ["targetPowerDensityMin", "targetPowerDensityMax", "power density"],
-  ] as const) if (data[minimum] != null && data[maximum] != null && Number(data[minimum]) > Number(data[maximum])) throw new Error(`${label} minimum cannot exceed its maximum`);
+  ] as const) if (data[minimum] != null && data[maximum] != null && Number(data[minimum]) > Number(data[maximum])) throw new ApiInputError(`${label} minimum cannot exceed its maximum`);
   if (data.sourceUrl) {
-    const url = new URL(String(data.sourceUrl));
-    if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error("sourceUrl must be an http or https address");
+    let url: URL;
+    try { url = new URL(String(data.sourceUrl)); } catch { throw new ApiInputError("sourceUrl must be an http or https address"); }
+    if (url.protocol !== "https:" && url.protocol !== "http:") throw new ApiInputError("sourceUrl must be an http or https address");
   }
 }
 
@@ -308,8 +311,21 @@ async function completeLightingVerification(db: D1Database, planId: string, memb
     .bind(crypto.randomUUID(), task.id, task.animalId, `${metric}: ${value} ${unit}`, task.dueDate, occurredAt, memberId, memberName).run();
 }
 
-function requireResource(value: Resource | undefined): Resource { if (!value || !configs[value]) throw new Error("A supported resource is required"); return value; }
-function requireId(value: string | undefined) { const id = cleanId(value); if (!id) throw new Error("A valid record id is required"); return id; }
+function requireResource(value: Resource | undefined): Resource { if (!value || !configs[value]) throw new ApiInputError("A supported resource is required"); return value; }
+function requireId(value: string | undefined) { const id = cleanId(value); if (!id) throw new ApiInputError("A valid record id is required"); return id; }
 function cleanId(value: unknown) { const text = typeof value === "string" ? value.trim() : ""; return /^[a-zA-Z0-9][a-zA-Z0-9:_-]{0,99}$/.test(text) ? text : null; }
 function cleanText(value: unknown, max: number) { if (value === undefined || value === null) return null; const text = String(value).trim(); return text ? text.slice(0, max) : null; }
-function failure(error: unknown) { return Response.json({ error: error instanceof Error ? error.message : "Unable to update Shed" }, { status: 400, headers: { "Cache-Control": "no-store" } }); }
+async function readPayload(request: Request): Promise<Payload> {
+  try {
+    const value = await request.json();
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw new ApiInputError("Request body must be a JSON object");
+    return value as Payload;
+  } catch (error) {
+    if (error instanceof ApiInputError) throw error;
+    throw new ApiInputError("Request body must be valid JSON");
+  }
+}
+
+function failure(error: unknown) {
+  return safeErrorResponse(error, { context: "Manage API request failed", message: "Unable to update Shed" });
+}

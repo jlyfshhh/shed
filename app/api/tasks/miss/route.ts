@@ -3,8 +3,14 @@
 // showing without fabricating a completion event. Reversible: completing the
 // task later clears the missed mark.
 import { ensureDatabase } from "@/db/runtime";
+import { internalErrorResponse } from "@/lib/api-errors";
 import { dateInTimeZone } from "@/lib/date";
-import { requireCapability } from "@/lib/household-auth";
+import { attributedTo, requireCapability } from "@/lib/household-auth";
+import {
+  missAllOverdueTasks,
+  missScheduledTask,
+  TaskDispositionError,
+} from "@/lib/task-dispositions";
 
 const noStore = { "Cache-Control": "no-store" };
 
@@ -17,33 +23,24 @@ export async function POST(request: Request) {
     // the single-task action separate from the broader backlog sweep.
     const auth = await requireCapability(request, db, payload.all ? "care.missAll" : "care.miss");
     if (auth.response) return auth.response;
-    const member = auth.member;
+    const actor = attributedTo(auth.member);
 
     // Bulk clear: mark every still-open overdue task as missed in one go.
     if (payload.all) {
-      const result = await db.prepare(
-        "UPDATE care_tasks SET missed_at = ?, missed_by_member_id = ?, missed_by_name = ? WHERE due_date < ? AND missed_at IS NULL AND NOT EXISTS (SELECT 1 FROM husbandry_events e WHERE e.task_id = care_tasks.id AND e.due_date = care_tasks.due_date AND e.voided_at IS NULL)",
-      ).bind(new Date().toISOString(), member?.id ?? null, member?.displayName ?? null, dateInTimeZone()).run();
-      return Response.json({ saved: true, missed: result.meta?.changes ?? 0 }, { headers: noStore });
+      const missed = await missAllOverdueTasks(db, { beforeDate: dateInTimeZone(), actor });
+      return Response.json({ saved: true, missed }, { headers: noStore });
     }
 
     if (!payload.taskId || !payload.dueDate) {
       return Response.json({ error: "Task and due date are required" }, { status: 400, headers: noStore });
     }
 
-    const task = await db.prepare("SELECT id FROM care_tasks WHERE id = ? AND due_date = ?").bind(payload.taskId, payload.dueDate).first<{ id: string }>();
-    if (!task) return Response.json({ error: "Task not found" }, { status: 404, headers: noStore });
-
-    const completed = await db.prepare(
-      "SELECT id FROM husbandry_events WHERE task_id = ? AND due_date = ? AND voided_at IS NULL",
-    ).bind(payload.taskId, payload.dueDate).first<{ id: string }>();
-    if (completed) return Response.json({ error: "That task is already marked done" }, { status: 409, headers: noStore });
-
-    await db.prepare("UPDATE care_tasks SET missed_at = ?, missed_by_member_id = ?, missed_by_name = ? WHERE id = ? AND due_date = ?")
-      .bind(new Date().toISOString(), member?.id ?? null, member?.displayName ?? null, payload.taskId, payload.dueDate).run();
-
+    await missScheduledTask(db, { taskId: payload.taskId, dueDate: payload.dueDate, actor });
     return Response.json({ saved: true }, { headers: noStore });
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Unable to update the task" }, { status: 500, headers: noStore });
+    if (error instanceof TaskDispositionError) {
+      return Response.json({ error: error.message }, { status: error.status, headers: noStore });
+    }
+    return internalErrorResponse(error, { context: "Task missed-state update failed", message: "Unable to update the task", headers: noStore });
   }
 }

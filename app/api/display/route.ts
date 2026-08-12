@@ -17,6 +17,7 @@ type DisplayTask = {
   title: string;
   details: string | null;
   dueDate: string;
+  outcome: string | null;
 };
 
 const headers = {
@@ -45,7 +46,7 @@ export async function GET(request: Request) {
       // Skipped work is excluded here as it is in the overdue query below: the
       // wall display exists to show what still needs doing, and a task the
       // keeper has already decided against is not that.
-      "SELECT t.animal_id AS animalId, t.schedule_id AS scheduleId, a.name AS animalName, a.species, t.task_type AS taskType, t.title, t.details, t.due_date AS dueDate, CASE WHEN e.id IS NULL THEN 0 ELSE 1 END AS complete FROM care_tasks t JOIN animals a ON a.id=t.animal_id LEFT JOIN husbandry_events e ON e.task_id=t.id AND e.due_date=t.due_date AND e.voided_at IS NULL WHERE a.active = 1 AND t.due_date = ? AND t.skipped_at IS NULL ORDER BY complete, a.name, t.title",
+      "SELECT t.animal_id AS animalId, t.schedule_id AS scheduleId, a.name AS animalName, a.species, t.task_type AS taskType, t.title, t.details, t.due_date AS dueDate, e.outcome AS outcome, CASE WHEN e.id IS NULL THEN 0 ELSE 1 END AS complete FROM care_tasks t JOIN animals a ON a.id=t.animal_id LEFT JOIN husbandry_events e ON e.task_id=t.id AND e.due_date=t.due_date AND e.voided_at IS NULL WHERE a.active = 1 AND t.due_date = ? AND (t.skipped_at IS NULL OR e.id IS NOT NULL) ORDER BY complete, a.name, t.title",
     ).bind(today).all();
     const overdueResult = await db.prepare(
       "SELECT t.animal_id AS animalId, t.schedule_id AS scheduleId, a.name AS animalName, a.species, t.task_type AS taskType, t.title, t.details, t.due_date AS dueDate FROM care_tasks t JOIN animals a ON a.id=t.animal_id LEFT JOIN husbandry_events e ON e.task_id=t.id AND e.due_date=t.due_date AND e.voided_at IS NULL WHERE a.active = 1 AND t.due_date < ? AND t.due_date >= ? AND e.id IS NULL AND t.missed_at IS NULL AND t.skipped_at IS NULL ORDER BY t.due_date DESC, a.name, t.title",
@@ -80,6 +81,7 @@ export async function GET(request: Request) {
       dueDate: task.dueDate,
     }));
     const completed = todayRows.length - tasks.length;
+    const refused = todayRows.filter((task) => task.complete && task.outcome === "refused").length;
 
     return Response.json({
       date: today,
@@ -87,6 +89,7 @@ export async function GET(request: Request) {
       summary: {
         total: todayRows.length,
         completed,
+        refused,
         remaining: tasks.length,
         overdue: overdue.length,
       },

@@ -6,6 +6,7 @@
 // once it is saved. Quality is the useful part over time — a run of patchy or
 // stuck sheds usually means humidity has drifted.
 import { ensureDatabase } from "@/db/runtime";
+import { internalErrorResponse } from "@/lib/api-errors";
 import { dateInTimeZone, isIsoDate } from "@/lib/date";
 import { requireCapability } from "@/lib/household-auth";
 import { SHED_QUALITIES, isShedQuality } from "@/lib/shed-quality";
@@ -45,6 +46,6 @@ export async function POST(request: Request) {
 
     return Response.json({ saved: true, recordedOn, quality }, { status: 201, headers: noStore });
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Unable to record the shed" }, { status: 500, headers: noStore });
+    return internalErrorResponse(error, { context: "Shed event write failed", message: "Unable to record the shed", headers: noStore });
   }
 }

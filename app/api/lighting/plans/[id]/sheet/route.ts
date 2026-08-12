@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 import { ensureDatabase } from "@/db/runtime";
+import { internalErrorResponse } from "@/lib/api-errors";
 import { requireCapability } from "@/lib/household-auth";
 import { attachmentHeaders, checkAttachment } from "@/lib/attachments";
 
@@ -60,7 +61,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (existing.sheetKey) await env.FILES.delete(existing.sheetKey);
     return Response.json({ saved: true, fileName: file.name }, { status: 201, headers: { "Cache-Control": "no-store" } });
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Unable to upload the plan sheet" }, { status: 400 });
+    return internalErrorResponse(error, { context: "Lighting plan sheet upload failed", message: "Unable to upload the plan sheet" });
   }
 }
 

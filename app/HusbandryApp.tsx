@@ -50,6 +50,7 @@ type Task = {
   feedingGuidance: string | null;
   dueDate: string;
   complete: boolean;
+  outcome: "done" | "refused" | null;
   completedByMemberId: string | null;
   completedBy: string | null;
   skippedAt: string | null;
@@ -76,6 +77,7 @@ type RecentEvent = {
   occurredAt: string;
   actorRole: string;
   completedBy: string | null;
+  outcome: "done" | "refused" | null;
 };
 type WeightTrend = {
   animalId: string;
@@ -504,7 +506,7 @@ export default function HusbandryApp() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ taskId: task.id, dueDate: task.dueDate, actorRole: viewer?.role ?? "Owner", outcome }),
       });
-      const payload = (await response.json()) as { error?: string; allocatedFeeder?: { weightGrams: number; sizeClass: string; preySpecies: string } | null; feederShortage?: string | null };
+      const payload = (await response.json()) as { error?: string; outcome?: "done" | "refused"; allocatedFeeder?: { weightGrams: number; sizeClass: string; preySpecies: string } | null; feederShortage?: string | null };
       if (!response.ok) throw new Error(payload.error ?? "Unable to save");
       await refresh();
       const feeder = payload.allocatedFeeder;
@@ -513,7 +515,8 @@ export default function HusbandryApp() {
         : payload.feederShortage
           ? " · no feeder deducted — add it in Manage → Feeders if you used stock"
           : "";
-      setToast(`${task.animalName}: ${task.title} recorded${feederNote}${viewer ? ` by ${viewer.displayName}` : ""}`);
+      const action = payload.outcome === "refused" ? "refusal recorded" : `${task.title} recorded`;
+      setToast(`${task.animalName}: ${action}${feederNote}${viewer ? ` by ${viewer.displayName}` : ""}`);
       window.setTimeout(() => setToast(null), payload.feederShortage ? 5200 : 2800);
     } catch (saveError) {
       setToast(saveError instanceof Error ? saveError.message : "That update didn’t save. Please try again.");
@@ -691,7 +694,12 @@ export default function HusbandryApp() {
   const pending = accountable.filter((task) => !task.complete);
   const completed = accountable.filter((task) => task.complete);
   const overdue = data?.overdue ?? [];
-  const completionPercent = accountable.length ? Math.round((completed.length / accountable.length) * 100) : 0;
+  // When every scheduled item was intentionally skipped, the day is settled:
+  // showing 0% made an empty to-do list look unfinished. The separate skipped
+  // count keeps 100% from pretending that care was performed.
+  const completionPercent = accountable.length
+    ? Math.round((completed.length / accountable.length) * 100)
+    : skipped.length ? 100 : 0;
   const filteredAnimals = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return data?.animals ?? [];
@@ -804,9 +812,19 @@ export default function HusbandryApp() {
             <article className="progress-card">
               <div className="progress-copy">
                 <span className="sun-disc" aria-hidden="true">☀</span>
-                <div><strong>{completed.length} of {accountable.length} complete</strong><span>{pending.length ? "A tidy little list today" : skipped.length ? "Everything else was skipped" : "All care completed"}</span></div>
+                <div>
+                  <strong>{accountable.length ? `${completed.length} of ${accountable.length} complete` : skipped.length ? `${skipped.length} skipped · today settled` : "Nothing scheduled"}</strong>
+                  <span>{pending.length ? "A tidy little list today" : skipped.length ? "Skipped items are shown below" : accountable.length ? "All care completed" : "No scheduled care was due"}</span>
+                </div>
               </div>
-              <div className="progress-track" aria-label={`${completionPercent}% complete`}><span style={{ width: `${completionPercent}%` }} /></div>
+              <div
+                className="progress-track"
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={completionPercent}
+                aria-valuetext={!accountable.length && skipped.length ? "Today’s care is settled; all scheduled items were skipped" : `${completed.length} of ${accountable.length} accountable tasks complete`}
+              ><span style={{ width: `${completionPercent}%` }} /></div>
               <b>{completionPercent}%</b>
             </article>
 
@@ -882,7 +900,7 @@ export default function HusbandryApp() {
                 <div key={task.id}>
                   <span>✓</span>
                   <b>{task.animalName}</b>
-                  <p>{task.title}{task.completedBy ? ` · ${task.completedBy}` : ""}</p>
+                  <p>{task.title}{task.outcome === "refused" ? " · refused" : ""}{task.completedBy ? ` · ${task.completedBy}` : ""}</p>
                   {can("care.correct") && (
                     <span className="completion-correction-actions">
                       {authRequired && (
@@ -926,7 +944,7 @@ export default function HusbandryApp() {
             <div className="section-title compact"><h2>Recent activity</h2><button onClick={() => openTab("animals")}>View all</button></div>
             <div className="activity-list">
               {data.recentEvents.slice(0, 6).map((event) => (
-                <div key={event.id}><span className="activity-dot" /><p><b>{event.animalName}</b> · {event.title}<small>{event.completedBy ?? event.actorRole} · {timeAgo(event.occurredAt)}</small></p></div>
+                <div key={event.id}><span className="activity-dot" /><p><b>{event.animalName}</b> · {event.title}{event.outcome === "refused" ? " · refused" : ""}<small>{event.completedBy ?? event.actorRole} · {timeAgo(event.occurredAt)}</small></p></div>
               ))}
             </div>
           </section>
@@ -934,7 +952,11 @@ export default function HusbandryApp() {
           <section className="page">
             <div className="eyebrow">The whole household</div>
             <div className="page-heading"><div><h1>Animals & habitats</h1><p>{data.animals.length} individual and community records.</p></div></div>
-            <label className="search-box"><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search animals, species, or rooms" /></label>
+            <label className="search-box">
+              <span aria-hidden="true">⌕</span>
+              <span className="sr-only">Search animals, species, or rooms</span>
+              <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search animals, species, or rooms" />
+            </label>
             <div className="animal-grid">
               {filteredAnimals.map((animal) => {
                 const photo = animalPhotoUrl(animal.id, animal.photoUpdatedAt);
@@ -1206,8 +1228,9 @@ export default function HusbandryApp() {
             <button key={item.id} className={activeTab === item.id ? "active" : ""} onClick={() => openTab(item.id)}><b>{item.glyph}</b><span>{item.label}</span></button>
           ))}
         </nav>
-        {toast && <div className="toast" role="status">{toast}</div>}
       </main>
+
+      {toast && <div className="toast" role="status" aria-live="polite" data-modal-live>{toast}</div>}
 
       {manageOpen && can("records.manage") && (
         <ManageConsole

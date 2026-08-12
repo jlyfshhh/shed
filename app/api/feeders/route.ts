@@ -1,4 +1,5 @@
 import { ensureDatabase } from "@/db/runtime";
+import { internalErrorResponse } from "@/lib/api-errors";
 import { requireCapability } from "@/lib/household-auth";
 
 export const dynamic = "force-dynamic";
@@ -52,9 +53,6 @@ export async function GET(request: Request) {
     );
     return Response.json({ summary, inventory });
   } catch (error) {
-    return Response.json(
-      { error: error instanceof Error ? error.message : "Unable to load feeder inventory" },
-      { status: 500 },
-    );
+    return internalErrorResponse(error, { context: "Feeder inventory query failed", message: "Unable to load feeder inventory" });
   }
 }

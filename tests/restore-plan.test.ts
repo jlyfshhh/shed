@@ -32,6 +32,17 @@ test("duplicate keys are reported rather than silently overwriting", () => {
   assert.match(plan.errors.join(" "), /more than once/);
 });
 
+test("completion outcomes are limited to done and refused", () => {
+  assert.deepEqual(
+    validateBundle(bundle({ husbandryEvents: [{ id: "event-1", outcome: "refused" }] })).errors,
+    [],
+  );
+  assert.match(
+    validateBundle(bundle({ husbandryEvents: [{ id: "event-1", outcome: "maybe" }] })).errors.join(" "),
+    /invalid outcome/,
+  );
+});
+
 test("a resource that is not a list is refused", () => {
   assert.match(validateBundle(bundle({ animals: "everything" })).errors.join(" "), /should be a list/);
   assert.match(validateBundle(bundle({ animals: [42] })).errors.join(" "), /is not an object/);
@@ -65,6 +76,16 @@ test("an attachment for a plan not in the bundle is refused", () => {
     lightingPlanSheets: [{ planId: "nope", name: "plan.pdf", type: "application/pdf", dataBase64: PDF }],
   }));
   assert.match(plan.errors.join(" "), /which is not in this backup/);
+});
+
+test("a lighting plan cannot carry two attachment payloads", () => {
+  const plan = validateBundle(bundle({
+    lightingPlanSheets: [
+      { planId: "p1", name: "one.pdf", type: "application/pdf", dataBase64: PDF },
+      { planId: "p1", name: "two.pdf", type: "application/pdf", dataBase64: PDF },
+    ],
+  }));
+  assert.match(plan.errors.join(" "), /more than one attachment/);
 });
 
 test("malformed and oversized attachments are refused", () => {

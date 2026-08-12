@@ -12,11 +12,15 @@ curl -fsSL https://animalroom.app/shed/install.sh | bash
 
 Nothing is compiled on your machine — the installer downloads a ready-made container, creates a `shed` folder, and stores settings in `shed/.env`. Do not publish or share that file: it contains the one-time setup token and authentication secrets.
 
-The installer also makes the install, database, and backup directories private
-to the installing account. Shed itself runs as that non-root uid/gid with no
-Linux capabilities and a read-only application filesystem. If an older Shed
-container created root-owned database files, the installer stops it before
-repairing their ownership and permissions.
+The installer also makes internal database and backup directories private to
+the configured non-root uid/gid. If an older Shed container created root-owned
+database files, the installer takes and verifies a backup, stops the old writer,
+then repairs ownership. A dedicated path outside the install requires
+`SHED_ALLOW_EXTERNAL_PATHS=true`; the installer verifies it but deliberately
+does not recursively change an external tree. (The data mount must already
+belong to the configured Shed uid; the host-side backup job may run as root.)
+Shed itself runs without Linux
+capabilities and with a read-only application filesystem.
 
 When it finishes it prints the address to open, like `http://192.168.1.50:3000`. Use that numeric address from your phone or another computer — it always works on your network. The friendlier `http://yourpi.local:3000` also works *if* your device supports `.local` names, which Windows and some Android phones do not. If you are sitting at the machine you installed on, `http://localhost:3000` works too.
 
@@ -150,6 +154,10 @@ On their phone, the keeper opens Shed, signs in with their code, and can add it 
 - **iPhone/iPad:** open Shed in Safari, tap Share, then **Add to Home Screen**.
 - **Android:** open Shed in Chrome, open the browser menu, then choose **Install app** or **Add to Home screen**.
 
+A plain LAN HTTP address remains fully usable for care, but installed-app and
+secure-context behavior differs by browser. See [Browser security and phone
+installation](BROWSER-SECURITY.md) for the exact HTTP/HTTPS limitations.
+
 Every completed scheduled task is credited to the signed-in keeper. Keeper accounts are deliberately completion-only: they can view Shed and mark scheduled care done, but they cannot mark tasks missed, change photos or weights, correct history, or manage any records. The Head Keeper can review totals under **More → Contributions**, issue a new code, disable an account, or re-enable it later.
 
 ## 6. Back up and restore
@@ -167,17 +175,24 @@ The included `scripts/backup.sh` also creates dated SQLite snapshots. Keep at le
 
 ## 7. Update Shed
 
-Run the same installer command again, or from your `shed` folder:
+Run the same installer command again:
 
 ```bash
-docker compose pull && docker compose up -d
+curl -fsSL https://animalroom.app/shed/install.sh | bash
 ```
 
-Either downloads the current version and restarts it. Your database, your settings, and your records are left alone.
+It downloads and validates the candidate configuration while the old service is
+still running, takes a verified SQLite backup, and only then starts the update.
+If the new service does not become healthy, the installer restores the exact
+previous settings, image, and running state. It never removes the data mount.
+The verified backup uses the host's `sqlite3` command; on Raspberry Pi OS or
+Debian, install it with `sudo apt-get install -y sqlite3`. If it is absent or the
+backup cannot be verified, the update stops before interrupting Shed.
 
-After changing `SHED_UID`, `SHED_GID`, or `SHED_DATA_PATH` manually, re-run the
-installer rather than only running Compose. It validates the settings and
-repairs ownership before starting the read-only, non-root container.
+Do not substitute `docker compose pull && docker compose up -d` for an upgrade.
+That skips backup, rollback, and migrations such as the older root-to-non-root
+storage transition. After changing `SHED_UID`, `SHED_GID`, or a storage path,
+always re-run the installer so the same safety checks apply.
 
 ## Quick troubleshooting
 

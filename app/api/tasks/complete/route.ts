@@ -1,8 +1,10 @@
 import { ensureDatabase } from "@/db/runtime";
+import { internalErrorResponse } from "@/lib/api-errors";
 import { attributedTo, requireCapability } from "@/lib/household-auth";
 import { getDefaultRewardCents, memberBalance, rewardForCompletion } from "@/lib/rewards";
 import { loadFeederForecast } from "@/lib/feeder-forecast-data";
 import { feederGuidance } from "@/lib/feeder-guidance";
+import { feederConsumptionStatements } from "@/lib/feeder-consumption";
 import {
   CompletionCorrectionError,
   correctCompletionAttribution,
@@ -15,6 +17,21 @@ type CompletionPayload = {
   actorRole?: string;
   /** "done", or "refused" when a feeding was offered and the animal did not eat. */
   outcome?: string;
+};
+
+type CompletionOutcome = "done" | "refused";
+
+type CompletionRecord = {
+  id: string;
+  outcome: string | null;
+  completedByMemberId: string | null;
+  completedBy: string | null;
+  occurredAt: string;
+  rewardCents: number;
+  feederId: string | null;
+  feederSpecies: string | null;
+  feederSizeClass: string | null;
+  feederWeightGrams: number | null;
 };
 
 type CorrectionPayload = {
@@ -35,6 +52,10 @@ export async function POST(request: Request) {
     if (!payload.taskId || !payload.dueDate) {
       return Response.json({ error: "Task and due date are required" }, { status: 400, headers: noStore });
     }
+    if (payload.outcome !== undefined && payload.outcome !== "done" && payload.outcome !== "refused") {
+      return Response.json({ error: "Outcome must be done or refused" }, { status: 400, headers: noStore });
+    }
+    const outcome: CompletionOutcome = payload.outcome ?? "done";
 
     const db = await ensureDatabase();
     const auth = await requireCapability(request, db, "care.complete");
@@ -51,9 +72,7 @@ export async function POST(request: Request) {
     ).bind(task.id, payload.dueDate).first<{ id: string; voidedAt: string | null }>();
     if (existing && !existing.voidedAt) {
       const completion = await completionForTask(db, task.id, payload.dueDate);
-      // Already recorded: report the outcome that was stored, not the one this
-      // request happened to ask for.
-      return Response.json({ saved: true, completion, outcome: completion?.outcome ?? "done", rewardCents: completion?.rewardCents ?? 0, balanceCents: null }, { headers: noStore });
+      return completionResponse(completion, outcome);
     }
 
     const eventId = existing?.id ?? crypto.randomUUID();
@@ -97,7 +116,6 @@ export async function POST(request: Request) {
     // completes the task and consumes inventory exactly as a taken meal does.
     // Only the outcome differs, and for a snake that is the line in the record
     // that matters months later.
-    const outcome = payload.outcome === "refused" ? "refused" : "done";
     if (outcome === "refused" && task.taskType !== "feeding") {
       return Response.json({ error: "Only a feeding can be refused." }, { status: 400, headers: noStore });
     }
@@ -107,8 +125,8 @@ export async function POST(request: Request) {
     const statements: D1PreparedStatement[] = [];
     if (existing?.voidedAt) {
       statements.push(db.prepare(
-        "UPDATE husbandry_events SET animal_id = ?, task_type = ?, title = ?, notes = ?, occurred_at = ?, actor_role = ?, completed_by_member_id = ?, completed_by_name = ?, reward_cents = ?, outcome = ?, voided_at = NULL, voided_by_member_id = NULL, voided_by_name = NULL, void_reason = NULL WHERE id = ?",
-      ).bind(task.animalId, task.taskType, task.title, task.details, occurredAt, actorRole, member?.id ?? null, member?.displayName ?? null, rewardCents, outcome, existing.id));
+        "UPDATE husbandry_events SET animal_id = ?, task_type = ?, title = ?, notes = ?, occurred_at = ?, actor_role = ?, completed_by_member_id = ?, completed_by_name = ?, reward_cents = ?, outcome = ?, voided_at = NULL, voided_by_member_id = NULL, voided_by_name = NULL, void_reason = NULL WHERE id = ? AND voided_at = ?",
+      ).bind(task.animalId, task.taskType, task.title, task.details, occurredAt, actorRole, member?.id ?? null, member?.displayName ?? null, rewardCents, outcome, existing.id, existing.voidedAt));
     } else if (!existing) {
       statements.push(db.prepare(
         "INSERT INTO husbandry_events (id, task_id, animal_id, task_type, title, notes, due_date, occurred_at, actor_role, completed_by_member_id, completed_by_name, reward_cents, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -121,26 +139,82 @@ export async function POST(request: Request) {
       .bind(task.id, payload.dueDate));
     if (allocatedFeeder && !retainedAssignment) {
       statements.push(
-        db.prepare("INSERT INTO feeding_assignments (id, animal_id, feeder_id, planned_for, status, created_at, consumed_at, husbandry_event_id) VALUES (?, ?, ?, ?, 'consumed', ?, ?, ?)")
-          .bind(crypto.randomUUID(), task.animalId, allocatedFeeder.id, payload.dueDate, occurredAt, occurredAt, eventId),
-        db.prepare("UPDATE feeder_inventory SET status = 'consumed', consumed_at = ?, animal_id = ?, husbandry_event_id = ? WHERE id = ? AND status = 'available'")
-          .bind(occurredAt, task.animalId, eventId, allocatedFeeder.id),
+        ...feederConsumptionStatements(db, {
+          animalId: task.animalId,
+          feederId: allocatedFeeder.id,
+          plannedFor: payload.dueDate,
+          occurredAt,
+          husbandryEventId: eventId,
+        }),
       );
     }
-    await db.batch(statements);
+    try {
+      await db.batch(statements);
+    } catch (writeError) {
+      // Two family members can tap the same card at the same time. The unique
+      // task/date index correctly lets only one event win; make the losing
+      // request idempotent by returning that winner instead of a scary 500. If
+      // the two requests disagree about the outcome, report the conflict so a
+      // requested refusal is never silently presented as saved.
+      const winner = await completionForTask(db, task.id, payload.dueDate);
+      if (winner) {
+        const racedFeeder = allocatedFeeder && !winner.feederId
+          ? "no feeder deducted — another update used the matching inventory"
+          : null;
+        return completionResponse(winner, outcome, null, racedFeeder);
+      }
+      throw writeError;
+    }
 
     const completion = await completionForTask(db, task.id, payload.dueDate);
+    if (allocatedFeeder && !retainedAssignment && completion && !completion.feederId) {
+      feederShortage = "no feeder deducted — another update used the matching inventory";
+    }
     const balanceCents = member?.id && earningEnabled ? (await memberBalance(db, member.id)).balanceCents : null;
-    return Response.json({ saved: true, completion, outcome, rewardCents, balanceCents, allocatedFeeder, feederShortage }, { headers: noStore });
+    const response = completionResponse(completion, outcome, balanceCents, feederShortage);
+    return response;
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Unable to record task" }, { status: 500, headers: noStore });
+    return internalErrorResponse(error, { context: "Task completion write failed", message: "Unable to record task", headers: noStore });
   }
 }
 
 async function completionForTask(db: D1Database, taskId: string, dueDate: string) {
   return db.prepare(
     "SELECT e.id, e.outcome AS outcome, e.completed_by_member_id AS completedByMemberId, COALESCE(e.completed_by_name, e.actor_role) AS completedBy, e.occurred_at AS occurredAt, e.reward_cents AS rewardCents, f.id AS feederId, f.prey_species AS feederSpecies, f.size_class AS feederSizeClass, f.weight_grams AS feederWeightGrams FROM husbandry_events e LEFT JOIN feeding_assignments fa ON fa.husbandry_event_id = e.id AND fa.status = 'consumed' LEFT JOIN feeder_inventory f ON f.id = fa.feeder_id WHERE e.task_id = ? AND e.due_date = ? AND e.voided_at IS NULL",
-  ).bind(taskId, dueDate).first<{ rewardCents: number; outcome: string | null }>();
+  ).bind(taskId, dueDate).first<CompletionRecord>();
+}
+
+function completionResponse(
+  completion: CompletionRecord | null,
+  requestedOutcome: CompletionOutcome,
+  balanceCents: number | null = null,
+  feederShortage: string | null = null,
+) {
+  if (!completion) {
+    return Response.json({ error: "The completion could not be confirmed. Try again." }, { status: 409, headers: noStore });
+  }
+  const storedOutcome: CompletionOutcome = completion.outcome === "refused" ? "refused" : "done";
+  if (storedOutcome !== requestedOutcome) {
+    return Response.json(
+      { error: `That task was already recorded as ${storedOutcome}. Refresh before changing its outcome.`, outcome: storedOutcome },
+      { status: 409, headers: noStore },
+    );
+  }
+  const allocatedFeeder = completion.feederId ? {
+    id: completion.feederId,
+    preySpecies: completion.feederSpecies,
+    sizeClass: completion.feederSizeClass,
+    weightGrams: completion.feederWeightGrams,
+  } : null;
+  return Response.json({
+    saved: true,
+    completion,
+    outcome: storedOutcome,
+    rewardCents: completion.rewardCents,
+    balanceCents,
+    allocatedFeeder,
+    feederShortage,
+  }, { headers: noStore });
 }
 
 /**
@@ -205,8 +279,5 @@ function correctionFailure(error: unknown, fallback: string) {
   if (error instanceof CompletionCorrectionError) {
     return Response.json({ error: error.message }, { status: error.status, headers: noStore });
   }
-  return Response.json(
-    { error: error instanceof Error ? error.message : fallback },
-    { status: 500, headers: noStore },
-  );
+  return internalErrorResponse(error, { context: "Task completion correction failed", message: fallback, headers: noStore });
 }

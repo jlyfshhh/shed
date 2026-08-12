@@ -59,6 +59,14 @@ export function validateBundle(bundle: Record<string, unknown>): BundlePlan {
       const identifier = String(key);
       if (seen.has(identifier)) add(`${bundleKey} contains ${definition.key} ${identifier} more than once`);
       seen.add(identifier);
+      if (
+        bundleKey === "husbandryEvents"
+        && Object.hasOwn(record, "outcome")
+        && record.outcome !== "done"
+        && record.outcome !== "refused"
+      ) {
+        add(`${bundleKey}[${index}] has an invalid outcome`);
+      }
     });
   }
 
@@ -69,6 +77,7 @@ export function validateBundle(bundle: Record<string, unknown>): BundlePlan {
   if (sheets.length > MAX_ATTACHMENTS) {
     add(`the backup carries ${sheets.length} attachments, more than the ${MAX_ATTACHMENTS} allowed`);
   } else {
+    const sheetPlanIds = new Set<string>();
     const planIds = new Set(
       (Array.isArray(bundle.lightingPlans) ? bundle.lightingPlans : [])
         .map((plan) => (plan && typeof plan === "object" ? String((plan as Record<string, unknown>).id ?? "") : ""))
@@ -90,6 +99,11 @@ export function validateBundle(bundle: Record<string, unknown>): BundlePlan {
         add(`attachment ${index} refers to lighting plan ${planId}, which is not in this backup`);
         return;
       }
+      if (sheetPlanIds.has(planId)) {
+        add(`lighting plan ${planId} has more than one attachment`);
+        return;
+      }
+      sheetPlanIds.add(planId);
       const bytes = decodeBase64(encoded);
       if (!bytes) {
         add(`attachment ${index} is not valid base64`);
@@ -115,4 +129,3 @@ export function validateBundle(bundle: Record<string, unknown>): BundlePlan {
 
   return { errors, counts };
 }
-

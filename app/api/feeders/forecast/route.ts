@@ -1,4 +1,5 @@
 import { ensureDatabase } from "@/db/runtime";
+import { internalErrorResponse } from "@/lib/api-errors";
 import { dateInTimeZone } from "@/lib/date";
 import { requireCapability } from "@/lib/household-auth";
 import { loadFeederForecast } from "@/lib/feeder-forecast-data";
@@ -18,9 +19,6 @@ export async function GET(request: Request) {
     if (auth.response) return auth.response;
     return Response.json(await loadFeederForecast(db, today, horizonDays));
   } catch (error) {
-    return Response.json(
-      { error: error instanceof Error ? error.message : "Unable to forecast feeder needs" },
-      { status: 500 },
-    );
+    return internalErrorResponse(error, { context: "Feeder forecast failed", message: "Unable to forecast feeder needs" });
   }
 }

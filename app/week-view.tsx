@@ -21,6 +21,7 @@ type WeekTask = {
   taskType: string;
   title: string;
   complete: number;
+  outcome: string | null;
   completedBy: string | null;
   missedAt: string | null;
   skippedAt: string | null;
@@ -35,7 +36,7 @@ type WeekDay = {
   isPast: boolean;
   isFuture: boolean;
   tasks: WeekTask[];
-  counts: { total: number; done: number; missed: number; skipped: number; pending: number };
+  counts: { total: number; done: number; refused: number; missed: number; skipped: number; pending: number };
 };
 
 type WeekData = {
@@ -47,7 +48,7 @@ type WeekData = {
   previousStart: string;
   nextStart: string;
   days: WeekDay[];
-  totals: { total: number; done: number; missed: number; pending: number };
+  totals: { total: number; done: number; refused: number; missed: number; skipped: number; pending: number };
 };
 
 const TASK_GLYPHS: Record<string, string> = {
@@ -125,7 +126,7 @@ export default function WeekView({ onClose }: { onClose: () => void }) {
       <header className="overlay-head">
         <div>
           <b>{data?.label ?? "The week"}</b>
-          <span>{data ? `${data.totals.done} of ${data.totals.total} done` : "Loading…"}</span>
+          <span>{data ? `${data.totals.done} done${data.totals.refused ? ` · ${data.totals.refused} refused` : ""}${data.totals.skipped ? ` · ${data.totals.skipped} skipped` : ""} · ${data.totals.total} scheduled` : "Loading…"}</span>
         </div>
         <div className="overlay-head-actions">
           <button className="week-step" onClick={() => data && goToWeek(data.previousStart)} aria-label="Previous week">←</button>
@@ -159,7 +160,7 @@ export default function WeekView({ onClose }: { onClose: () => void }) {
                           ? (day.isFuture ? "Nothing scheduled" : "Nothing was due")
                           : day.isFuture
                             ? `${day.counts.total} scheduled`
-                            : `${day.counts.done}/${day.counts.total} done${day.counts.missed ? ` · ${day.counts.missed} missed` : ""}${day.counts.skipped ? ` · ${day.counts.skipped} skipped` : ""}`}
+                            : `${day.counts.done}/${day.counts.total} done${day.counts.refused ? ` · ${day.counts.refused} refused` : ""}${day.counts.missed ? ` · ${day.counts.missed} missed` : ""}${day.counts.skipped ? ` · ${day.counts.skipped} skipped` : ""}`}
                       </span>
                       {day.isToday && <span className="week-today-flag">Today</span>}
                       {day.counts.total > 0 && <span className="week-caret" aria-hidden="true">{openDay === day.date ? "▾" : "▸"}</span>}
@@ -182,19 +183,19 @@ export default function WeekView({ onClose }: { onClose: () => void }) {
                         {day.tasks.map((task) => (
                           <li
                             key={task.id}
-                            className={task.complete ? "done" : task.missedAt ? "missed" : task.skippedAt ? "skipped" : ""}
-                            title={task.skippedAt ? `${task.title} — skipped${task.skipReason ? `: ${task.skipReason}` : ""}` : task.completedBy ? `${task.title} — ${task.completedBy}` : task.title}
+                            className={task.complete ? "done" : task.skippedAt ? "skipped" : task.missedAt ? "missed" : ""}
+                            title={task.skippedAt ? `${task.title} — skipped${task.skipReason ? `: ${task.skipReason}` : ""}` : `${task.title}${task.outcome === "refused" ? " — refused" : ""}${task.completedBy ? ` — ${task.completedBy}` : ""}`}
                           >
                             <span className="week-glyph" aria-hidden="true">{TASK_GLYPHS[task.taskType] ?? "•"}</span>
                             <span className="week-animal">{task.animalName}</span>
-                            <span className="week-title">{task.title}</span>
+                            <span className="week-title">{task.title}{task.outcome === "refused" ? " · refused" : ""}</span>
                           </li>
                         ))}
                       </ul>
                       {!narrow && <footer className="week-day-foot">
                         {day.isFuture
                           ? `${day.counts.total} scheduled`
-                          : `${day.counts.done}/${day.counts.total} done${day.counts.missed ? ` · ${day.counts.missed} missed` : ""}${day.counts.skipped ? ` · ${day.counts.skipped} skipped` : ""}`}
+                          : `${day.counts.done}/${day.counts.total} done${day.counts.refused ? ` · ${day.counts.refused} refused` : ""}${day.counts.missed ? ` · ${day.counts.missed} missed` : ""}${day.counts.skipped ? ` · ${day.counts.skipped} skipped` : ""}`}
                       </footer>}
                     </>
                   )}
