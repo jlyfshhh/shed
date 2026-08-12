@@ -1,4 +1,4 @@
-FROM node:22.14-bookworm-slim AS build
+FROM node:26.7-bookworm-slim AS build
 
 WORKDIR /app
 COPY package.json package-lock.json ./
@@ -13,7 +13,7 @@ RUN npm run build
 # cannot shrink an earlier one.
 RUN npm prune --omit=dev
 
-FROM node:22.14-bookworm-slim AS runtime
+FROM node:26.7-bookworm-slim AS runtime
 
 WORKDIR /app
 ARG SHED_VERSION=dev
