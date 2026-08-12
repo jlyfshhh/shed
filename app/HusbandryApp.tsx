@@ -55,6 +55,8 @@ type Task = {
   completedBy: string | null;
   skippedAt: string | null;
   skipReason: string | null;
+  missedAt: string | null;
+  missedBy: string | null;
 };
 type Animal = {
   id: string;
@@ -691,7 +693,12 @@ export default function HusbandryApp() {
   // at 0% forever. It stays visible below, undoable, rather than vanishing.
   const skipped = data?.tasks.filter((task) => task.skippedAt && !task.complete) ?? [];
   const accountable = data?.tasks.filter((task) => !task.skippedAt || task.complete) ?? [];
-  const pending = accountable.filter((task) => !task.complete);
+  // Missed is settled work too: the keeper has said it is not happening. It
+  // leaves the list like a skip does, but unlike a skip it stays in the day's
+  // totals, because a missed task is a lapse and the day should not read as
+  // complete without it.
+  const missed = accountable.filter((task) => !task.complete && task.missedAt);
+  const pending = accountable.filter((task) => !task.complete && !task.missedAt);
   const completed = accountable.filter((task) => task.complete);
   const overdue = data?.overdue ?? [];
   // When every scheduled item was intentionally skipped, the day is settled:
@@ -887,6 +894,12 @@ export default function HusbandryApp() {
                         <button className="refuse-button" disabled={busyTask === task.id} onClick={() => refuseMeal(task)}>Refused</button>
                       )}
                       <button className="skip-button" disabled={busyTask === task.id} onClick={() => skipTask(task)}>Skip</button>
+                      {/* Missed belongs on today's card as well as on overdue ones.
+                          A keeper knows at ten at night that the animal is asleep and
+                          the pellets are not happening; making them wait until
+                          tomorrow leaves the task on today's list pretending it might
+                          still get done, and the day never reads as settled. */}
+                      {can("care.miss") && <button className="miss-button" disabled={busyTask === task.id} onClick={() => missTask(task)}>Missed</button>}
                     </div>
                   </div>
                 </article>
@@ -916,6 +929,29 @@ export default function HusbandryApp() {
                 </div>
               ))}
             </div>
+
+            {/* Marked missed during the day rather than discovered overdue the
+                next morning. Still correctable: if it happened after all, Mark
+                done clears the miss. */}
+            {missed.length > 0 && (
+              <>
+                <div className="section-title compact"><h2>Missed today</h2><span>{missed.length}</span></div>
+                <div className="completed-list missed-list">
+                  {missed.map((task) => (
+                    <div key={task.id}>
+                      <span>!</span>
+                      <b>{task.animalName}</b>
+                      <p>{task.title}{task.missedBy ? ` · ${task.missedBy}` : ""}</p>
+                      <span className="completion-correction-actions">
+                        <button disabled={busyTask === task.id} onClick={() => void completeTask(task)}>
+                          {busyTask === task.id ? "Saving…" : "Actually done"}
+                        </button>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
 
             {/* Skipped work is off the list but not hidden: the keeper should be
                 able to see what they set aside today, and change their mind. */}

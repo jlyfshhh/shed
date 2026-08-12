@@ -150,9 +150,16 @@ h1, h2, h3, p { margin-top: 0; }
 .complete-button span { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; background: var(--moss); color: var(--paper); }
 .complete-button:disabled { opacity: .58; cursor: wait; }
 .completed-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-.completed-list > div { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; gap: 8px; align-items: center; border-bottom: 1px solid var(--line); padding: 10px 4px 12px; font-size: 13px; }
+/* The correction buttons used to share the row with the task name, which left
+   the name a sliver of space and truncated it — the keeper could see that
+   something had been done but not what. The buttons now take their own line
+   underneath, and the name has the row to itself and wraps in full. */
+.completed-list > div { display: grid; grid-template-columns: auto auto minmax(0, 1fr); gap: 4px 8px; align-items: center; border-bottom: 1px solid var(--line); padding: 10px 4px 12px; font-size: 13px; }
 .completed-list > div > span { color: var(--moss); font-weight: 900; }
-.completed-list p { margin: 0; color: var(--muted); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.completed-list .completion-correction-actions { grid-column: 1 / -1; justify-content: flex-start; margin-top: 5px; }
+.missed-list > div > span { color: var(--danger-ink); }
+.missed-list b { opacity: .85; }
+.completed-list p { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
 .completion-correction-actions { display: flex; gap: 4px; justify-content: flex-end; }
 .completion-correction-actions button { border: 1px solid var(--line); border-radius: 999px; background: var(--paper); color: var(--moss); padding: 6px 9px; font-size: 10.5px; font-weight: 800; cursor: pointer; white-space: nowrap; }
 .completion-correction-actions button.mark-not-done { color: var(--danger-ink); border-color: var(--danger-line); background: var(--danger-soft); }
@@ -688,7 +695,7 @@ button.primary:disabled { opacity: .6; cursor: wait; }
   .toast { bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
 }
 
-@media (max-width: 420px) { .animal-grid { gap: 11px; }.animal-card h2 { font-size: 17px; }.animal-card-body { padding: 11px 12px 13px; }.animal-photo-glyph { font-size: 34px; }.completed-list > div { grid-template-columns: auto auto minmax(0, 1fr) auto; }.page-heading h1 { font-size: 36px; } }
+@media (max-width: 420px) { .animal-grid { gap: 11px; }.animal-card h2 { font-size: 17px; }.animal-card-body { padding: 11px 12px 13px; }.animal-photo-glyph { font-size: 34px; }.completed-list > div { grid-template-columns: auto auto minmax(0, 1fr); }.page-heading h1 { font-size: 36px; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; } }
 
 /* ── Care routines offered after adding an animal ── */
