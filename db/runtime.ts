@@ -154,6 +154,11 @@ async function applySchema(db: D1Database) {
   await addMissingColumns(db, "household_members", [["earning_enabled", "INTEGER NOT NULL DEFAULT 0"]]);
   await addMissingColumns(db, "care_schedules", [["reward_cents", "INTEGER"]]);
   await addMissingColumns(db, "husbandry_events", [["reward_cents", "INTEGER NOT NULL DEFAULT 0"]]);
+  // Completing an overdue task can file the care on its due date, so occurred_at
+  // is no longer necessarily the moment the entry was made. Keep that instant.
+  // Nullable on purpose: rows written before this column existed genuinely do
+  // not know, and a backfilled guess would be indistinguishable from a fact.
+  await addMissingColumns(db, "husbandry_events", [["recorded_at", "TEXT"]]);
   await normalizeLegacyTaskDispositions(db);
   await db.prepare("INSERT OR IGNORE INTO app_settings (key, value) VALUES ('default_reward_cents', '25')").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS animals_active_name_idx ON animals(active, name)").run();

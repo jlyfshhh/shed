@@ -1,0 +1,84 @@
+// Relative, not the "@/" alias: this module is covered by a `node --test` suite
+// that resolves imports without the bundler's path mapping.
+import { dateInTimeZone, DEFAULT_TIME_ZONE, isIsoDate } from "./date.ts";
+
+/**
+ * When an overdue task is finally logged, two different things may have
+ * happened, and the record has no way to tell them apart on its own:
+ *
+ * - the care happened today, late; or
+ * - the care happened on the day it was due and only the logging is late.
+ *
+ * `occurred_at` answers "when was the animal actually cared for", so the keeper
+ * has to be the one to say. This resolves that answer into a timestamp.
+ */
+
+export class CompletionTimingError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CompletionTimingError";
+  }
+}
+
+export type ResolveOccurredAtOptions = {
+  /** The day the task was scheduled for. */
+  dueDate: string;
+  /** The keeper's answer: the due date, or today. Absent means today. */
+  occurredOn?: string | null;
+  now?: Date;
+  timeZone?: string;
+};
+
+export type ResolvedCompletionTiming = {
+  /** Goes in `occurred_at` — when the care happened. */
+  occurredAt: string;
+  /** Goes in `recorded_at` — when it was written down. Always the real instant. */
+  recordedAt: string;
+  /** True when the keeper attributed the care to an earlier day than today. */
+  backdated: boolean;
+};
+
+/**
+ * Only two answers are accepted: the task's own due date, or today. An open
+ * date field would let any completion be filed under any day, which is exactly
+ * the kind of quiet rewriting the rest of this app refuses to allow — voids and
+ * edits stay visible precisely so the record cannot drift. This is a
+ * disambiguation between two known days, not free-form backdating.
+ */
+export function resolveOccurredAt({
+  dueDate,
+  occurredOn,
+  now = new Date(),
+  timeZone = DEFAULT_TIME_ZONE,
+}: ResolveOccurredAtOptions): ResolvedCompletionTiming {
+  const recordedAt = now.toISOString();
+  const today = dateInTimeZone(timeZone, now);
+
+  if (occurredOn === undefined || occurredOn === null || occurredOn === today) {
+    return { occurredAt: recordedAt, recordedAt, backdated: false };
+  }
+  if (!isIsoDate(occurredOn)) {
+    throw new CompletionTimingError("Completion date must be a calendar date.");
+  }
+  if (occurredOn !== dueDate) {
+    throw new CompletionTimingError(
+      "A completion can only be recorded on the day it was due or today.",
+    );
+  }
+  // A due date in the future would mean the keeper is filing care that has not
+  // happened yet; "on the due date" is only meaningful looking backwards.
+  if (occurredOn > today) {
+    throw new CompletionTimingError("A completion cannot be recorded in the future.");
+  }
+
+  // Noon UTC lands on the intended calendar day in every time zone from UTC-11
+  // to UTC+11, so the stored instant never reads as the day before or after in
+  // the household's zone. The clock time is invented either way — the keeper
+  // told us the day, not the hour — so it should at least be invented safely.
+  return { occurredAt: `${occurredOn}T12:00:00.000Z`, recordedAt, backdated: true };
+}
+
+/** True when a task's due date is behind the household's current day. */
+export function taskIsOverdue(dueDate: string, now = new Date(), timeZone = DEFAULT_TIME_ZONE) {
+  return dueDate < dateInTimeZone(timeZone, now);
+}

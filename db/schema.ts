@@ -149,7 +149,10 @@ export const husbandryEvents = sqliteTable("husbandry_events", {
   title: text("title").notNull(),
   notes: text("notes"),
   dueDate: text("due_date"),
+  /** When the care happened — the keeper's answer, which may be the due date. */
   occurredAt: text("occurred_at").notNull(),
+  /** When it was written down. Always the real instant, never backdated. */
+  recordedAt: text("recorded_at"),
   actorRole: text("actor_role").notNull(),
   completedByMemberId: text("completed_by_member_id"),
   completedByName: text("completed_by_name"),

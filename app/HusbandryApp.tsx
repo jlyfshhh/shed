@@ -207,6 +207,7 @@ export default function HusbandryApp() {
   const [memberBusy, setMemberBusy] = useState<string | null>(null);
   const [invite, setInvite] = useState<Invite | null>(null);
   const [attributionTask, setAttributionTask] = useState<Task | null>(null);
+  const [timingTask, setTimingTask] = useState<{ task: Task; outcome: "done" | "refused" } | null>(null);
   const [attributionMemberId, setAttributionMemberId] = useState("");
   const [attributionReason, setAttributionReason] = useState("Wrong household member was credited.");
   // ── Task earnings ("allowance") ──
@@ -500,13 +501,34 @@ export default function HusbandryApp() {
     window.setTimeout(() => setToast(null), 2800);
   };
 
+  /**
+   * A task logged after its due date is ambiguous: the care may have happened
+   * today, late, or on the due date with only the logging running behind. Ask
+   * rather than assume, because `occurredAt` is what the animal's history is
+   * ordered by. On-time work is unambiguous and is never interrupted.
+   */
   const completeTask = async (task: Task, outcome: "done" | "refused" = "done") => {
+    // `data.date` is the household's current day as the server computed it, so
+    // a keeper in another time zone — or up past midnight — sees the same
+    // "overdue" as the records do.
+    if (data && task.dueDate < data.date) {
+      setTimingTask({ task, outcome });
+      return;
+    }
+    await recordCompletion(task, outcome);
+  };
+
+  const recordCompletion = async (
+    task: Task,
+    outcome: "done" | "refused" = "done",
+    occurredOn?: string,
+  ) => {
     setBusyTask(task.id);
     try {
       const response = await fetch("/api/tasks/complete", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ taskId: task.id, dueDate: task.dueDate, actorRole: viewer?.role ?? "Owner", outcome }),
+        body: JSON.stringify({ taskId: task.id, dueDate: task.dueDate, actorRole: viewer?.role ?? "Owner", outcome, occurredOn }),
       });
       const payload = (await response.json()) as { error?: string; outcome?: "done" | "refused"; allocatedFeeder?: { weightGrams: number; sizeClass: string; preySpecies: string } | null; feederShortage?: string | null };
       if (!response.ok) throw new Error(payload.error ?? "Unable to save");
@@ -524,6 +546,7 @@ export default function HusbandryApp() {
       setToast(saveError instanceof Error ? saveError.message : "That update didn’t save. Please try again.");
     } finally {
       setBusyTask(null);
+      setTimingTask(null);
     }
   };
 
@@ -1305,6 +1328,43 @@ export default function HusbandryApp() {
       {weekOpen && <WeekView onClose={() => setWeekOpen(false)} />}
       {forecastOpen && <FeederForecast onClose={() => { setForecastOpen(false); void loadForecast().catch(() => undefined); }} />}
       {bulkFeedersOpen && can("feeders.manage") && <BulkFeederIntake onClose={() => setBulkFeedersOpen(false)} onSaved={(message) => { setBulkFeedersOpen(false); notify(message); void refresh().catch(() => undefined); void loadForecast().catch(() => undefined); }} />}
+      {timingTask && data && (
+        <div className="sheet-backdrop attribution-backdrop" role="dialog" aria-modal="true" aria-labelledby="timing-title" onClick={() => setTimingTask(null)}>
+          <div className="sheet attribution-sheet" onClick={(event) => event.stopPropagation()}>
+            <header className="sheet-head">
+              <div>
+                <h2 id="timing-title">When did this happen?</h2>
+                <p>{timingTask.task.animalName} · {timingTask.task.title}</p>
+              </div>
+              <button type="button" className="sheet-close" onClick={() => setTimingTask(null)} aria-label="Close">✕</button>
+            </header>
+            <div className="attribution-body">
+              <div className="correction-notice">
+                <b>This was due {formatDate(timingTask.task.dueDate)}.</b>
+                <span>Either answer records the care. It only sets the date this shows under in {timingTask.task.animalName}’s history.</span>
+              </div>
+              <div className="sheet-actions">
+                <button
+                  type="button"
+                  className="ghost"
+                  disabled={busyTask === timingTask.task.id}
+                  onClick={() => recordCompletion(timingTask.task, timingTask.outcome, timingTask.task.dueDate)}
+                >
+                  On {shortDate(timingTask.task.dueDate)}
+                </button>
+                <button
+                  type="button"
+                  disabled={busyTask === timingTask.task.id}
+                  onClick={() => recordCompletion(timingTask.task, timingTask.outcome, data.date)}
+                >
+                  {busyTask === timingTask.task.id ? "Saving…" : "Today"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {attributionTask && can("care.correct") && (
         <div className="sheet-backdrop attribution-backdrop" role="dialog" aria-modal="true" aria-labelledby="attribution-title" onClick={() => setAttributionTask(null)}>
           <form className="sheet attribution-sheet" onSubmit={correctAttribution} onClick={(event) => event.stopPropagation()}>

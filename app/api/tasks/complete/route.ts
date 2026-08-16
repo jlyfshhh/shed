@@ -1,5 +1,6 @@
 import { ensureDatabase } from "@/db/runtime";
 import { internalErrorResponse } from "@/lib/api-errors";
+import { CompletionTimingError, resolveOccurredAt } from "@/lib/completion-timing";
 import { attributedTo, requireCapability } from "@/lib/household-auth";
 import { getDefaultRewardCents, memberBalance, rewardForCompletion } from "@/lib/rewards";
 import { loadFeederForecast } from "@/lib/feeder-forecast-data";
@@ -17,6 +18,11 @@ type CompletionPayload = {
   actorRole?: string;
   /** "done", or "refused" when a feeding was offered and the animal did not eat. */
   outcome?: string;
+  /**
+   * Which day the care actually happened, for a task logged after its due date.
+   * Accepts only the task's own due date or today; absent means today.
+   */
+  occurredOn?: string;
 };
 
 type CompletionOutcome = "done" | "refused";
@@ -120,17 +126,31 @@ export async function POST(request: Request) {
       return Response.json({ error: "Only a feeding can be refused." }, { status: 400, headers: noStore });
     }
 
-    const occurredAt = new Date().toISOString();
+    // Reward attribution is unaffected by this choice: contributions bucket on
+    // COALESCE(due_date, occurred_at), and due_date is not what changes here.
+    let occurredAt: string;
+    let recordedAt: string;
+    try {
+      ({ occurredAt, recordedAt } = resolveOccurredAt({
+        dueDate: payload.dueDate,
+        occurredOn: payload.occurredOn,
+      }));
+    } catch (error) {
+      if (error instanceof CompletionTimingError) {
+        return Response.json({ error: error.message }, { status: 400, headers: noStore });
+      }
+      throw error;
+    }
     const actorRole = member?.role ?? (payload.actorRole === "Owner" ? "Owner" : "Zookeeper");
     const statements: D1PreparedStatement[] = [];
     if (existing?.voidedAt) {
       statements.push(db.prepare(
-        "UPDATE husbandry_events SET animal_id = ?, task_type = ?, title = ?, notes = ?, occurred_at = ?, actor_role = ?, completed_by_member_id = ?, completed_by_name = ?, reward_cents = ?, outcome = ?, voided_at = NULL, voided_by_member_id = NULL, voided_by_name = NULL, void_reason = NULL WHERE id = ? AND voided_at = ?",
-      ).bind(task.animalId, task.taskType, task.title, task.details, occurredAt, actorRole, member?.id ?? null, member?.displayName ?? null, rewardCents, outcome, existing.id, existing.voidedAt));
+        "UPDATE husbandry_events SET animal_id = ?, task_type = ?, title = ?, notes = ?, occurred_at = ?, recorded_at = ?, actor_role = ?, completed_by_member_id = ?, completed_by_name = ?, reward_cents = ?, outcome = ?, voided_at = NULL, voided_by_member_id = NULL, voided_by_name = NULL, void_reason = NULL WHERE id = ? AND voided_at = ?",
+      ).bind(task.animalId, task.taskType, task.title, task.details, occurredAt, recordedAt, actorRole, member?.id ?? null, member?.displayName ?? null, rewardCents, outcome, existing.id, existing.voidedAt));
     } else if (!existing) {
       statements.push(db.prepare(
-        "INSERT INTO husbandry_events (id, task_id, animal_id, task_type, title, notes, due_date, occurred_at, actor_role, completed_by_member_id, completed_by_name, reward_cents, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      ).bind(eventId, task.id, task.animalId, task.taskType, task.title, task.details, payload.dueDate, occurredAt, actorRole, member?.id ?? null, member?.displayName ?? null, rewardCents, outcome));
+        "INSERT INTO husbandry_events (id, task_id, animal_id, task_type, title, notes, due_date, occurred_at, recorded_at, actor_role, completed_by_member_id, completed_by_name, reward_cents, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      ).bind(eventId, task.id, task.animalId, task.taskType, task.title, task.details, payload.dueDate, occurredAt, recordedAt, actorRole, member?.id ?? null, member?.displayName ?? null, rewardCents, outcome));
     }
 
     // Completing a task clears any "missed" or "skipped" mark — it turned out to
