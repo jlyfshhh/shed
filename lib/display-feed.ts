@@ -13,13 +13,15 @@ export const TODAY_DISPLAY_TASKS_SQL = `
          CASE WHEN e.id IS NULL THEN 0 ELSE 1 END AS complete
     FROM care_tasks t
     JOIN animals a ON a.id = t.animal_id
+    LEFT JOIN care_schedules s ON s.id = t.schedule_id
     LEFT JOIN husbandry_events e
       ON e.task_id = t.id
      AND e.due_date = t.due_date
      AND e.voided_at IS NULL
    WHERE a.active = 1
-     AND t.due_date = ?
-   ORDER BY complete, a.name, t.title
+     AND t.due_date <= ?
+     AND date(t.due_date, '+' || COALESCE(s.grace_days, 0) || ' days') >= ?
+   ORDER BY complete, t.due_date, a.name, t.title
 `;
 
 export type TodayDisplayDispositionRow = {

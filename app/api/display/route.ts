@@ -51,9 +51,9 @@ export async function GET(request: Request) {
     const overdueSince = overdueStartDate(today, careStartDate);
     // Fetch every task scheduled today so the summary cannot turn misses or
     // skips into a false all-clear. Only actionable work is projected below.
-    const todayResult = await db.prepare(TODAY_DISPLAY_TASKS_SQL).bind(today).all();
+    const todayResult = await db.prepare(TODAY_DISPLAY_TASKS_SQL).bind(today, today).all();
     const overdueResult = await db.prepare(
-      "SELECT t.animal_id AS animalId, t.schedule_id AS scheduleId, a.name AS animalName, a.species, t.task_type AS taskType, t.title, t.details, t.due_date AS dueDate FROM care_tasks t JOIN animals a ON a.id=t.animal_id LEFT JOIN husbandry_events e ON e.task_id=t.id AND e.due_date=t.due_date AND e.voided_at IS NULL WHERE a.active = 1 AND t.due_date < ? AND t.due_date >= ? AND e.id IS NULL AND t.missed_at IS NULL AND t.skipped_at IS NULL ORDER BY t.due_date DESC, a.name, t.title",
+      "SELECT t.animal_id AS animalId, t.schedule_id AS scheduleId, a.name AS animalName, a.species, t.task_type AS taskType, t.title, t.details, t.due_date AS dueDate FROM care_tasks t JOIN animals a ON a.id=t.animal_id LEFT JOIN care_schedules s ON s.id = t.schedule_id LEFT JOIN husbandry_events e ON e.task_id=t.id AND e.due_date=t.due_date AND e.voided_at IS NULL WHERE a.active = 1 AND date(t.due_date, '+' || COALESCE(s.grace_days, 0) || ' days') < ? AND t.due_date >= ? AND e.id IS NULL AND t.missed_at IS NULL AND t.skipped_at IS NULL ORDER BY t.due_date DESC, a.name, t.title",
     ).bind(today, overdueSince).all();
 
     const todayRows = todayResult.results as Array<DisplayTask & { complete: number }>;

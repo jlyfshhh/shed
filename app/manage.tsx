@@ -162,6 +162,7 @@ const resourceDefs: ResourceDef[] = [
       { key: "weekdaysJson", column: "weekdays_json", label: "Days of week", type: "weekdays", showIf: (v) => v.frequency === "weekly" || v.frequency === "monthly", help: "For monthly care, choose one weekday to schedule its first, second, third, fourth, or fifth occurrence." },
       { key: "intervalDays", column: "interval_days", label: "Every N days", type: "number", showIf: (v) => v.frequency === "interval", help: "1 = daily, 2 = every other day" },
       { key: "dayOfMonth", column: "day_of_month", label: "Day / occurrence in month", type: "number", showIf: (v) => v.frequency === "monthly", help: "With no weekday selected: calendar day 1–31. With a weekday selected: 1 = first, 2 = second … 5 = fifth." },
+      { key: "graceDays", column: "grace_days", label: "Extra days to finish", type: "number", help: "Blank or 0 = due on the day. 1 = a Saturday task stays on the list through Sunday instead of going overdue. Use it for chores that just need doing that weekend, not for feedings." },
       { key: "startDate", column: "start_date", label: "Start date", type: "date", required: true },
       { key: "endDate", column: "end_date", label: "End date", type: "date", help: "Optional — leave blank to run indefinitely" },
       { key: "rewardCents", column: "reward_cents", label: "Reward per task (cents)", type: "number", help: "Blank = household default. e.g. 25 = 25¢, 50 = 50¢" },

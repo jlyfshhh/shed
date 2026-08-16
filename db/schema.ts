@@ -39,6 +39,8 @@ export const careSchedules = sqliteTable("care_schedules", {
   preySpecies: text("prey_species"), preyDescription: text("prey_description"), preySizeClass: text("prey_size_class"), targetPercent: real("target_percent"),
   minimumPercent: real("minimum_percent"), maximumPercent: real("maximum_percent"), buyAsNeeded: integer("buy_as_needed", { mode: "boolean" }).notNull().default(false),
   rewardCents: integer("reward_cents"),
+  /** Days after the due date this stays simply "to do" rather than overdue. */
+  graceDays: integer("grace_days").notNull().default(0),
 });
 
 export const careTasks = sqliteTable("care_tasks", {

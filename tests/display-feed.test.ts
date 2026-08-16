@@ -16,6 +16,7 @@ test("room display retains every scheduled disposition but exposes only actionab
       species TEXT NOT NULL,
       active INTEGER NOT NULL
     );
+    CREATE TABLE care_schedules (id TEXT PRIMARY KEY, grace_days INTEGER NOT NULL DEFAULT 0);
     CREATE TABLE care_tasks (
       id TEXT PRIMARY KEY,
       schedule_id TEXT,
@@ -55,7 +56,7 @@ test("room display retains every scheduled disposition but exposes only actionab
       ('event-refused', 'refused', '2026-08-13', 'refused', NULL);
   `);
 
-  const rows = db.prepare(TODAY_DISPLAY_TASKS_SQL).all("2026-08-13") as Array<{
+  const rows = db.prepare(TODAY_DISPLAY_TASKS_SQL).all("2026-08-13", "2026-08-13") as Array<{
     title: string;
     complete: number;
     outcome: string | null;

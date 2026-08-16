@@ -51,8 +51,10 @@ class SqliteD1 {
 function fixture() {
   const adapter = new SqliteD1();
   adapter.sqlite.exec(`
+    CREATE TABLE care_schedules (id TEXT PRIMARY KEY, grace_days INTEGER NOT NULL DEFAULT 0);
     CREATE TABLE care_tasks (
       id TEXT PRIMARY KEY,
+      schedule_id TEXT,
       due_date TEXT NOT NULL,
       missed_at TEXT,
       missed_by_member_id TEXT,

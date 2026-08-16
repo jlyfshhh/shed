@@ -171,7 +171,10 @@ export async function missAllOverdueTasks(
   const result = await db.prepare(
     `UPDATE care_tasks
         SET missed_at = ?, missed_by_member_id = ?, missed_by_name = ?
-      WHERE due_date < ? AND missed_at IS NULL AND skipped_at IS NULL
+      WHERE date(due_date, '+' || COALESCE(
+              (SELECT s.grace_days FROM care_schedules s WHERE s.id = care_tasks.schedule_id), 0
+            ) || ' days') < ?
+        AND missed_at IS NULL AND skipped_at IS NULL
         AND NOT EXISTS (
           SELECT 1 FROM husbandry_events e
            WHERE e.task_id = care_tasks.id

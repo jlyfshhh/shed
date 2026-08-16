@@ -90,11 +90,12 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     // the feeding history, not in a score about whether the household keeps up.
     const scoreRow = await db.prepare(
       `SELECT
-         COALESCE(SUM(CASE WHEN t.due_date < ? AND (t.skipped_at IS NULL OR e.id IS NOT NULL) THEN 1 ELSE 0 END), 0) AS pastDue,
-         COALESCE(SUM(CASE WHEN t.due_date < ? AND e.id IS NOT NULL THEN 1 ELSE 0 END), 0) AS pastDone,
+         COALESCE(SUM(CASE WHEN date(t.due_date, '+' || COALESCE(s.grace_days, 0) || ' days') < ? AND (t.skipped_at IS NULL OR e.id IS NOT NULL) THEN 1 ELSE 0 END), 0) AS pastDue,
+         COALESCE(SUM(CASE WHEN date(t.due_date, '+' || COALESCE(s.grace_days, 0) || ' days') < ? AND e.id IS NOT NULL THEN 1 ELSE 0 END), 0) AS pastDone,
          COALESCE(SUM(CASE WHEN t.due_date = ? AND e.id IS NOT NULL THEN 1 ELSE 0 END), 0) AS todayDone,
          COALESCE(SUM(CASE WHEN t.skipped_at IS NOT NULL AND e.id IS NULL THEN 1 ELSE 0 END), 0) AS skipped
        FROM care_tasks t
+       LEFT JOIN care_schedules s ON s.id = t.schedule_id
        LEFT JOIN husbandry_events e ON e.task_id = t.id AND e.due_date = t.due_date AND e.voided_at IS NULL
        WHERE t.animal_id = ? AND t.due_date >= ? AND t.due_date <= ?`,
     ).bind(today, today, today, id, scoreSince, today).first<{ pastDue: number; pastDone: number; todayDone: number; skipped: number }>();

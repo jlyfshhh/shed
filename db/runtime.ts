@@ -159,6 +159,9 @@ async function applySchema(db: D1Database) {
   // Nullable on purpose: rows written before this column existed genuinely do
   // not know, and a backfilled guess would be indistinguishable from a fact.
   await addMissingColumns(db, "husbandry_events", [["recorded_at", "TEXT"]]);
+  // Weekend chores sit on Saturday only because a schedule needs a day. Zero
+  // keeps every existing plan exactly as strict as it is today.
+  await addMissingColumns(db, "care_schedules", [["grace_days", "INTEGER NOT NULL DEFAULT 0"]]);
   await normalizeLegacyTaskDispositions(db);
   await db.prepare("INSERT OR IGNORE INTO app_settings (key, value) VALUES ('default_reward_cents', '25')").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS animals_active_name_idx ON animals(active, name)").run();

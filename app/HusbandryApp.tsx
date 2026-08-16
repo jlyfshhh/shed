@@ -5,6 +5,7 @@ import WeekView from "./week-view";
 import { AnimalProfile, BulkFeederIntake, FeederForecast, GettingStartedGuide, ManageConsole, RestorePanel, SetupGate, type FeederForecastData, type ResourceKey, type SetupSummary } from "./manage";
 import { animalPhotoUrl } from "./animal-photo";
 import { animalFacts, speciesGlyph } from "@/lib/animal-traits";
+import { taskIsOverdue, taskLastDay } from "@/lib/care-window";
 import type { Capability } from "@/lib/capabilities";
 
 type Role = "Owner" | "Zookeeper";
@@ -49,6 +50,7 @@ type Task = {
   details: string;
   feedingGuidance: string | null;
   dueDate: string;
+  graceDays?: number;
   complete: boolean;
   outcome: "done" | "refused" | null;
   completedByMemberId: string | null;
@@ -510,8 +512,9 @@ export default function HusbandryApp() {
   const completeTask = async (task: Task, outcome: "done" | "refused" = "done") => {
     // `data.date` is the household's current day as the server computed it, so
     // a keeper in another time zone — or up past midnight — sees the same
-    // "overdue" as the records do.
-    if (data && task.dueDate < data.date) {
+    // "overdue" as the records do. A task still inside its grace window is not
+    // late at all, so it is never asked about.
+    if (data && taskIsOverdue(task.dueDate, task.graceDays ?? 0, data.date)) {
       setTimingTask({ task, outcome });
       return;
     }
@@ -906,7 +909,13 @@ export default function HusbandryApp() {
                 <article className="task-card" key={task.id}>
                   <div className="animal-badge" aria-hidden="true">{task.animalName.slice(0, 1)}</div>
                   <div className="task-copy">
-                    <span>{task.species}</span><h3>{task.animalName}</h3><p><b>{task.title}</b>{taskDetails(task) ? ` · ${taskDetails(task)}` : ""}</p>
+                    <span>
+                      {task.species}
+                      {/* Only worth saying when the task is riding its window —
+                          on its own due date it is simply today's work. */}
+                      {data && (task.graceDays ?? 0) > 0 && task.dueDate < data.date
+                        && ` · due ${shortDate(task.dueDate)}, through ${shortDate(taskLastDay(task.dueDate, task.graceDays ?? 0))}`}
+                    </span><h3>{task.animalName}</h3><p><b>{task.title}</b>{taskDetails(task) ? ` · ${taskDetails(task)}` : ""}</p>
                   </div>
                   <div className="task-actions">
                     <button className="complete-button" disabled={busyTask === task.id} onClick={() => completeTask(task)}>
