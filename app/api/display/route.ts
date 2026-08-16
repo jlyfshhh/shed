@@ -2,6 +2,11 @@ import { ensureDatabase } from "@/db/runtime";
 import { overdueStartDate } from "@/lib/care-schedule";
 import { getCareStartDate } from "@/lib/care-settings";
 import { dateInTimeZone } from "@/lib/date";
+import {
+  isActionableTodayDisplayTask,
+  summarizeTodayDisplayTasks,
+  TODAY_DISPLAY_TASKS_SQL,
+} from "@/lib/display-feed";
 import { binding, sharedSecretIsAuthorized } from "@/lib/env";
 import { loadFeederForecast } from "@/lib/feeder-forecast-data";
 import { feederGuidance } from "@/lib/feeder-guidance";
@@ -17,6 +22,8 @@ type DisplayTask = {
   title: string;
   details: string | null;
   dueDate: string;
+  missedAt: string | null;
+  skippedAt: string | null;
   outcome: string | null;
 };
 
@@ -42,24 +49,23 @@ export async function GET(request: Request) {
     const db = await ensureDatabase(today);
     const careStartDate = await getCareStartDate(db);
     const overdueSince = overdueStartDate(today, careStartDate);
-    const todayResult = await db.prepare(
-      // Skipped work is excluded here as it is in the overdue query below: the
-      // wall display exists to show what still needs doing, and a task the
-      // keeper has already decided against is not that.
-      "SELECT t.animal_id AS animalId, t.schedule_id AS scheduleId, a.name AS animalName, a.species, t.task_type AS taskType, t.title, t.details, t.due_date AS dueDate, e.outcome AS outcome, CASE WHEN e.id IS NULL THEN 0 ELSE 1 END AS complete FROM care_tasks t JOIN animals a ON a.id=t.animal_id LEFT JOIN husbandry_events e ON e.task_id=t.id AND e.due_date=t.due_date AND e.voided_at IS NULL WHERE a.active = 1 AND t.due_date = ? AND (t.skipped_at IS NULL OR e.id IS NOT NULL) ORDER BY complete, a.name, t.title",
-    ).bind(today).all();
+    // Fetch every task scheduled today so the summary cannot turn misses or
+    // skips into a false all-clear. Only actionable work is projected below.
+    const todayResult = await db.prepare(TODAY_DISPLAY_TASKS_SQL).bind(today).all();
     const overdueResult = await db.prepare(
       "SELECT t.animal_id AS animalId, t.schedule_id AS scheduleId, a.name AS animalName, a.species, t.task_type AS taskType, t.title, t.details, t.due_date AS dueDate FROM care_tasks t JOIN animals a ON a.id=t.animal_id LEFT JOIN husbandry_events e ON e.task_id=t.id AND e.due_date=t.due_date AND e.voided_at IS NULL WHERE a.active = 1 AND t.due_date < ? AND t.due_date >= ? AND e.id IS NULL AND t.missed_at IS NULL AND t.skipped_at IS NULL ORDER BY t.due_date DESC, a.name, t.title",
     ).bind(today, overdueSince).all();
 
     const todayRows = todayResult.results as Array<DisplayTask & { complete: number }>;
-    const forecast = todayRows.some((task) => task.taskType === "feeding" && task.scheduleId)
+    const forecast = todayRows.some((task) => (
+      isActionableTodayDisplayTask(task) && task.taskType === "feeding" && task.scheduleId
+    ))
       ? await loadFeederForecast(db, today, 1)
       : null;
     const guidanceByTask = new Map(
       (forecast?.events ?? []).map((event) => [`${event.scheduleId}:${event.feedingDate}`, feederGuidance(event)]),
     );
-    const tasks = todayRows.filter((task) => !task.complete).map((task) => ({
+    const tasks = todayRows.filter(isActionableTodayDisplayTask).map((task) => ({
       animalName: task.animalName,
       species: task.species,
       taskType: task.taskType,
@@ -80,19 +86,12 @@ export async function GET(request: Request) {
       details: task.details,
       dueDate: task.dueDate,
     }));
-    const completed = todayRows.length - tasks.length;
-    const refused = todayRows.filter((task) => task.complete && task.outcome === "refused").length;
+    const summary = summarizeTodayDisplayTasks(todayRows);
 
     return Response.json({
       date: today,
       generatedAt: new Date().toISOString(),
-      summary: {
-        total: todayRows.length,
-        completed,
-        refused,
-        remaining: tasks.length,
-        overdue: overdue.length,
-      },
+      summary: { ...summary, overdue: overdue.length },
       tasks,
       overdue,
     }, { headers });

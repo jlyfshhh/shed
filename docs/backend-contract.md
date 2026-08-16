@@ -156,15 +156,23 @@ by a shared secret rather than a household session. It requires
 constant time. Without the binding it answers `503`; with a wrong token, `401`.
 Responses are `no-store` and `X-Content-Type-Options: nosniff`.
 
-The payload is `{ date, generatedAt, summary: { total, completed, remaining,
-overdue }, tasks[], overdue[] }`. **Both task arrays carry exactly six fields** —
+The payload is `{ date, generatedAt, summary: { total, completed, refused,
+skipped, missed, remaining, overdue }, tasks[], overdue[] }`. `total` is every
+task scheduled today, and always equals `completed + skipped + missed +
+remaining`. `refused` is a subset of `completed`, because offering a feeding is
+completed care even when the animal declines it. `overdue` counts actionable
+work from earlier days and is not part of today's `total`. **Both task arrays
+carry exactly six fields** —
 `animalName`, `species`, `taskType`, `title`, `details`, `dueDate` — and nothing
 else. That projection is the privacy boundary the README describes: no member
 ids or names, no access codes, no reward or earnings data, no completion or
 event identifiers, no history, and no write path of any kind.
 
-`details` carries the same dynamic feeder guidance the household dashboard
-shows, so the wall display and Shed never disagree about a feeding.
+`tasks` contains only today's actionable rows; missed, skipped and completed
+rows stay out of it while remaining represented in the summary. `overdue`
+likewise contains only actionable prior-day work. `details` carries the same
+dynamic feeder guidance the household dashboard shows, so the wall display and
+Shed never disagree about a feeding.
 
 **If you add a column to either query, project it away here unless the wall
 display genuinely needs it.** The feed is read by a device that is, by design,
