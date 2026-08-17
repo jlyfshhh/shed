@@ -215,7 +215,8 @@ export const feederInventory = sqliteTable("feeder_inventory", {
   id: text("id").primaryKey(),
   preySpecies: text("prey_species").notNull(),
   sizeClass: text("size_class").notNull(),
-  weightGrams: integer("weight_grams").notNull(),
+  /** Historical only. Feeders are counted by size class; new rows leave this null. */
+  weightGrams: integer("weight_grams"),
   status: text("status").notNull().default("available"),
   addedOn: text("added_on").notNull(),
   consumedAt: text("consumed_at"),

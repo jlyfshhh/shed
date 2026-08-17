@@ -49,7 +49,7 @@ const configs: Record<Resource, Config> = {
     occurredAt: { column: "occurred_at" }, actorRole: { column: "actor_role" }, completedByMemberId: { column: "completed_by_member_id" }, completedByName: { column: "completed_by_name" },
     editedAt: { column: "edited_at" }, editedByMemberId: { column: "edited_by_member_id" }, editedByName: { column: "edited_by_name" },
   } },
-  feeder: { table: "feeder_inventory", required: ["preySpecies", "sizeClass", "weightGrams", "addedOn"], fields: {
+  feeder: { table: "feeder_inventory", required: ["preySpecies", "sizeClass", "addedOn"], fields: {
     preySpecies: { column: "prey_species" }, sizeClass: { column: "size_class" }, weightGrams: { column: "weight_grams", kind: "number" }, status: { column: "status" },
     addedOn: { column: "added_on", kind: "date" }, notes: { column: "notes" },
   } },
@@ -83,7 +83,7 @@ export async function GET(request: Request) {
       db.prepare("SELECT * FROM animals ORDER BY active DESC, name").all(), db.prepare("SELECT * FROM enclosures ORDER BY active DESC, name").all(),
       db.prepare("SELECT * FROM care_schedules ORDER BY active DESC, title").all(), db.prepare("SELECT * FROM animal_notes ORDER BY pinned DESC, updated_at DESC").all(),
       db.prepare("SELECT * FROM equipment ORDER BY active DESC, name").all(), db.prepare("SELECT * FROM weight_events ORDER BY recorded_on DESC").all(),
-      db.prepare("SELECT * FROM husbandry_events ORDER BY occurred_at DESC LIMIT 500").all(), db.prepare("SELECT * FROM feeder_inventory ORDER BY status, prey_species, size_class, weight_grams").all(),
+      db.prepare("SELECT * FROM husbandry_events ORDER BY occurred_at DESC LIMIT 500").all(), db.prepare("SELECT * FROM feeder_inventory ORDER BY status, prey_species, size_class, added_on").all(),
       db.prepare("SELECT * FROM lighting_plans ORDER BY active DESC, planned_on DESC, name").all(),
       db.prepare("SELECT * FROM lighting_plan_fixtures ORDER BY plan_id, role").all(),
       db.prepare("SELECT * FROM lighting_measurements ORDER BY measured_at DESC LIMIT 1000").all(),

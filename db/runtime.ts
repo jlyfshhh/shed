@@ -109,7 +109,7 @@ async function applySchema(db: D1Database) {
     // stuck sheds is usually the first sign humidity has drifted.
     db.prepare("CREATE TABLE IF NOT EXISTS shed_events (id TEXT PRIMARY KEY, animal_id TEXT NOT NULL, recorded_on TEXT NOT NULL, quality TEXT NOT NULL DEFAULT 'complete', notes TEXT, recorded_by_member_id TEXT, recorded_by_name TEXT, created_at TEXT)"),
     db.prepare("CREATE INDEX IF NOT EXISTS shed_events_animal_date_idx ON shed_events(animal_id, recorded_on)"),
-    db.prepare("CREATE TABLE IF NOT EXISTS feeder_inventory (id TEXT PRIMARY KEY, prey_species TEXT NOT NULL, size_class TEXT NOT NULL, weight_grams INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'available', added_on TEXT NOT NULL, consumed_at TEXT, animal_id TEXT, husbandry_event_id TEXT, notes TEXT)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS feeder_inventory (id TEXT PRIMARY KEY, prey_species TEXT NOT NULL, size_class TEXT NOT NULL, weight_grams INTEGER, status TEXT NOT NULL DEFAULT 'available', added_on TEXT NOT NULL, consumed_at TEXT, animal_id TEXT, husbandry_event_id TEXT, notes TEXT)"),
     db.prepare("CREATE INDEX IF NOT EXISTS feeder_inventory_status_idx ON feeder_inventory(status)"),
     db.prepare("CREATE INDEX IF NOT EXISTS feeder_inventory_size_weight_idx ON feeder_inventory(prey_species, size_class, weight_grams)"),
     db.prepare("CREATE TABLE IF NOT EXISTS feeding_assignments (id TEXT PRIMARY KEY, animal_id TEXT NOT NULL, feeder_id TEXT NOT NULL, planned_for TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'planned', created_at TEXT NOT NULL, consumed_at TEXT, husbandry_event_id TEXT)"),
@@ -162,6 +162,7 @@ async function applySchema(db: D1Database) {
   // Weekend chores sit on Saturday only because a schedule needs a day. Zero
   // keeps every existing plan exactly as strict as it is today.
   await addMissingColumns(db, "care_schedules", [["grace_days", "INTEGER NOT NULL DEFAULT 0"]]);
+  await relaxFeederWeight(db);
   await normalizeLegacyTaskDispositions(db);
   await db.prepare("INSERT OR IGNORE INTO app_settings (key, value) VALUES ('default_reward_cents', '25')").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS animals_active_name_idx ON animals(active, name)").run();
@@ -183,6 +184,30 @@ async function materializeTasks(db: D1Database, today: string) {
       .bind(`${schedule.id}:${date}`, schedule.id, schedule.animalId, schedule.taskType, schedule.title, schedule.details, date),
   ));
   if (taskStatements.length) await db.batch(taskStatements);
+}
+
+/**
+ * Feeders are counted by size class now, so new rows carry no weight — but
+ * databases created before that still declare `weight_grams INTEGER NOT NULL`,
+ * and SQLite cannot relax a column constraint in place. Rebuild the table once,
+ * preserving every existing weight so old records keep their history.
+ *
+ * Guarded on the current constraint, so it runs at most once per database and
+ * is a no-op everywhere else. D1 executes a batch transactionally, so the table
+ * is never left dropped.
+ */
+async function relaxFeederWeight(db: D1Database) {
+  const columns = await db.prepare("PRAGMA table_info(feeder_inventory)").all<{ name: string; notnull: number }>();
+  const weight = columns.results.find((column) => column.name === "weight_grams");
+  if (!weight || Number(weight.notnull) !== 1) return;
+  await db.batch([
+    db.prepare("CREATE TABLE feeder_inventory_rebuild (id TEXT PRIMARY KEY, prey_species TEXT NOT NULL, size_class TEXT NOT NULL, weight_grams INTEGER, status TEXT NOT NULL DEFAULT 'available', added_on TEXT NOT NULL, consumed_at TEXT, animal_id TEXT, husbandry_event_id TEXT, notes TEXT)"),
+    db.prepare("INSERT INTO feeder_inventory_rebuild (id, prey_species, size_class, weight_grams, status, added_on, consumed_at, animal_id, husbandry_event_id, notes) SELECT id, prey_species, size_class, weight_grams, status, added_on, consumed_at, animal_id, husbandry_event_id, notes FROM feeder_inventory"),
+    db.prepare("DROP TABLE feeder_inventory"),
+    db.prepare("ALTER TABLE feeder_inventory_rebuild RENAME TO feeder_inventory"),
+    db.prepare("CREATE INDEX IF NOT EXISTS feeder_inventory_status_idx ON feeder_inventory(status)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS feeder_inventory_size_weight_idx ON feeder_inventory(prey_species, size_class, weight_grams)"),
+  ]);
 }
 
 async function addMissingColumns(db: D1Database, table: string, columns: Array<[string, string]>) {

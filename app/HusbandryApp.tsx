@@ -533,12 +533,12 @@ export default function HusbandryApp() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ taskId: task.id, dueDate: task.dueDate, actorRole: viewer?.role ?? "Owner", outcome, occurredOn }),
       });
-      const payload = (await response.json()) as { error?: string; outcome?: "done" | "refused"; allocatedFeeder?: { weightGrams: number; sizeClass: string; preySpecies: string } | null; feederShortage?: string | null };
+      const payload = (await response.json()) as { error?: string; outcome?: "done" | "refused"; allocatedFeeder?: { sizeClass: string; preySpecies: string } | null; feederShortage?: string | null };
       if (!response.ok) throw new Error(payload.error ?? "Unable to save");
       await refresh();
       const feeder = payload.allocatedFeeder;
       const feederNote = feeder
-        ? ` · ${feeder.weightGrams} g ${feeder.sizeClass} ${feeder.preySpecies} used`
+        ? ` · ${feeder.sizeClass} ${feeder.preySpecies} used`
         : payload.feederShortage
           ? " · no feeder deducted — add it in Manage → Feeders if you used stock"
           : "";

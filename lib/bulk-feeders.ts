@@ -4,7 +4,7 @@ import { ApiInputError } from "./api-errors.ts";
 export type BulkFeederInput = {
   preySpecies?: unknown;
   sizeClass?: unknown;
-  weightsGrams?: unknown;
+  count?: unknown;
   addedOn?: unknown;
   notes?: unknown;
 };
@@ -12,17 +12,13 @@ export type BulkFeederInput = {
 export function normalizeBulkFeeders(input: BulkFeederInput, defaultDate: string) {
   const preySpecies = cleanLabel(input.preySpecies, "Prey species");
   const sizeClass = cleanLabel(input.sizeClass, "Size class");
-  if (!Array.isArray(input.weightsGrams) || input.weightsGrams.length === 0) {
-    throw new ApiInputError("Enter at least one feeder weight");
+  // Feeders are counted, not weighed. A bag from a supplier is "20 small rats",
+  // and the size class is what decides whether one suits an animal — weighing
+  // each rat only ever produced precision the allocator immediately rounded away.
+  const count = Number(input.count);
+  if (!Number.isInteger(count) || count < 1 || count > 500) {
+    throw new ApiInputError("Count must be a whole number from 1 to 500");
   }
-  if (input.weightsGrams.length > 500) throw new ApiInputError("Add no more than 500 feeders at once");
-  const weightsGrams = input.weightsGrams.map((value, index) => {
-    const weight = Number(value);
-    if (!Number.isInteger(weight) || weight < 1 || weight > 5000) {
-      throw new ApiInputError(`Weight ${index + 1} must be a whole number from 1 to 5000 grams`);
-    }
-    return weight;
-  });
   const addedOn = typeof input.addedOn === "string" && input.addedOn.trim()
     ? input.addedOn.trim()
     : defaultDate;
@@ -30,7 +26,7 @@ export function normalizeBulkFeeders(input: BulkFeederInput, defaultDate: string
   const notes = typeof input.notes === "string" && input.notes.trim()
     ? input.notes.trim().slice(0, 500)
     : null;
-  return { preySpecies, sizeClass, weightsGrams, addedOn, notes };
+  return { preySpecies, sizeClass, count, addedOn, notes };
 }
 
 function cleanLabel(value: unknown, label: string) {

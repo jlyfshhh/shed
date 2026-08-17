@@ -1362,20 +1362,18 @@ export function AnimalProfile({
 export function BulkFeederIntake({ onClose, onSaved }: { onClose: () => void; onSaved: (message: string) => void }) {
   const [preySpecies, setPreySpecies] = useState("rat");
   const [sizeClass, setSizeClass] = useState("small");
-  const [weights, setWeights] = useState("");
+  const [count, setCount] = useState("");
   const [addedOn, setAddedOn] = useState(() => new Date().toISOString().slice(0, 10));
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const parsedWeights = weights.trim() ? weights.trim().split(/[\s,;]+/).filter(Boolean) : [];
+  const parsedCount = Number(count.trim());
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setError(null);
-    const values = parsedWeights.map(Number);
-    if (!values.length) { setError("Paste at least one feeder weight."); return; }
-    if (values.some((value) => !Number.isInteger(value) || value < 1)) {
-      setError("Every weight must be a whole number of grams.");
+    if (!Number.isInteger(parsedCount) || parsedCount < 1 || parsedCount > 500) {
+      setError("Enter how many feeders you added, from 1 to 500.");
       return;
     }
     setBusy(true);
@@ -1383,11 +1381,11 @@ export function BulkFeederIntake({ onClose, onSaved }: { onClose: () => void; on
       const response = await fetch("/api/feeders/bulk", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ preySpecies, sizeClass, weightsGrams: values, addedOn, notes }),
+        body: JSON.stringify({ preySpecies, sizeClass, count: parsedCount, addedOn, notes }),
       });
       const payload = (await response.json()) as { error?: string; count?: number };
       if (!response.ok) throw new Error(payload.error ?? "Couldn’t add the feeders.");
-      onSaved(`Added ${payload.count ?? values.length} ${sizeClass} ${preySpecies}${values.length === 1 ? "" : "s"}.`);
+      onSaved(`Added ${payload.count ?? parsedCount} ${sizeClass} ${preySpecies}${parsedCount === 1 ? "" : "s"}.`);
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Couldn’t add the feeders.");
     } finally {
@@ -1398,22 +1396,22 @@ export function BulkFeederIntake({ onClose, onSaved }: { onClose: () => void; on
   return (
     <div className="sheet-backdrop" role="dialog" aria-modal="true" aria-label="Bulk add feeders" onClick={onClose}>
       <div className="sheet" onClick={(event) => event.stopPropagation()}>
-        <header className="sheet-head"><h2>Bulk add weighed feeders</h2><button className="sheet-close" onClick={onClose} aria-label="Close">✕</button></header>
+        <header className="sheet-head"><h2>Add feeders</h2><button className="sheet-close" onClick={onClose} aria-label="Close">✕</button></header>
         <form className="sheet-body" onSubmit={submit}>
           <label className="field"><span>Prey species *</span><input value={preySpecies} onChange={(event) => setPreySpecies(event.target.value)} placeholder="rat or mouse" /></label>
           <label className="field"><span>Size class *</span><input value={sizeClass} onChange={(event) => setSizeClass(event.target.value)} placeholder="small, hopper, large pinky…" /></label>
           <label className="field"><span>Added on</span><input type="date" value={addedOn} onChange={(event) => setAddedOn(event.target.value)} /></label>
           <label className="field"><span>Batch note</span><input value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="optional vendor or shipment note" /></label>
-          <label className="field field-wide"><span>Individual weights in grams *</span><textarea rows={8} value={weights} onChange={(event) => setWeights(event.target.value)} placeholder={"40 42 41 59 43\nPaste spaces, commas, or one weight per line."} /><small>{parsedWeights.length ? `${parsedWeights.length} feeder${parsedWeights.length === 1 ? "" : "s"} ready to add` : "One inventory record will be created for each weight."}</small></label>
+          <label className="field"><span>How many *</span><input type="number" min={1} max={500} value={count} onChange={(event) => setCount(event.target.value)} placeholder="20" /><small>Feeders are counted by size class — no need to weigh them.</small></label>
           {error && <p className="form-error field-wide" role="alert">{error}</p>}
-          <div className="sheet-actions field-wide"><button type="button" className="ghost" onClick={onClose}>Cancel</button><button disabled={busy}>{busy ? "Adding…" : `Add ${parsedWeights.length || ""} feeder${parsedWeights.length === 1 ? "" : "s"}`}</button></div>
+          <div className="sheet-actions field-wide"><button type="button" className="ghost" onClick={onClose}>Cancel</button><button disabled={busy}>{busy ? "Adding…" : `Add ${Number.isFinite(parsedCount) && parsedCount > 0 ? parsedCount : ""} feeder${parsedCount === 1 ? "" : "s"}`}</button></div>
         </form>
       </div>
     </div>
   );
 }
 
-type ForecastFeeder = { id: string; preySpecies: string; sizeClass: string | null; weightGrams: number };
+type ForecastFeeder = { id: string; preySpecies: string; sizeClass: string | null };
 type ForecastEvent = {
   animalId: string; animalName: string; feedingDate: string;
   preySpecies: string; preyDescription: string; preySizeClass: string | null;
@@ -1449,7 +1447,7 @@ function ForecastRow({ event }: { event: ForecastEvent }) {
         {event.targetPreyGrams != null && <small>~{Math.round(event.targetPreyGrams)} g target</small>}
       </div>
       {covered
-        ? <span className="forecast-badge covered">{Math.round(event.allocatedFeeder!.weightGrams)} g ready</span>
+        ? <span className="forecast-badge covered">{event.allocatedFeeder!.sizeClass} ready</span>
         : <span className={`forecast-badge ${event.status}`}>{forecastStatusLabel[event.status]}</span>}
     </div>
   );

@@ -29,8 +29,8 @@ export async function loadFeederForecast(
   const [animals, weights, availableFeeders, profileRows, dispositionedFeedings] = await Promise.all([
     db.prepare("SELECT id, name FROM animals WHERE active = 1 ORDER BY name").all<ForecastAnimal>(),
     db.prepare("SELECT animal_id AS animalId, recorded_on AS recordedOn, weight_grams AS weightGrams FROM weight_events ORDER BY animal_id, recorded_on").all<ForecastWeight>(),
-    db.prepare("SELECT id, prey_species AS preySpecies, size_class AS sizeClass, weight_grams AS weightGrams FROM feeder_inventory WHERE status = 'available' ORDER BY weight_grams, id").all<AvailableFeeder>(),
-    db.prepare("SELECT id, animal_id AS animalId, task_type AS taskType, title, details, frequency, interval_days AS intervalDays, weekdays_json AS weekdaysJson, day_of_month AS dayOfMonth, start_date AS startDate, end_date AS endDate, prey_species AS preySpecies, COALESCE(prey_description, prey_species) AS preyDescription, prey_size_class AS preySizeClass, target_percent AS targetPercent, minimum_percent AS minimumPercent, maximum_percent AS maximumPercent, buy_as_needed AS buyAsNeeded FROM care_schedules WHERE active = 1 AND task_type = 'feeding' AND prey_species IS NOT NULL").all<ProfileRow>(),
+    db.prepare("SELECT id, prey_species AS preySpecies, size_class AS sizeClass, weight_grams AS weightGrams, added_on AS addedOn FROM feeder_inventory WHERE status = 'available' ORDER BY added_on, id").all<AvailableFeeder>(),
+    db.prepare("SELECT id, animal_id AS animalId, task_type AS taskType, title, details, frequency, interval_days AS intervalDays, weekdays_json AS weekdaysJson, day_of_month AS dayOfMonth, start_date AS startDate, end_date AS endDate, prey_species AS preySpecies, COALESCE(prey_description, prey_species) AS preyDescription, prey_size_class AS preySizeClass, buy_as_needed AS buyAsNeeded FROM care_schedules WHERE active = 1 AND task_type = 'feeding' AND prey_species IS NOT NULL").all<ProfileRow>(),
     db.prepare(
       `SELECT DISTINCT t.schedule_id AS scheduleId, t.due_date AS dueDate
          FROM care_tasks t
@@ -50,9 +50,6 @@ export async function loadFeederForecast(
     preySpecies: row.preySpecies,
     preyDescription: row.preyDescription,
     preySizeClass: row.preySizeClass,
-    targetPercent: row.targetPercent,
-    minimumPercent: row.minimumPercent,
-    maximumPercent: row.maximumPercent,
     buyAsNeeded: Boolean(row.buyAsNeeded),
     schedule: {
       id: row.id,

@@ -13,11 +13,11 @@ export async function POST(request: Request) {
     const auth = await requireCapability(request, db, "feeders.manage");
     if (auth.response) return auth.response;
     const batch = normalizeBulkFeeders(await request.json() as BulkFeederInput, dateInTimeZone());
-    const ids = batch.weightsGrams.map(() => crypto.randomUUID());
-    await db.batch(batch.weightsGrams.map((weightGrams, index) =>
+    const ids = Array.from({ length: batch.count }, () => crypto.randomUUID());
+    await db.batch(ids.map((id) =>
       db.prepare(
-        "INSERT INTO feeder_inventory (id, prey_species, size_class, weight_grams, status, added_on, notes) VALUES (?, ?, ?, ?, 'available', ?, ?)",
-      ).bind(ids[index], batch.preySpecies, batch.sizeClass, weightGrams, batch.addedOn, batch.notes),
+        "INSERT INTO feeder_inventory (id, prey_species, size_class, status, added_on, notes) VALUES (?, ?, ?, 'available', ?, ?)",
+      ).bind(id, batch.preySpecies, batch.sizeClass, batch.addedOn, batch.notes),
     ));
     return Response.json({
       saved: true,
@@ -25,8 +25,6 @@ export async function POST(request: Request) {
       ids,
       preySpecies: batch.preySpecies,
       sizeClass: batch.sizeClass,
-      minimumWeightGrams: Math.min(...batch.weightsGrams),
-      maximumWeightGrams: Math.max(...batch.weightsGrams),
     }, { status: 201, headers });
   } catch (error) {
     return safeErrorResponse(error, { context: "Bulk feeder inventory write failed", message: "Unable to add feeder inventory", headers });

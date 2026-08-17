@@ -15,7 +15,9 @@ export type AvailableFeeder = {
   id: string;
   preySpecies: string;
   sizeClass: string;
-  weightGrams: number;
+  /** Kept for feeders recorded before weights were dropped; never used to choose one. */
+  weightGrams: number | null;
+  addedOn: string;
 };
 
 export type FeedingProfile = {
@@ -23,9 +25,6 @@ export type FeedingProfile = {
   preySpecies: string;
   preyDescription: string;
   preySizeClass: string | null;
-  targetPercent: number | null;
-  minimumPercent: number | null;
-  maximumPercent: number | null;
   buyAsNeeded: boolean;
   schedule: CareScheduleRow;
 };
@@ -42,15 +41,12 @@ export type FeederForecastEvent = {
   predictedWeightGrams: number | null;
   weightTrendGramsPerDay: number | null;
   weightTrendConfidence: "none" | "low" | "medium" | "high";
-  targetPreyGrams: number | null;
-  minimumPreyGrams: number | null;
-  maximumPreyGrams: number | null;
   allocatedFeeder: AvailableFeeder | null;
-  status: "covered" | "shortage" | "buy-as-needed" | "inventory-untracked" | "weight-missing";
+  status: "covered" | "shortage" | "buy-as-needed";
 };
 
 export type FeederForecastAlert = {
-  code: "feeder-shortage" | "buy-as-needed" | "inventory-untracked" | "missing-weight" | "missing-feeding-plan";
+  code: "feeder-shortage" | "buy-as-needed" | "missing-feeding-plan";
   severity: "warning" | "info";
   animalId?: string;
   animalName?: string;
@@ -93,22 +89,20 @@ export function buildFeederForecast(options: {
 
   events.sort((left, right) =>
     left.feedingDate.localeCompare(right.feedingDate)
-      || (right.targetPreyGrams ?? -1) - (left.targetPreyGrams ?? -1)
       || left.animalName.localeCompare(right.animalName),
   );
 
   const remaining = options.availableFeeders.map((feeder) => ({ ...feeder }));
   for (const event of events) {
     if (event.status !== "shortage") continue;
+    // Oldest stock first. Every feeder of a size class is interchangeable, so the
+    // only thing left worth optimising is that the freezer rotates.
     const candidates = remaining
       .map((feeder, index) => ({ feeder, index }))
       .filter(({ feeder }) => feederMatchesEvent(feeder, event))
       .sort((left, right) =>
-        event.targetPreyGrams === null
-          ? left.feeder.weightGrams - right.feeder.weightGrams
-          : Math.abs(left.feeder.weightGrams - event.targetPreyGrams)
-            - Math.abs(right.feeder.weightGrams - event.targetPreyGrams)
-        || left.feeder.weightGrams - right.feeder.weightGrams,
+        left.feeder.addedOn.localeCompare(right.feeder.addedOn)
+        || left.feeder.id.localeCompare(right.feeder.id),
       );
     const selected = candidates[0];
     if (!selected) continue;
@@ -123,7 +117,7 @@ export function buildFeederForecast(options: {
     horizonDays,
     throughDate: addDays(options.today, horizonDays),
     orderNeeded: alerts.some((alert) =>
-      alert.code === "feeder-shortage" || alert.code === "buy-as-needed" || alert.code === "inventory-untracked"),
+      alert.code === "feeder-shortage" || alert.code === "buy-as-needed"),
     nextFeedings: firstEventPerAnimal(events),
     events,
     alerts,
@@ -149,118 +143,35 @@ function forecastEvent(
   feedingDate: string,
   weights: ForecastWeight[],
 ): FeederForecastEvent {
-  if (profile.buyAsNeeded) {
-    return {
-      scheduleId: profile.schedule.id,
-      animalId: animal.id,
-      animalName: animal.name,
-      feedingDate,
-      preySpecies: profile.preySpecies,
-      preyDescription: profile.preyDescription,
-      preySizeClass: profile.preySizeClass,
-      latestWeightGrams: weights.at(-1)?.weightGrams ?? null,
-      predictedWeightGrams: null,
-      weightTrendGramsPerDay: null,
-      weightTrendConfidence: "none",
-      targetPreyGrams: null,
-      minimumPreyGrams: null,
-      maximumPreyGrams: null,
-      allocatedFeeder: null,
-      status: "buy-as-needed",
-    };
-  }
-
-  if (profile.preySizeClass) {
-    return {
-      scheduleId: profile.schedule.id,
-      animalId: animal.id,
-      animalName: animal.name,
-      feedingDate,
-      preySpecies: profile.preySpecies,
-      preyDescription: profile.preyDescription,
-      preySizeClass: profile.preySizeClass,
-      latestWeightGrams: weights.at(-1)?.weightGrams ?? null,
-      predictedWeightGrams: null,
-      weightTrendGramsPerDay: null,
-      weightTrendConfidence: "none",
-      targetPreyGrams: null,
-      minimumPreyGrams: null,
-      maximumPreyGrams: null,
-      allocatedFeeder: null,
-      status: "shortage",
-    };
-  }
-
-  if (profile.targetPercent === null) {
-    return {
-      scheduleId: profile.schedule.id,
-      animalId: animal.id,
-      animalName: animal.name,
-      feedingDate,
-      preySpecies: profile.preySpecies,
-      preyDescription: profile.preyDescription,
-      preySizeClass: null,
-      latestWeightGrams: weights.at(-1)?.weightGrams ?? null,
-      predictedWeightGrams: null,
-      weightTrendGramsPerDay: null,
-      weightTrendConfidence: "none",
-      targetPreyGrams: null,
-      minimumPreyGrams: null,
-      maximumPreyGrams: null,
-      allocatedFeeder: null,
-      status: "inventory-untracked",
-    };
-  }
-
-  const prediction = predictWeight(weights, feedingDate);
-  if (!prediction) {
-    return {
-      scheduleId: profile.schedule.id,
-      animalId: animal.id,
-      animalName: animal.name,
-      feedingDate,
-      preySpecies: profile.preySpecies,
-      preyDescription: profile.preyDescription,
-      preySizeClass: null,
-      latestWeightGrams: null,
-      predictedWeightGrams: null,
-      weightTrendGramsPerDay: null,
-      weightTrendConfidence: "none",
-      targetPreyGrams: null,
-      minimumPreyGrams: null,
-      maximumPreyGrams: null,
-      allocatedFeeder: null,
-      status: "weight-missing",
-    };
-  }
-
-  return {
+  const base = {
     scheduleId: profile.schedule.id,
     animalId: animal.id,
     animalName: animal.name,
     feedingDate,
     preySpecies: profile.preySpecies,
     preyDescription: profile.preyDescription,
-    preySizeClass: null,
-    latestWeightGrams: prediction.latestWeightGrams,
-    predictedWeightGrams: prediction.predictedWeightGrams,
-    weightTrendGramsPerDay: prediction.trendGramsPerDay,
-    weightTrendConfidence: prediction.confidence,
-    targetPreyGrams: Math.round(prediction.predictedWeightGrams * (profile.targetPercent ?? 0)),
-    minimumPreyGrams: Math.ceil(prediction.predictedWeightGrams * (profile.minimumPercent ?? profile.targetPercent ?? 0)),
-    maximumPreyGrams: Math.floor(prediction.predictedWeightGrams * (profile.maximumPercent ?? profile.targetPercent ?? 0)),
+    preySizeClass: profile.preySizeClass,
+    // Weight is still recorded and still worth watching as a trend; it simply no
+    // longer decides which feeder comes out of the freezer.
+    latestWeightGrams: weights.at(-1)?.weightGrams ?? null,
+    predictedWeightGrams: null,
+    weightTrendGramsPerDay: null,
+    weightTrendConfidence: "none" as const,
     allocatedFeeder: null,
-    status: "shortage",
   };
+  // Buy-as-needed prey is bought fresh for the feeding, so it is never drawn
+  // from stock and never counts as a shortage.
+  return profile.buyAsNeeded
+    ? { ...base, status: "buy-as-needed" as const }
+    : { ...base, status: "shortage" as const };
 }
 
 function feederMatchesEvent(feeder: AvailableFeeder, event: FeederForecastEvent): boolean {
   if (normalizeLabel(feeder.preySpecies) !== normalizeLabel(event.preySpecies)) return false;
-  if (event.preySizeClass) {
-    return normalizeLabel(feeder.sizeClass) === normalizeLabel(event.preySizeClass);
-  }
-  return feeder.weightGrams >= (event.minimumPreyGrams ?? Number.POSITIVE_INFINITY)
-    && feeder.weightGrams <= (event.maximumPreyGrams ?? Number.NEGATIVE_INFINITY);
+  // A plan without a size class accepts any feeder of the right species, which is
+  // the honest reading of "feed a rat" — narrower than that is the keeper's call.
+  if (!event.preySizeClass) return true;
+  return normalizeLabel(feeder.sizeClass) === normalizeLabel(event.preySizeClass);
 }
 
 function normalizeLabel(value: string): string {
@@ -315,23 +226,14 @@ function buildAlerts(events: FeederForecastEvent[]): FeederForecastAlert[] {
     if (event.status === "shortage") {
       const requirement = event.preySizeClass
         ? `${event.preySizeClass} ${event.preySpecies}`
-        : `${event.minimumPreyGrams}–${event.maximumPreyGrams} g ${event.preySpecies}`;
+        : event.preySpecies;
       alerts.push({
         code: "feeder-shortage",
         severity: "warning",
         animalId: event.animalId,
         animalName: event.animalName,
         dueBy: event.feedingDate,
-        message: `No available ${requirement} is close enough for ${event.animalName}'s ${event.feedingDate} feeding.`,
-      });
-    } else if (event.status === "weight-missing" && !alerts.some((alert) => alert.code === "missing-weight" && alert.animalId === event.animalId)) {
-      alerts.push({
-        code: "missing-weight",
-        severity: "warning",
-        animalId: event.animalId,
-        animalName: event.animalName,
-        dueBy: event.feedingDate,
-        message: `${event.animalName} needs a current weight before Shed can predict a feeder size.`,
+        message: `No ${requirement} left in stock for ${event.animalName}'s ${event.feedingDate} feeding.`,
       });
     }
   }
@@ -344,22 +246,6 @@ function buildAlerts(events: FeederForecastEvent[]): FeederForecastAlert[] {
       animalName: event.animalName,
       dueBy: event.feedingDate,
       message: `Buy 1 ${event.preyDescription} for ${event.animalName} by ${event.feedingDate}.`,
-    });
-  }
-
-  const untrackedGroups = new Map<string, FeederForecastEvent[]>();
-  for (const event of events.filter((item) => item.status === "inventory-untracked")) {
-    untrackedGroups.set(event.preyDescription, [
-      ...(untrackedGroups.get(event.preyDescription) ?? []),
-      event,
-    ]);
-  }
-  for (const [description, group] of untrackedGroups) {
-    alerts.push({
-      code: "inventory-untracked",
-      severity: "warning",
-      dueBy: group[0].feedingDate,
-      message: `${description} inventory is not tracked; ${group.length} ${group.length === 1 ? "feeding" : "feedings"} are scheduled through ${group.at(-1)!.feedingDate}.`,
     });
   }
 

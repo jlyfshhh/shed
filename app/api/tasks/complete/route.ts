@@ -37,7 +37,6 @@ type CompletionRecord = {
   feederId: string | null;
   feederSpecies: string | null;
   feederSizeClass: string | null;
-  feederWeightGrams: number | null;
 };
 
 type CorrectionPayload = {
@@ -83,14 +82,14 @@ export async function POST(request: Request) {
 
     const eventId = existing?.id ?? crypto.randomUUID();
     const retainedAssignment = existing ? await db.prepare(
-      "SELECT fa.feeder_id AS feederId, f.prey_species AS preySpecies, f.size_class AS sizeClass, f.weight_grams AS weightGrams FROM feeding_assignments fa JOIN feeder_inventory f ON f.id = fa.feeder_id WHERE fa.husbandry_event_id = ? AND fa.status = 'consumed' LIMIT 1",
-    ).bind(existing.id).first<{ feederId: string; preySpecies: string; sizeClass: string; weightGrams: number }>() : null;
-    let allocatedFeeder = retainedAssignment ? {
-      id: retainedAssignment.feederId,
-      preySpecies: retainedAssignment.preySpecies,
-      sizeClass: retainedAssignment.sizeClass,
-      weightGrams: retainedAssignment.weightGrams,
-    } : null;
+      "SELECT fa.feeder_id AS feederId, f.prey_species AS preySpecies, f.size_class AS sizeClass FROM feeding_assignments fa JOIN feeder_inventory f ON f.id = fa.feeder_id WHERE fa.husbandry_event_id = ? AND fa.status = 'consumed' LIMIT 1",
+    ).bind(existing.id).first<{ feederId: string; preySpecies: string; sizeClass: string }>() : null;
+    let allocatedFeeder: { id: string; preySpecies: string; sizeClass: string } | null =
+      retainedAssignment ? {
+        id: retainedAssignment.feederId,
+        preySpecies: retainedAssignment.preySpecies,
+        sizeClass: retainedAssignment.sizeClass,
+      } : null;
     // Feeder inventory is best-effort bookkeeping, never a gate. The animal was
     // actually fed, so the husbandry record has to be recordable even when the
     // freezer does not match the plan — store-bought prey, an untracked feeder,
@@ -200,7 +199,7 @@ export async function POST(request: Request) {
 
 async function completionForTask(db: D1Database, taskId: string, dueDate: string) {
   return db.prepare(
-    "SELECT e.id, e.outcome AS outcome, e.completed_by_member_id AS completedByMemberId, COALESCE(e.completed_by_name, e.actor_role) AS completedBy, e.occurred_at AS occurredAt, e.reward_cents AS rewardCents, f.id AS feederId, f.prey_species AS feederSpecies, f.size_class AS feederSizeClass, f.weight_grams AS feederWeightGrams FROM husbandry_events e LEFT JOIN feeding_assignments fa ON fa.husbandry_event_id = e.id AND fa.status = 'consumed' LEFT JOIN feeder_inventory f ON f.id = fa.feeder_id WHERE e.task_id = ? AND e.due_date = ? AND e.voided_at IS NULL",
+    "SELECT e.id, e.outcome AS outcome, e.completed_by_member_id AS completedByMemberId, COALESCE(e.completed_by_name, e.actor_role) AS completedBy, e.occurred_at AS occurredAt, e.reward_cents AS rewardCents, f.id AS feederId, f.prey_species AS feederSpecies, f.size_class AS feederSizeClass FROM husbandry_events e LEFT JOIN feeding_assignments fa ON fa.husbandry_event_id = e.id AND fa.status = 'consumed' LEFT JOIN feeder_inventory f ON f.id = fa.feeder_id WHERE e.task_id = ? AND e.due_date = ? AND e.voided_at IS NULL",
   ).bind(taskId, dueDate).first<CompletionRecord>();
 }
 
@@ -224,7 +223,6 @@ function completionResponse(
     id: completion.feederId,
     preySpecies: completion.feederSpecies,
     sizeClass: completion.feederSizeClass,
-    weightGrams: completion.feederWeightGrams,
   } : null;
   return Response.json({
     saved: true,
