@@ -46,8 +46,11 @@ previous Compose settings, image, and running state.
 Once Shed contains records, safe updates also require the small `sqlite3` command
 (`sudo apt-get install -y sqlite3` on Raspberry Pi OS/Debian). If it is missing,
 the installer leaves the current service running and tells you how to add it.
-Shed is published as a multi-architecture image, so 64-bit Raspberry Pi OS, a
-NAS, and an x86 box all pull the right build automatically.
+Shed is published as a multi-architecture image, so 64-bit Raspberry Pi OS,
+Debian, Ubuntu, a NAS, and an x86 box all pull the right build automatically.
+Shed needs about 400 MB of *free* memory to start — measured at 154 MB resident
+moments after startup, with headroom for the pull and first-run migrations. On a
+small board that means Raspberry Pi OS Lite rather than a desktop session.
 
 Prefer to write the two files yourself? That works too — Shed is an ordinary
 compose service:
