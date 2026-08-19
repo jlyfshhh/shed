@@ -39,11 +39,20 @@ export type ResolvedCompletionTiming = {
 };
 
 /**
- * Only two answers are accepted: the task's own due date, or today. An open
- * date field would let any completion be filed under any day, which is exactly
- * the kind of quiet rewriting the rest of this app refuses to allow — voids and
- * edits stay visible precisely so the record cannot drift. This is a
- * disambiguation between two known days, not free-form backdating.
+ * Any day from the due date through today is accepted.
+ *
+ * This was originally restricted to exactly two answers — the due date or today
+ * — on the reasoning that a free date field invites the quiet rewriting the rest
+ * of this app refuses to allow. That was too narrow to describe what actually
+ * happens: a feeding due Friday and given on Sunday, logged Monday, is true on
+ * none of those two days, and forcing it into one of them puts a wrong date in
+ * the record to protect against wrong dates.
+ *
+ * The bounds are what keeps it honest. Nothing later than today, because care
+ * that has not happened cannot be recorded; nothing earlier than the due date,
+ * because a task finished before it came due was never overdue and is logged on
+ * the day like any other. So the window is exactly the span in which the care
+ * could have been late, and never a blank calendar.
  */
 export function resolveOccurredAt({
   dueDate,
@@ -60,15 +69,13 @@ export function resolveOccurredAt({
   if (!isIsoDate(occurredOn)) {
     throw new CompletionTimingError("Completion date must be a calendar date.");
   }
-  if (occurredOn !== dueDate) {
-    throw new CompletionTimingError(
-      "A completion can only be recorded on the day it was due or today.",
-    );
-  }
-  // A due date in the future would mean the keeper is filing care that has not
-  // happened yet; "on the due date" is only meaningful looking backwards.
   if (occurredOn > today) {
     throw new CompletionTimingError("A completion cannot be recorded in the future.");
+  }
+  if (occurredOn < dueDate) {
+    throw new CompletionTimingError(
+      "A completion cannot be recorded before the day it was due.",
+    );
   }
 
   // Noon UTC lands on the intended calendar day in every time zone from UTC-11

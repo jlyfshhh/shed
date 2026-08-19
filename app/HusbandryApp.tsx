@@ -210,6 +210,7 @@ export default function HusbandryApp() {
   const [invite, setInvite] = useState<Invite | null>(null);
   const [attributionTask, setAttributionTask] = useState<Task | null>(null);
   const [timingTask, setTimingTask] = useState<{ task: Task; outcome: "done" | "refused" } | null>(null);
+  const [timingDate, setTimingDate] = useState("");
   const [attributionMemberId, setAttributionMemberId] = useState("");
   const [attributionReason, setAttributionReason] = useState("Wrong household member was credited.");
   // ── Task earnings ("allowance") ──
@@ -515,6 +516,7 @@ export default function HusbandryApp() {
     // "overdue" as the records do. A task still inside its grace window is not
     // late at all, so it is never asked about.
     if (data && taskIsOverdue(task.dueDate, task.graceDays ?? 0, data.date)) {
+      setTimingDate("");
       setTimingTask({ task, outcome });
       return;
     }
@@ -550,6 +552,7 @@ export default function HusbandryApp() {
     } finally {
       setBusyTask(null);
       setTimingTask(null);
+      setTimingDate("");
     }
   };
 
@@ -1350,9 +1353,40 @@ export default function HusbandryApp() {
             <div className="attribution-body">
               <div className="correction-notice">
                 <b>This was due {formatDate(timingTask.task.dueDate)}.</b>
-                <span>Either answer records the care. It only sets the date this shows under in {timingTask.task.animalName}’s history.</span>
+                <span>Any answer records the care. It only sets the date this shows under in {timingTask.task.animalName}’s history.</span>
               </div>
+              {/* The two buttons cover the common cases; the picker exists because
+                  care given on neither of those days is just as ordinary — fed on
+                  Sunday, due Friday, logged Monday. */}
+              {timingTask.task.dueDate !== data.date && (
+                <label>
+                  <span>Or another day</span>
+                  <input
+                    type="date"
+                    min={timingTask.task.dueDate}
+                    max={data.date}
+                    value={timingDate}
+                    onChange={(event) => setTimingDate(event.target.value)}
+                  />
+                  <small>Between {shortDate(timingTask.task.dueDate)} and today.</small>
+                </label>
+              )}
+              {timingDate && (timingDate < timingTask.task.dueDate || timingDate > data.date) && (
+                <p className="form-error" role="alert">
+                  Pick a day between {shortDate(timingTask.task.dueDate)} and today.
+                </p>
+              )}
               <div className="sheet-actions">
+                {timingDate && timingDate >= timingTask.task.dueDate && timingDate <= data.date
+                  && timingDate !== timingTask.task.dueDate && timingDate !== data.date && (
+                  <button
+                    type="button"
+                    disabled={busyTask === timingTask.task.id}
+                    onClick={() => recordCompletion(timingTask.task, timingTask.outcome, timingDate)}
+                  >
+                    {busyTask === timingTask.task.id ? "Saving…" : `On ${shortDate(timingDate)}`}
+                  </button>
+                )}
                 <button
                   type="button"
                   className="ghost"

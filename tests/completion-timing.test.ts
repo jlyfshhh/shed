@@ -69,11 +69,38 @@ test("a backdated stamp stays on its own calendar day in the household zone", ()
   assert.equal(local, "2026-08-14");
 });
 
-test("no third day is accepted", () => {
+test("a day between the due date and today is accepted", () => {
+  // Due Friday, fed Sunday, logged Monday — true on neither of the two days a
+  // pair of buttons could offer.
+  const timing = resolveOccurredAt({
+    dueDate: "2026-08-14",
+    occurredOn: "2026-08-15",
+    now: NOW,
+    timeZone: ZONE,
+  });
+  assert.equal(timing.occurredAt, "2026-08-15T12:00:00.000Z");
+  assert.equal(timing.backdated, true);
+});
+
+test("a day before the due date is refused", () => {
+  // Care finished before it came due was never overdue, so it is logged on the
+  // day like anything else and never reaches this prompt.
   assert.throws(
     () => resolveOccurredAt({
       dueDate: "2026-08-14",
-      occurredOn: "2026-08-15",
+      occurredOn: "2026-08-13",
+      now: NOW,
+      timeZone: ZONE,
+    }),
+    CompletionTimingError,
+  );
+});
+
+test("a day after today is refused", () => {
+  assert.throws(
+    () => resolveOccurredAt({
+      dueDate: "2026-08-14",
+      occurredOn: "2026-08-17",
       now: NOW,
       timeZone: ZONE,
     }),
