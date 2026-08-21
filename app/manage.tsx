@@ -282,12 +282,11 @@ const resourceDefs: ResourceDef[] = [
     fields: [
       { key: "preySpecies", column: "prey_species", label: "Prey species", type: "text", required: true, help: "rat, mouse…" },
       { key: "sizeClass", column: "size_class", label: "Size class", type: "text", required: true, help: "pinky, weaned, small…" },
-      { key: "weightGrams", column: "weight_grams", label: "Weight (grams)", type: "number", required: true, step: "0.1" },
       { key: "addedOn", column: "added_on", label: "Added on", type: "date", required: true },
       { key: "status", column: "status", label: "Status", type: "select", options: feederStatusOptions },
       { key: "notes", column: "notes", label: "Notes", type: "text" },
     ],
-    summary: (row) => ({ title: `${str(row.prey_species)} · ${str(row.size_class)}`, sub: `${str(row.weight_grams)} g · ${str(row.status)}`, archived: str(row.status) !== "available" }),
+    summary: (row) => ({ title: `${str(row.prey_species)} · ${str(row.size_class)}`, sub: `added ${str(row.added_on)} · ${str(row.status)}`, archived: str(row.status) !== "available" }),
   },
 ];
 
@@ -873,6 +872,18 @@ export function ManageConsole({ onClose, onChanged, toast, initialResource = "an
     .filter((entry) => showArchived || !entry.meta.archived)
     .filter((entry) => inFocus(def.key, entry.row));
 
+  // Grouped from the whole catalog rather than from `rows`, so hiding archived
+  // entries cannot change a count of what is actually available.
+  const feederCounts = !catalog || def.key !== "feeder" ? [] : Object.values(
+    catalog.feeders
+      .filter((row) => str(row.status) === "available")
+      .reduce<Record<string, { label: string; count: number }>>((groups, row) => {
+        const label = `${str(row.prey_species)} · ${str(row.size_class)}`;
+        groups[label] = { label, count: (groups[label]?.count ?? 0) + 1 };
+        return groups;
+      }, {}),
+  ).sort((left, right) => right.count - left.count || left.label.localeCompare(right.label));
+
   // The animal's own details are the landing tab, shown as the form itself —
   // a one-row list with an Edit button would just be another click.
   const showDetailsForm = Boolean(focusAnimal) && def.key === "animal";
@@ -968,6 +979,20 @@ export function ManageConsole({ onClose, onChanged, toast, initialResource = "an
           </div>
         ) : (
           <div className="manage-list">
+            {/* Feeders are interchangeable within a size class now that weights
+                are gone, so the useful question is "how many small rats are in
+                the freezer", not which twenty rows they are. The rows stay
+                below for editing a specific record. */}
+            {def.key === "feeder" && feederCounts.length > 0 && (
+              <div className="manage-row feeder-counts">
+                <div className="manage-row-copy">
+                  <b>In the freezer</b>
+                  <small>
+                    {feederCounts.map(({ label, count }) => `${count} × ${label}`).join(" · ")}
+                  </small>
+                </div>
+              </div>
+            )}
             {rows.map(({ row, meta }) => (
               <div className={`manage-row ${meta.archived ? "archived" : ""}`} key={str(row.id)}>
                 <div className="manage-row-copy">
