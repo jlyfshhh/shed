@@ -391,6 +391,13 @@ verify_external_tree() {
 
 # Validate the exact candidate files before replacing the working copies or
 # interrupting an existing service.
+# Validate the staged bundle in the staging directory, not the install root.
+# compose.yaml carries `env_file: .env`, and Compose resolves that against
+# --project-directory rather than against the file it appears in. Pointing it at
+# the install root asks for an .env that does not exist yet on a first install —
+# it is written there only once validation has passed — so every fresh install
+# failed with "env file .../.env not found". The staged copy is the one being
+# validated and it sits beside its own .env.
 if ! (
   cd "$install_dir"
   env \
@@ -398,7 +405,7 @@ if ! (
     -u SHED_BACKUP_KEEP -u SHED_ALLOW_EXTERNAL_PATHS \
     -u SHED_UID -u SHED_GID -u SHED_MEMORY_LIMIT -u SHED_CPU_LIMIT \
     -u SHED_PIDS_LIMIT \
-    "${docker_cmd[@]}" compose --project-directory "$install_dir" \
+    "${docker_cmd[@]}" compose --project-directory "$stage" \
       --env-file "$stage/.env" -f "$stage/compose.yaml" config --quiet
 ); then
   fail_with_rollback "The downloaded Shed Compose configuration is invalid."
