@@ -31,11 +31,15 @@ jobs:
       - name: Lint
         run: npm run lint
       - name: Shell syntax
-        run: bash -n get-shed.sh docker-entrypoint.sh scripts/backup.sh scripts/privacy-scan.sh tests/backup.sh tests/installer.sh tests/container-boundary.sh tests/container-smoke.sh tests/privacy-scan.sh
+        run: bash -n get-shed.sh docker-entrypoint.sh scripts/backup.sh scripts/privacy-scan.sh tests/backup.sh tests/installer.sh tests/container-boundary.sh tests/container-smoke.sh tests/privacy-scan.sh tests/compose-contract.sh
       - name: Backup behaviour
         run: bash tests/backup.sh
       - name: Installer behaviour
         run: bash tests/installer.sh
+      # Real Docker, unlike tests/installer.sh above, which fakes it. Catches
+      # how Compose actually resolves the shipped compose.yaml on a first install.
+      - name: Compose contract (real Docker)
+        run: bash tests/compose-contract.sh
       - name: Container security boundary
         run: bash tests/container-boundary.sh
       - name: Privacy scan behavior
