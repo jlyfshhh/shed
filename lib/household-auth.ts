@@ -14,6 +14,7 @@ import {
   createAccessCode,
   expiredAccessCookie,
   hashAccessCode,
+  reissuedAccessCookie,
 } from "./access-code.ts";
 
 export {
@@ -24,8 +25,11 @@ export {
   createAccessCode,
   expiredAccessCookie,
   hashAccessCode,
+  reissuedAccessCookie,
 };
 export type { Capability, HouseholdRole };
+
+
 
 export type HouseholdMember = {
   id: string;

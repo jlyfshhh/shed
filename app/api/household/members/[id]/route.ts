@@ -1,6 +1,6 @@
 import { ensureDatabase } from "@/db/runtime";
 import { internalErrorResponse } from "@/lib/api-errors";
-import { createAccessCode, hashAccessCode, requireCapability } from "@/lib/household-auth";
+import { createAccessCode, hashAccessCode, reissuedAccessCookie, requireCapability } from "@/lib/household-auth";
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
@@ -27,7 +27,10 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     const member = await db.prepare(
       "SELECT id, display_name AS displayName, role, active, earning_enabled AS earningEnabled, created_at AS createdAt, updated_at AS updatedAt, last_login_at AS lastLoginAt FROM household_members WHERE id = ?",
     ).bind(id).first<{ active?: number; earningEnabled?: number }>();
-    return Response.json({ member: { ...member, active: Boolean(member?.active), earningEnabled: Boolean(member?.earningEnabled) }, accessCode }, { headers: { "Cache-Control": "no-store" } });
+    const headers: Record<string, string> = { "Cache-Control": "no-store" };
+    const refreshed = reissuedAccessCookie(request, accessCode, auth.member?.id, id);
+    if (refreshed) headers["Set-Cookie"] = refreshed;
+    return Response.json({ member: { ...member, active: Boolean(member?.active), earningEnabled: Boolean(member?.earningEnabled) }, accessCode }, { headers });
   } catch (error) {
     return internalErrorResponse(error, { context: "Household member update failed", message: "Unable to update the household member" });
   }

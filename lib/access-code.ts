@@ -35,3 +35,19 @@ export function accessCodeFromCookie(header: string | null): string | null {
   }
   return null;
 }
+
+// Reissuing an access code invalidates the one the caller's cookie carries. If
+// the caller reissued their own, the next request they make signs them out and
+// takes the screen showing the new code with it, so they end up locked out of
+// their own household holding a code they never saw. Hand back a cookie for the
+// replacement whenever the target is the caller.
+export function reissuedAccessCookie(
+  request: Request,
+  accessCode: string | null,
+  callerId: string | null | undefined,
+  targetId: string,
+): string | null {
+  if (!accessCode) return null;
+  if (!callerId || callerId !== targetId) return null;
+  return accessCookie(accessCode, request);
+}
