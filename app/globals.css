@@ -257,6 +257,10 @@ h1, h2, h3, p { margin-top: 0; }
 .member-actions button:disabled { opacity: .55; cursor: wait; }
 .member-add { display: flex; gap: 9px; flex-wrap: wrap; margin-top: 14px; padding-top: 15px; border-top: 1px solid var(--line); }
 .member-add input { flex: 1 1 200px; }
+.member-add-block { display: grid; gap: 4px; margin: 6px 0 16px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+.member-add-block b { font-size: 13px; }
+.member-add-block small { color: var(--muted); }
+.member-add-block .member-add { margin-top: 10px; padding-top: 0; border-top: 0; }
 .report-range { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; margin-bottom: 14px; }
 .report-range label { display: grid; gap: 4px; color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
 .contrib-list { display: grid; gap: 8px; }

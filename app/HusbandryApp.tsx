@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import WeekView from "./week-view";
 import { AnimalProfile, BulkFeederIntake, FeederForecast, GettingStartedGuide, ManageConsole, RestorePanel, SetupGate, type FeederForecastData, type ResourceKey, type SetupSummary } from "./manage";
 import { animalPhotoUrl } from "./animal-photo";
@@ -208,6 +208,13 @@ export default function HusbandryApp() {
   const [newMemberName, setNewMemberName] = useState("");
   const [memberBusy, setMemberBusy] = useState<string | null>(null);
   const [invite, setInvite] = useState<Invite | null>(null);
+  // The code is shown once and the buttons that mint it sit below the member
+  // list, so on a household of any size it can appear off-screen above. A
+  // keeper who never sees it has no way to get it back.
+  const inviteRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (invite) inviteRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [invite]);
   const [attributionTask, setAttributionTask] = useState<Task | null>(null);
   const [timingTask, setTimingTask] = useState<{ task: Task; outcome: "done" | "refused" } | null>(null);
   const [timingDate, setTimingDate] = useState("");
@@ -1143,7 +1150,7 @@ export default function HusbandryApp() {
                   </form>
                 </div>
                 {invite && (
-                  <div className="invite-reveal" role="status">
+                  <div className="invite-reveal" role="status" ref={inviteRef}>
                     <b>Access code for {invite.displayName}</b>
                     <code>{invite.accessCode}</code>
                     <div className="invite-actions">
@@ -1155,6 +1162,20 @@ export default function HusbandryApp() {
                 )}
                 {members ? (
                   <>
+                    <div className="member-add-block">
+                      <b>Add a keeper</b>
+                      <small>Creates a new person with their own access code. To change the code of someone who is already listed, use the buttons on their row.</small>
+                      <form className="member-add" onSubmit={createMember}>
+                        <input
+                          value={newMemberName}
+                          onChange={(event) => setNewMemberName(event.target.value)}
+                          placeholder="New keeper’s name"
+                          aria-label="New keeper’s name"
+                          maxLength={40}
+                        />
+                        <button disabled={memberBusy === "create" || !newMemberName.trim()}>{memberBusy === "create" ? "Adding…" : "Add keeper"}</button>
+                      </form>
+                    </div>
                     <div className="member-list">
                       {members.map((member) => (
                         <div className="member-row" key={member.id}>
@@ -1178,12 +1199,16 @@ export default function HusbandryApp() {
                             <button
                               disabled={memberBusy === member.id}
                               onClick={() => {
-                                if (window.confirm(`Issue a new access code for ${member.displayName}? The current code stops working immediately.`)) {
+                                const self = member.id === viewer?.id;
+                                const question = self
+                                  ? "Replace the code you sign in with? Your current code stops working immediately and you will need the new one to sign in again. This does not add a keeper — use “Add a keeper” below for that."
+                                  : `Issue a new access code for ${member.displayName}? Their current code stops working immediately.`;
+                                if (window.confirm(question)) {
                                   void patchMember(member, { reissueAccessCode: true });
                                 }
                               }}
                             >
-                              New code
+                              {member.id === viewer?.id ? "Replace my code" : "New code"}
                             </button>
                             {member.role !== "Owner" && (
                               <button
@@ -1200,16 +1225,6 @@ export default function HusbandryApp() {
                         </div>
                       ))}
                     </div>
-                    <form className="member-add" onSubmit={createMember}>
-                      <input
-                        value={newMemberName}
-                        onChange={(event) => setNewMemberName(event.target.value)}
-                        placeholder="New keeper’s name"
-                        aria-label="New keeper’s name"
-                        maxLength={40}
-                      />
-                      <button disabled={memberBusy === "create" || !newMemberName.trim()}>{memberBusy === "create" ? "Adding…" : "Add keeper"}</button>
-                    </form>
                   </>
                 ) : (
                   <p className="member-note">{signedIn ? "Loading household members…" : "Sign in with the Head Keeper code to manage household access."}</p>
