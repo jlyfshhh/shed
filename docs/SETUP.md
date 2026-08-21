@@ -26,7 +26,13 @@ When it finishes it prints the address to open, like `http://192.168.1.50:3000`.
 
 ## 2. Create the Head Keeper
 
-Enter the setup token from `shed/.env`, choose the Head Keeper's display name, and save the recovery access code Shed shows you. The code is shown only once.
+Enter the setup token, choose the Head Keeper's display name, and save the recovery access code Shed shows you. The code is shown only once.
+
+`.env` is a hidden file, so a file manager will not list it unless you ask it to show hidden files. Print the token with:
+
+```
+grep SHED_BOOTSTRAP_TOKEN ~/shed/.env
+```
 
 The **Head Keeper** can add and change data, manage care plans, create household accounts, correct history, and export backups. A **Keeper** can view the care list and animals and mark tasks complete under their own name.
 

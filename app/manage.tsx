@@ -371,7 +371,7 @@ export function SetupGate({ onReady }: { onReady: (viewer: Viewer, capabilities:
       <div className="auth-card">
         <span className="mini-mark" aria-hidden="true" />
         <h1>Welcome to Shed</h1>
-        <p>Let’s set up the Head Keeper — the account that manages animals, care plans, and household access. Use the one-time setup token the installer saved in your <code>.env</code>.</p>
+        <p>Let’s set up the Head Keeper — the account that manages animals, care plans, and household access. The installer saved a one-time setup token in a hidden file. On the machine running Shed, print it with <code>grep SHED_BOOTSTRAP_TOKEN ~/shed/.env</code>.</p>
         <form onSubmit={submit}>
           <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Your name" aria-label="Your name" maxLength={40} />
           <input type="password" value={token} onChange={(event) => setToken(event.target.value)} placeholder="One-time setup token" aria-label="One-time setup token" autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false} />

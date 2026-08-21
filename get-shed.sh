@@ -554,7 +554,11 @@ else
   echo "  http://$host.local:$port"
 fi
 echo
-echo "On first visit, use the one-time setup token stored in $install_dir/.env."
+echo "On first visit, Shed asks for a one-time setup token. It is kept in a"
+echo "hidden file, so a file manager will not list it unless you ask it to show"
+echo "hidden files. Print the token with:"
+echo
+echo "  grep SHED_BOOTSTRAP_TOKEN $install_dir/.env"
 echo "Run this installer again to update. It takes a verified backup and restores the prior service if the update fails."
 echo
 echo "If the address will not load: curl -fsSL https://animalroom.app/doctor.sh | bash"
