@@ -28,11 +28,17 @@ When it finishes it prints the address to open, like `http://192.168.1.50:3000`.
 
 Enter the setup token, choose the Head Keeper's display name, and save the recovery access code Shed shows you. The code is shown only once.
 
-`.env` is a hidden file, so a file manager will not list it unless you ask it to show hidden files. Print the token with:
+The installer prints the setup token at the end of every run, and it stays in
+`shed/.env`:
 
 ```
 grep SHED_BOOTSTRAP_TOKEN ~/shed/.env
 ```
+
+Keep it. Shed's sign-in accepts the setup token as well as your personal access
+code, so it is also how you get back in if you lose that code — signing in with
+it issues you a fresh one. Bask has its own separate key; the two are not
+interchangeable.
 
 The **Head Keeper** can add and change data, manage care plans, create household accounts, correct history, and export backups. A **Keeper** can view the care list and animals and mark tasks complete under their own name.
 
@@ -205,19 +211,7 @@ always re-run the installer so the same safety checks apply.
 - **Today has no tasks:** add an active care plan and confirm its date/frequency makes it due today.
 - **I cannot edit records:** only the Head Keeper can open the manager; confirm you used the Head Keeper access code.
 - **A keeper lost their code:** the Head Keeper can issue a new one under Household access. The old code stops working.
-- **The Head Keeper lost their code:** nobody else can reissue it, so it has to be reset against the database directly. Shed must be stopped first, and the command below only touches the Head Keeper's row.
-
-  ```bash
-  sudo apt-get install -y sqlite3     # if you do not already have it
-  cd ~/shed && docker compose stop
-  db="$(sudo find data/v3/d1/miniflare-D1DatabaseObject -maxdepth 1 -regextype posix-extended -regex '.*/[0-9a-f]{64}\.sqlite')"
-  sudo cp "$db" "$db.before-code-reset"
-  code="shed_$(openssl rand -base64 24 | tr '+/' '-_' | tr -d '=')"
-  sudo sqlite3 "$db" "UPDATE household_members SET access_code_hash='$(printf '%s' "$code" | sha256sum | cut -d' ' -f1)', updated_at=datetime('now') WHERE role='Owner';"
-  docker compose start && echo "New Head Keeper access code: $code"
-  ```
-
-  Save the code it prints — Shed will not show it again. Keeper codes are untouched.
+- **The Head Keeper lost their code:** sign in with the setup token instead — Shed accepts it and issues a new personal access code. Print it with `grep SHED_BOOTSTRAP_TOKEN ~/shed/.env`, or read it off the end of the installer's output.
 - **Another phone cannot connect:** use the server's numeric LAN address (like `http://192.168.1.50:3000`), not `localhost`. If you were given a `.local` address and it will not load, your phone probably does not support `.local` names — use the numbers instead.
 - **The address will not load at all, right after installing:** most often the machine ran out of memory while Shed was starting. Shed needs roughly 400 MB free just to start. The diagnostic below reports this directly.
 - **Anything else, or you are not sure:** run the diagnostic and send whoever is helping what it prints. It reads your system only, changes nothing, and deliberately contains no records, passwords, or access codes.

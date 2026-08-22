@@ -200,6 +200,9 @@ export default function HusbandryApp() {
   // ── Sign-in (real sessions; the old role-preview toggle is gone on purpose) ──
   const [accessCodeInput, setAccessCodeInput] = useState("");
   const [loginBusy, setLoginBusy] = useState(false);
+  // A personal access code just issued because the keeper signed in with the
+  // install's setup token. Shown once, so it needs somewhere deliberate to go.
+  const [issuedCode, setIssuedCode] = useState<string | null>(null);
   const [loginError, setLoginError] = useState<string | null>(null);
 
   // ── Household management (Head Keeper only) ──
@@ -415,6 +418,27 @@ export default function HusbandryApp() {
         body: JSON.stringify({ accessCode: code }),
       });
       if (response.status === 401) {
+        // People paste the key the installer printed, because that is the only
+        // key they have ever been shown. That is the setup token, not a personal
+        // access code, and telling them it "wasn't accepted" sent at least two
+        // keepers round in circles trying it in both apps. If it really is the
+        // setup token, it proves they control this install — so let them in and
+        // hand them a personal code rather than arguing about which key it is.
+        const recovered = await fetch("/api/auth/bootstrap", {
+          method: "POST",
+          headers: { "content-type": "application/json", "X-Shed-Bootstrap-Token": code },
+          body: JSON.stringify({ recover: true }),
+        });
+        if (recovered.ok) {
+          const issued = (await recovered.json()) as { member: Viewer; capabilities: Capability[]; accessCode: string };
+          setSession({ authenticated: true, authRequired: true, setupRequired: false, capabilities: issued.capabilities, member: issued.member });
+          setIssuedCode(issued.accessCode);
+          notify(`Welcome back, ${issued.member.displayName}`);
+          void refresh().catch(() => undefined);
+          void loadMembers();
+          void loadReport();
+          return;
+        }
         setLoginError("That access code wasn’t accepted.");
         return;
       }
@@ -1326,6 +1350,27 @@ export default function HusbandryApp() {
       </main>
 
       {toast && <div className="toast" role="status" aria-live="polite" data-modal-live>{toast}</div>}
+
+      {issuedCode && (
+        <div className="sheet-backdrop" role="dialog" aria-modal="true" aria-label="Your new access code">
+          <div className="sheet" onClick={(event) => event.stopPropagation()}>
+            <header className="sheet-head">
+              <h2>Your personal access code</h2>
+            </header>
+            <div className="sheet-body">
+              <p>You signed in with this install&rsquo;s Head Keeper key. Here is your own access code — use this from now on, and keep the Head Keeper key for getting back in.</p>
+              <div className="invite-reveal" role="status">
+                <b>Access code</b>
+                <code>{issuedCode}</code>
+                <small>Shown once. Any code you had before this no longer works.</small>
+              </div>
+              <div className="sheet-actions field-wide">
+                <button type="button" onClick={() => setIssuedCode(null)}>Saved it, continue</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {manageOpen && can("records.manage") && (
         <ManageConsole
