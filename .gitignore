@@ -53,3 +53,4 @@ next-env.d.ts
 
 # Local list of identities that must never appear in this repository.
 .privacy-denylist
+.claude/
