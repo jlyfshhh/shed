@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import WeekView from "./week-view";
-import { AnimalProfile, BulkFeederIntake, FeederForecast, GettingStartedGuide, ManageConsole, RestorePanel, SetupGate, type FeederForecastData, type ResourceKey, type SetupSummary } from "./manage";
+import { AnimalProfile, BulkFeederIntake, FeederForecast, GettingStartedGuide, ManageConsole, RecoverAccessGate, RestorePanel, SetupGate, type FeederForecastData, type ResourceKey, type SetupSummary } from "./manage";
 import { animalPhotoUrl } from "./animal-photo";
 import { animalFacts, speciesGlyph } from "@/lib/animal-traits";
 import { taskIsOverdue, taskLastDay } from "@/lib/care-window";
@@ -828,6 +828,15 @@ export default function HusbandryApp() {
                 <button disabled={loginBusy}>{loginBusy ? "Checking…" : "Sign in"}</button>
               </form>
               {loginError && <p className="form-error" role="alert">{loginError}</p>}
+              <RecoverAccessGate
+                onRecovered={(member, memberCapabilities) => {
+                  setSession({ authenticated: true, authRequired: true, setupRequired: false, capabilities: memberCapabilities, member });
+                  notify(`Welcome back, ${member.displayName}`);
+                  void refresh().catch(() => undefined);
+                  void loadMembers();
+                  void loadReport();
+                }}
+              />
             </div>
           </section>
         ) : !data ? (
@@ -1118,7 +1127,7 @@ export default function HusbandryApp() {
               {can("records.manage") && <article className="settings-card"><span className="settings-icon">?</span><h2>Getting started</h2><p>Follow the setup checklist and learn where recurring care, one-time history, notes, equipment, and weights belong.</p><button onClick={() => setGuideOpen(true)}>Open guide</button></article>}
               {can("records.manage") && <article className="settings-card"><span className="settings-icon">☷</span><h2>Manage records</h2><p>Add and edit animals, enclosures, care plans, notes, equipment, weights, feeders, and history.</p><button onClick={() => openManager()}>Open manager</button></article>}
               <article className="settings-card"><span className="settings-icon">◷</span><h2>Feeding forecast</h2><p>Upcoming feeds by animal, which feeder in stock covers each, shortage dates, and when to reorder.</p><button onClick={() => setForecastOpen(true)}>Open forecast</button></article>
-              {can("feeders.manage") && <article className="settings-card"><span className="settings-icon">＋</span><h2>Bulk add feeders</h2><p>Paste a shipment of individual gram weights into inventory at once.</p><button onClick={() => setBulkFeedersOpen(true)}>Add weighed feeders</button></article>}
+              {can("feeders.manage") && <article className="settings-card"><span className="settings-icon">＋</span><h2>Bulk add feeders</h2><p>Add a whole shipment to inventory at once, counted by size class.</p><button onClick={() => setBulkFeedersOpen(true)}>Add feeders</button></article>}
               {can("records.export") && (
                 <article className="settings-card"><span className="settings-icon">↥</span><h2>Your data, always portable</h2><p>Download a complete open-format copy any time — stable identifiers, ISO dates, numeric gram values.</p><div className="export-actions"><a href="/api/export?format=json">Download JSON</a><a href="/api/export?format=csv">Download CSV</a></div></article>
               )}

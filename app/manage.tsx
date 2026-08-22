@@ -411,6 +411,92 @@ function toLocalDatetime(iso: string): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+/**
+ * Way back in when the Head Keeper access code is lost.
+ *
+ * The code is shown once and stored only as a hash, and every other recovery
+ * route in the app runs through the Head Keeper, so there was no way back short
+ * of editing the database by hand. The setup token is the right credential:
+ * it already creates the Head Keeper, it sits in the install's own .env where
+ * the keeper can read it, and whoever can read it can reach the database
+ * anyway.
+ */
+export function RecoverAccessGate({ onRecovered }: { onRecovered: (viewer: Viewer, capabilities: Capability[]) => void }) {
+  const [open, setOpen] = useState(false);
+  const [token, setToken] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [issued, setIssued] = useState<{ code: string; viewer: Viewer; capabilities: Capability[] } | null>(null);
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    const setupToken = token.trim();
+    setToken("");
+    if (!setupToken) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/auth/bootstrap", {
+        method: "POST",
+        headers: { "content-type": "application/json", "X-Shed-Bootstrap-Token": setupToken },
+        body: JSON.stringify({ recover: true }),
+      });
+      const payload = (await response.json()) as { member?: Viewer; capabilities?: Capability[]; accessCode?: string; error?: string };
+      if (!response.ok || !payload.member || !payload.capabilities || !payload.accessCode) {
+        throw new Error(payload.error ?? "That setup token was not accepted.");
+      }
+      setIssued({ code: payload.accessCode, viewer: payload.member, capabilities: payload.capabilities });
+    } catch (recoverError) {
+      setError(recoverError instanceof Error ? recoverError.message : "That setup token was not accepted.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (issued) {
+    return (
+      <div className="invite-reveal" role="status" style={{ textAlign: "left" }}>
+        <b>Your new Head Keeper access code</b>
+        <code>{issued.code}</code>
+        <small>Shown once. Save it, then continue. The previous code no longer works.</small>
+        <button onClick={() => onRecovered(issued.viewer, issued.capabilities)}>Enter Shed →</button>
+      </div>
+    );
+  }
+
+  if (!open) {
+    return (
+      <button type="button" className="link-button" onClick={() => setOpen(true)}>
+        Lost the Head Keeper access code?
+      </button>
+    );
+  }
+
+  return (
+    <form onSubmit={submit} className="recover-form">
+      <p>
+        Enter the setup token from your install to be issued a new Head Keeper
+        access code. On the machine running Shed:
+      </p>
+      <code className="recover-hint">grep SHED_BOOTSTRAP_TOKEN ~/shed/.env</code>
+      <input
+        type="password"
+        value={token}
+        onChange={(event) => setToken(event.target.value)}
+        placeholder="Setup token"
+        aria-label="Setup token"
+        autoComplete="off"
+        autoCapitalize="none"
+        autoCorrect="off"
+        spellCheck={false}
+      />
+      <button disabled={busy}>{busy ? "Checking…" : "Issue a new access code"}</button>
+      <button type="button" className="ghost" onClick={() => { setOpen(false); setError(null); }}>Cancel</button>
+      {error && <p className="form-error" role="alert">{error}</p>}
+    </form>
+  );
+}
+
 function ResourceForm({ def, catalog, editing, onClose, onSaved, defaults, presentation = "sheet", onCatalogRefresh }: {
   def: ResourceDef;
   catalog: Catalog;
@@ -661,7 +747,7 @@ export function GettingStartedGuide({ summary, onOpenManager, onClose, onOpenHou
             <p><b>Note</b><span>Reference information you want to keep, such as temperament or acquisition details.</span></p>
             <p><b>Equipment</b><span>UVB, heating, lighting, filters, and replacement dates.</span></p>
             <p><b>Weight</b><span>A dated measurement in grams, kept separately for trend tracking.</span></p>
-            <p><b>Feeder</b><span>Prey inventory by type and weight for feeding forecasts.</span></p>
+            <p><b>Feeder</b><span>Prey inventory by species and size class for feeding forecasts.</span></p>
           </div>
         </section>
         <p className="guide-footer">Need installation help, backups, or phone setup? <a href="https://github.com/jlyfshhh/shed/blob/main/docs/SETUP.md" target="_blank" rel="noreferrer">Open the complete Shed guide</a>.</p>
@@ -1021,6 +1107,10 @@ export function ManageConsole({ onClose, onChanged, toast, initialResource = "an
             const created = !editing.row && editing.def.key === "animal" && savedId;
             setEditing(null);
             toast(message);
+            // Deliberately not awaited: the sheet below opens straight away and
+            // shows its own waiting state until this lands. Waiting here
+            // instead would just move the empty gap earlier, leaving the keeper
+            // staring at a closed form and no confirmation at all.
             void load();
             onChanged();
             // A brand-new animal has no care plans yet, and the household almost
@@ -1781,7 +1871,27 @@ export function CareRoutineSuggestions({ animalId, catalog, onClose, onCreated, 
   // sit above the early return — hooks must run in the same order every render.
   const requestKey = useRef(crypto.randomUUID());
 
-  if (!animal) return null;
+  if (!animal) {
+    // Reached when the catalog reload is still in flight, or failed. Rendering
+    // nothing is indistinguishable from the save having silently failed, so
+    // stay on screen and stay closable.
+    return (
+      <div className="sheet-backdrop" role="dialog" aria-modal="true" aria-label="Care routines">
+        <div className="sheet suggest-sheet" onClick={(event) => event.stopPropagation()}>
+          <header className="sheet-head">
+            <h2>Setting up care</h2>
+            <button className="sheet-close" onClick={onClose} aria-label="Close">✕</button>
+          </header>
+          <div className="sheet-body">
+            <p>Saved. Loading the care routines you can copy…</p>
+            <div className="sheet-actions field-wide">
+              <button type="button" className="ghost" onClick={onClose}>Close</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
   const name = str(animal.name);
   const isChosen = (id: string) => !deselected.has(id);
   const chosenCount = suggestions.filter(({ row }) => isChosen(str(row.id))).length;
