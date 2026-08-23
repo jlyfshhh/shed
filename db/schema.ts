@@ -41,6 +41,8 @@ export const careSchedules = sqliteTable("care_schedules", {
   rewardCents: integer("reward_cents"),
   /** Days after the due date this stays simply "to do" rather than overdue. */
   graceDays: integer("grace_days").notNull().default(0),
+  /** Animals this plan covers, primary first. Null means the one in animalId. */
+  animalIdsJson: text("animal_ids_json"),
 });
 
 export const careTasks = sqliteTable("care_tasks", {

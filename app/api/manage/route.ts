@@ -1,5 +1,6 @@
 import { ensureDatabase, invalidateMaterializedTasks } from "@/db/runtime";
 import { ApiInputError, safeErrorResponse } from "@/lib/api-errors";
+import { parseAnimalIds, serializeAnimalIds } from "@/lib/care-group";
 import { dateInTimeZone, isIsoDate } from "@/lib/date";
 import { attributedTo, requireCapability } from "@/lib/household-auth";
 import { normalizedEmptyValue } from "@/lib/manage-values";
@@ -28,7 +29,7 @@ const configs: Record<Resource, Config> = {
     startDate: { column: "start_date", kind: "date" }, endDate: { column: "end_date", kind: "date" }, active: { column: "active", kind: "boolean" }, createdAt: { column: "created_at" }, updatedAt: { column: "updated_at" },
     preySpecies: { column: "prey_species" }, preyDescription: { column: "prey_description" }, preySizeClass: { column: "prey_size_class" }, targetPercent: { column: "target_percent", kind: "number" },
     minimumPercent: { column: "minimum_percent", kind: "number" }, maximumPercent: { column: "maximum_percent", kind: "number" }, buyAsNeeded: { column: "buy_as_needed", kind: "boolean" },
-    rewardCents: { column: "reward_cents", kind: "number" },
+    rewardCents: { column: "reward_cents", kind: "number" }, animalIdsJson: { column: "animal_ids_json" },
   } },
   note: { table: "animal_notes", required: ["title", "body"], fields: {
     animalId: { column: "animal_id" }, enclosureId: { column: "enclosure_id" }, category: { column: "category" }, title: { column: "title" }, body: { column: "body" },
@@ -218,7 +219,15 @@ function normalize(resource: Resource, data: Record<string, unknown>, creating: 
     else if (field.kind === "datetime") { const text = String(value); if (Number.isNaN(Date.parse(text))) throw new ApiInputError(`${key} must be a valid date and time`); output[key] = new Date(text).toISOString(); }
     else output[key] = cleanText(value, key === "notes" || key === "body" || key === "details" ? 5000 : 200) ?? "";
   }
-  if (resource === "schedule") validateSchedule(output);
+  if (resource === "schedule") {
+    validateSchedule(output);
+    if ("animalIdsJson" in output || "animalId" in output) {
+      const primary = String(output.animalId ?? "");
+      if (primary) {
+        output.animalIdsJson = serializeAnimalIds(parseAnimalIds(output.animalIdsJson as string | null), primary);
+      }
+    }
+  }
   if (resource === "lightingPlan") validateLightingPlan(output);
   if (resource === "lightingFixture" && Object.hasOwn(output, "quantity") && (!Number.isInteger(Number(output.quantity)) || Number(output.quantity) < 1)) throw new ApiInputError("quantity must be a whole number of at least 1");
   return output;

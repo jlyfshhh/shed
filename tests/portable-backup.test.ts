@@ -9,8 +9,12 @@ import {
   remapMemberReferences,
 } from "../lib/portable-backup.ts";
 
-test("schema 14 carries feeders, allowance, lighting imports, sheds, payouts, and care-baseline data", () => {
-  assert.equal(BACKUP_SCHEMA_VERSION, 14);
+test("schema 15 carries feeders, allowance, lighting imports, sheds, payouts, care-baseline data, and grouped plans", () => {
+  assert.equal(BACKUP_SCHEMA_VERSION, 15);
+  // A plan covering several animals keeps that list in one column. Leaving it
+  // out of the manifest would silently ungroup every plan on restore, which is
+  // the same shape of loss that dropped grace_days and recorded_at before.
+  assert.ok(PORTABLE_RESOURCES.careSchedules.columns.includes("animal_ids_json"));
   assert.ok(PORTABLE_RESOURCES.animalPhotos.columns.includes("data"));
   assert.equal(PORTABLE_RESOURCES.animalPhotos.key, "animal_id");
   assert.ok(PORTABLE_RESOURCES.careSchedules.columns.includes("prey_size_class"));

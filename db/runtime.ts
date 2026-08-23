@@ -3,6 +3,7 @@ import { dateInTimeZone, DEFAULT_TIME_ZONE } from "@/lib/date";
 import { careLookbackDates } from "@/lib/care-schedule";
 import { getCareStartDate } from "@/lib/care-settings";
 import { scheduleIsDue, type CareScheduleRow } from "@/lib/schedules";
+import { careTaskId, scheduleAnimalIds } from "@/lib/care-group";
 import { normalizeLegacyTaskDispositions } from "@/lib/task-dispositions";
 
 // Every API call used to run the whole of this: create-table statements for
@@ -74,7 +75,7 @@ async function applySchema(db: D1Database) {
     db.prepare("CREATE TABLE IF NOT EXISTS animals (id TEXT PRIMARY KEY, name TEXT NOT NULL, species TEXT NOT NULL, group_name TEXT NOT NULL DEFAULT 'Reptile', location TEXT NOT NULL DEFAULT '', weight_grams INTEGER, weight_date TEXT, scientific_name TEXT, morph TEXT, sex TEXT, birth_date TEXT, acquired_date TEXT, source TEXT, notes TEXT, active INTEGER NOT NULL DEFAULT 1, enclosure_id TEXT, created_at TEXT, updated_at TEXT, earning_enabled INTEGER NOT NULL DEFAULT 1)"),
     db.prepare("CREATE TABLE IF NOT EXISTS enclosures (id TEXT PRIMARY KEY, name TEXT NOT NULL, enclosure_type TEXT, manufacturer TEXT, model TEXT, width REAL, depth REAL, height REAL, dimension_unit TEXT NOT NULL DEFAULT 'in', location TEXT, substrate TEXT, bioactive INTEGER NOT NULL DEFAULT 0, shared_habitat_id TEXT, notes TEXT, active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"),
     db.prepare("CREATE INDEX IF NOT EXISTS enclosures_active_name_idx ON enclosures(active, name)"),
-    db.prepare("CREATE TABLE IF NOT EXISTS care_schedules (id TEXT PRIMARY KEY, animal_id TEXT NOT NULL, task_type TEXT NOT NULL, title TEXT NOT NULL, details TEXT NOT NULL DEFAULT '', frequency TEXT NOT NULL, interval_days INTEGER, weekdays_json TEXT, day_of_month INTEGER, start_date TEXT NOT NULL, end_date TEXT, active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, prey_species TEXT, prey_description TEXT, prey_size_class TEXT, target_percent REAL, minimum_percent REAL, maximum_percent REAL, buy_as_needed INTEGER NOT NULL DEFAULT 0, reward_cents INTEGER)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS care_schedules (id TEXT PRIMARY KEY, animal_id TEXT NOT NULL, task_type TEXT NOT NULL, title TEXT NOT NULL, details TEXT NOT NULL DEFAULT '', frequency TEXT NOT NULL, interval_days INTEGER, weekdays_json TEXT, day_of_month INTEGER, start_date TEXT NOT NULL, end_date TEXT, active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, prey_species TEXT, prey_description TEXT, prey_size_class TEXT, target_percent REAL, minimum_percent REAL, maximum_percent REAL, buy_as_needed INTEGER NOT NULL DEFAULT 0, reward_cents INTEGER, animal_ids_json TEXT)"),
     db.prepare("CREATE INDEX IF NOT EXISTS care_schedules_active_animal_idx ON care_schedules(active, animal_id)"),
     db.prepare("CREATE TABLE IF NOT EXISTS care_tasks (id TEXT PRIMARY KEY, schedule_id TEXT, animal_id TEXT NOT NULL, task_type TEXT NOT NULL DEFAULT 'general', title TEXT NOT NULL, details TEXT NOT NULL, due_date TEXT NOT NULL, missed_at TEXT, missed_by_member_id TEXT, missed_by_name TEXT, skipped_at TEXT, skipped_by_member_id TEXT, skipped_by_name TEXT, skip_reason TEXT)"),
     db.prepare("CREATE INDEX IF NOT EXISTS care_tasks_due_idx ON care_tasks(due_date, animal_id)"),
@@ -161,7 +162,9 @@ async function applySchema(db: D1Database) {
   await addMissingColumns(db, "husbandry_events", [["recorded_at", "TEXT"]]);
   // Weekend chores sit on Saturday only because a schedule needs a day. Zero
   // keeps every existing plan exactly as strict as it is today.
-  await addMissingColumns(db, "care_schedules", [["grace_days", "INTEGER NOT NULL DEFAULT 0"]]);
+  // A plan covering several animals lists them here; null means the one animal
+  // in animal_id, which is every plan that existed before grouping.
+  await addMissingColumns(db, "care_schedules", [["grace_days", "INTEGER NOT NULL DEFAULT 0"], ["animal_ids_json", "TEXT"]]);
   await relaxFeederWeight(db);
   await normalizeLegacyTaskDispositions(db);
   await db.prepare("INSERT OR IGNORE INTO app_settings (key, value) VALUES ('default_reward_cents', '25')").run();
@@ -172,17 +175,24 @@ async function applySchema(db: D1Database) {
 
 async function materializeTasks(db: D1Database, today: string) {
   const schedules = await db.prepare(
-    "SELECT id, animal_id AS animalId, task_type AS taskType, title, details, frequency, interval_days AS intervalDays, weekdays_json AS weekdaysJson, day_of_month AS dayOfMonth, start_date AS startDate, end_date AS endDate FROM care_schedules WHERE active = 1",
-  ).all<CareScheduleRow>();
+    "SELECT id, animal_id AS animalId, animal_ids_json AS animalIdsJson, task_type AS taskType, title, details, frequency, interval_days AS intervalDays, weekdays_json AS weekdaysJson, day_of_month AS dayOfMonth, start_date AS startDate, end_date AS endDate FROM care_schedules WHERE active = 1",
+  ).all<CareScheduleRow & { animalIdsJson: string | null }>();
   // Materialize tasks for a lookback window (not just yesterday+today) so that
   // care missed a few days ago still shows up as an actionable overdue task —
   // but never before the "start fresh" baseline, if one has been set.
   const careStartDate = await getCareStartDate(db);
   const dates = careLookbackDates(today, careStartDate);
-  const taskStatements = schedules.results.flatMap((schedule) => dates.filter((date) => scheduleIsDue(schedule, date)).map((date) =>
-    db.prepare("INSERT OR IGNORE INTO care_tasks (id, schedule_id, animal_id, task_type, title, details, due_date) VALUES (?, ?, ?, ?, ?, ?, ?)")
-      .bind(`${schedule.id}:${date}`, schedule.id, schedule.animalId, schedule.taskType, schedule.title, schedule.details, date),
-  ));
+  // One task per animal on the plan. They collapse into a single line on Today,
+  // but stay separate rows so that history, weights and feeder consumption
+  // remain per-animal.
+  const taskStatements = schedules.results.flatMap((schedule) =>
+    dates.filter((date) => scheduleIsDue(schedule, date)).flatMap((date) =>
+      scheduleAnimalIds(schedule).map((animalId) =>
+        db.prepare("INSERT OR IGNORE INTO care_tasks (id, schedule_id, animal_id, task_type, title, details, due_date) VALUES (?, ?, ?, ?, ?, ?, ?)")
+          .bind(careTaskId(schedule.id, animalId, schedule.animalId, date), schedule.id, animalId, schedule.taskType, schedule.title, schedule.details, date),
+      ),
+    ),
+  );
   if (taskStatements.length) await db.batch(taskStatements);
 }
 
