@@ -47,3 +47,14 @@ test("feeder intake is offered by count, not by weight", async () => {
   assert.doesNotMatch(app, /Add weighed feeders|gram weights/);
   assert.doesNotMatch(manage, /inventory by type and weight/);
 });
+
+test("Today collapses a grouped plan into one line", async () => {
+  const app = await readFile(new URL("../app/HusbandryApp.tsx", import.meta.url), "utf8");
+  // Both lists have to group, or a plan covering six animals fills Today with
+  // six identical rows in whichever list it lands in.
+  const grouped = app.match(/groupTasks\(/g) ?? [];
+  assert.ok(grouped.length >= 2, "overdue and up-next must both group");
+  // One line, one timing question: the dialog records the whole group.
+  assert.match(app, /recordCompletionAll\(timingTask\.tasks/);
+  assert.doesNotMatch(app, /recordCompletion\(timingTask\.task,/);
+});

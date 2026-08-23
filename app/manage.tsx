@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { equipmentAgeLabel } from "@/lib/equipment-age";
+import { parseAnimalIds } from "@/lib/care-group";
 import { animalFacts, speciesGlyph } from "@/lib/animal-traits";
 import type { Capability } from "@/lib/capabilities";
 import { SHED_QUALITIES, SHED_QUALITY_LABELS, isPoorShed, shedIntervalDays, type ShedQuality } from "@/lib/shed-quality";
@@ -72,7 +73,7 @@ const relativeTime = (value: string) => {
 };
 
 // ── Field configuration (mirrors app/api/manage/route.ts columns) ─────────────
-type FieldType = "text" | "textarea" | "number" | "date" | "datetime" | "boolean" | "select" | "weekdays" | "animalRef" | "enclosureRef" | "lightingPlanRef" | "equipmentRef";
+type FieldType = "text" | "textarea" | "number" | "date" | "datetime" | "boolean" | "select" | "weekdays" | "animalMulti" | "animalRef" | "enclosureRef" | "lightingPlanRef" | "equipmentRef";
 type Field = {
   key: string; // camelCase write key
   column: string; // snake_case read column
@@ -155,6 +156,7 @@ const resourceDefs: ResourceDef[] = [
     key: "schedule", catalog: "schedules", singular: "care plan", plural: "Care plans", action: "Archive",
     fields: [
       { key: "animalId", column: "animal_id", label: "Animal", type: "animalRef", required: true },
+      { key: "animalIdsJson", column: "animal_ids_json", label: "Also covers", type: "animalMulti", help: "Pick others on the same routine and they share one line on Today. Each animal still gets its own history, weights and feeder record." },
       { key: "title", column: "title", label: "Task title", type: "text", required: true, help: "e.g. Feed, Mist, Water change" },
       { key: "taskType", column: "task_type", label: "Task type", type: "text", required: true, help: "feeding, misting, water, cleaning…" },
       { key: "details", column: "details", label: "Details", type: "text", help: "Short note shown on the task, e.g. “Every 2 weeks”" },
@@ -575,6 +577,7 @@ function ResourceForm({ def, catalog, editing, onClose, onSaved, defaults, prese
           <FieldInput
             field={field}
             value={values[field.key] ?? ""}
+            values={values}
             catalog={catalog}
             onChange={(value) => set(field.key, value)}
             onCreateNew={field.type === "enclosureRef" ? () => setCreatingFor(field) : undefined}
@@ -636,9 +639,11 @@ function ResourceForm({ def, catalog, editing, onClose, onSaved, defaults, prese
 
 const CREATE_NEW = "__create_new__";
 
-function FieldInput({ field, value, catalog, onChange, onCreateNew }: {
+function FieldInput({ field, value, values, catalog, onChange, onCreateNew }: {
   field: Field;
   value: string;
+  /** The whole form, for fields that depend on another answer. */
+  values: Record<string, string>;
   catalog: Catalog;
   onChange: (value: string) => void;
   /** Offered on reference pickers so a missing record can be made in place. */
@@ -674,6 +679,33 @@ function FieldInput({ field, value, catalog, onChange, onCreateNew }: {
         ))}
         {onCreateNew && <option value={CREATE_NEW}>+ Add a new {field.type === "enclosureRef" ? "enclosure" : "record"}…</option>}
       </select>
+    );
+  }
+  if (field.type === "animalMulti") {
+    // The animals this plan covers besides the one chosen above. Kept as a
+    // list of toggles rather than a multi-select because a keeper is picking
+    // "which of my geckos", and needs to see them all at once.
+    const selected = parseAnimalIds(value);
+    const primary = str(values.animalId ?? "");
+    const toggle = (id: string) => {
+      const next = selected.includes(id) ? selected.filter((current) => current !== id) : [...selected, id];
+      onChange(next.length ? JSON.stringify(next) : "");
+    };
+    const choices = catalog.animals.filter((row) => bool(row.active) && str(row.id) !== primary);
+    if (!choices.length) return <small>Add another animal first to cover more than one here.</small>;
+    return (
+      <span className="animal-picker">
+        {choices.map((row) => (
+          <button
+            type="button"
+            key={str(row.id)}
+            className={selected.includes(str(row.id)) ? "on" : ""}
+            onClick={() => toggle(str(row.id))}
+          >
+            {str(row.name)}
+          </button>
+        ))}
+      </span>
     );
   }
   if (field.type === "weekdays") {

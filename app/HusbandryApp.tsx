@@ -5,6 +5,7 @@ import WeekView from "./week-view";
 import { AnimalProfile, BulkFeederIntake, FeederForecast, GettingStartedGuide, ManageConsole, RecoverAccessGate, RestorePanel, SetupGate, type FeederForecastData, type ResourceKey, type SetupSummary } from "./manage";
 import { animalPhotoUrl } from "./animal-photo";
 import { animalFacts, speciesGlyph } from "@/lib/animal-traits";
+import { groupTasks } from "@/lib/care-group";
 import { taskIsOverdue, taskLastDay } from "@/lib/care-window";
 import type { Capability } from "@/lib/capabilities";
 
@@ -42,6 +43,7 @@ type ContributionReport = {
 type Tab = "today" | "animals" | "trends" | "more";
 type Task = {
   id: string;
+  scheduleId: string | null;
   taskType: string;
   animalId: string;
   animalName: string;
@@ -144,6 +146,19 @@ const subscribeToTheme = (onChange: () => void) => {
   return () => window.removeEventListener(THEME_EVENT, onChange);
 };
 
+/**
+ * Who a grouped line covers.
+ *
+ * Named while the list is short, because "Achilles, Apollo" is the useful thing
+ * to read at the enclosure. Past that the names stop fitting on a phone and the
+ * count is what matters.
+ */
+function groupAnimals(tasks: readonly Task[]): string {
+  if (tasks.length === 1) return tasks[0].animalName;
+  if (tasks.length <= 3) return tasks.map((task) => task.animalName).join(", ");
+  return `${tasks.slice(0, 2).map((task) => task.animalName).join(", ")} +${tasks.length - 2} more`;
+}
+
 export default function HusbandryApp() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -219,7 +234,9 @@ export default function HusbandryApp() {
     if (invite) inviteRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [invite]);
   const [attributionTask, setAttributionTask] = useState<Task | null>(null);
-  const [timingTask, setTimingTask] = useState<{ task: Task; outcome: "done" | "refused" } | null>(null);
+  // `task` is the one shown — every task in a group shares a due date and
+  // title — while `tasks` is what actually gets recorded.
+  const [timingTask, setTimingTask] = useState<{ task: Task; tasks: Task[]; outcome: "done" | "refused" } | null>(null);
   const [timingDate, setTimingDate] = useState("");
   const [attributionMemberId, setAttributionMemberId] = useState("");
   const [attributionReason, setAttributionReason] = useState("Wrong household member was credited.");
@@ -541,17 +558,32 @@ export default function HusbandryApp() {
    * rather than assume, because `occurredAt` is what the animal's history is
    * ordered by. On-time work is unambiguous and is never interrupted.
    */
-  const completeTask = async (task: Task, outcome: "done" | "refused" = "done") => {
+  const completeTask = async (task: Task, outcome: "done" | "refused" = "done") => completeGroup([task], outcome);
+
+  /**
+   * Complete every task on one line.
+   *
+   * A grouped line is one plan on one day across several animals, so the "when
+   * was this actually done" question has one answer for all of them. Asking per
+   * animal would put the same dialog in front of the keeper six times.
+   */
+  const completeGroup = async (tasks: Task[], outcome: "done" | "refused" = "done") => {
+    if (!tasks.length) return;
     // `data.date` is the household's current day as the server computed it, so
     // a keeper in another time zone — or up past midnight — sees the same
     // "overdue" as the records do. A task still inside its grace window is not
     // late at all, so it is never asked about.
-    if (data && taskIsOverdue(task.dueDate, task.graceDays ?? 0, data.date)) {
+    if (data && tasks.some((task) => taskIsOverdue(task.dueDate, task.graceDays ?? 0, data.date))) {
       setTimingDate("");
-      setTimingTask({ task, outcome });
+      setTimingTask({ task: tasks[0], tasks, outcome });
       return;
     }
-    await recordCompletion(task, outcome);
+    for (const task of tasks) await recordCompletion(task, outcome);
+  };
+
+  /** Used by the timing dialog once the keeper has chosen a date. */
+  const recordCompletionAll = async (tasks: Task[], outcome: "done" | "refused", occurredOn?: string) => {
+    for (const task of tasks) await recordCompletion(task, outcome, occurredOn);
   };
 
   const recordCompletion = async (
@@ -926,31 +958,38 @@ export default function HusbandryApp() {
               <>
                 <div className="section-title compact"><h2>Overdue</h2><div className="section-actions"><span>{overdue.length} from earlier days</span>{can("care.startFresh") && <button disabled={busyTask === "__all__"} onClick={startFresh}>{busyTask === "__all__" ? "Clearing…" : "Start fresh from today"}</button>}</div></div>
                 <div className="task-list">
-                  {overdue.map((task) => (
-                    <article className="task-card overdue" key={task.id}>
-                      <div className="animal-badge" aria-hidden="true">{task.animalName.slice(0, 1)}</div>
+                  {groupTasks(overdue).map(({ key, tasks }) => {
+                    const task = tasks[0];
+                    const busy = tasks.some((member) => busyTask === member.id);
+                    return (
+                    <article className="task-card overdue" key={key}>
+                      <div className="animal-badge" aria-hidden="true">{tasks.length > 1 ? tasks.length : task.animalName.slice(0, 1)}</div>
                       <div className="task-copy">
-                        <span>{task.species} · due {shortDate(task.dueDate)}</span><h3>{task.animalName}</h3><p><b>{task.title}</b>{taskDetails(task) ? ` · ${taskDetails(task)}` : ""}</p>
+                        <span>{task.species} · due {shortDate(task.dueDate)}</span><h3>{groupAnimals(tasks)}</h3><p><b>{task.title}</b>{taskDetails(task) ? ` · ${taskDetails(task)}` : ""}</p>
                       </div>
                       <div className="overdue-actions">
-                        <button className="complete-button" disabled={busyTask === task.id} onClick={() => completeTask(task)}>{busyTask === task.id ? "Saving…" : "Mark done"}<span>✓</span></button>
+                        <button className="complete-button" disabled={busy} onClick={() => completeGroup(tasks)}>{busy ? "Saving…" : tasks.length > 1 ? `Mark all ${tasks.length} done` : "Mark done"}<span>✓</span></button>
                         <div className="task-alt-actions">
-                          {task.taskType === "feeding" && <button className="refuse-button" disabled={busyTask === task.id} onClick={() => refuseMeal(task)}>Refused</button>}
-                          <button className="skip-button" disabled={busyTask === task.id} onClick={() => skipTask(task)}>Skip</button>
-                          {can("care.miss") && <button className="miss-button" disabled={busyTask === task.id} onClick={() => missTask(task)}>Missed</button>}
+                          {task.taskType === "feeding" && <button className="refuse-button" disabled={busy} onClick={() => completeGroup(tasks, "refused")}>Refused</button>}
+                          <button className="skip-button" disabled={busy} onClick={() => { for (const member of tasks) void skipTask(member); }}>Skip</button>
+                          {can("care.miss") && <button className="miss-button" disabled={busy} onClick={() => { for (const member of tasks) void missTask(member); }}>Missed</button>}
                         </div>
                       </div>
                     </article>
-                  ))}
+                    );
+                  })}
                 </div>
               </>
             )}
 
             <div className="section-title"><h2>Up next</h2><span>{pending.length} remaining</span></div>
             <div className="task-list">
-              {pending.map((task) => (
-                <article className="task-card" key={task.id}>
-                  <div className="animal-badge" aria-hidden="true">{task.animalName.slice(0, 1)}</div>
+              {groupTasks(pending).map(({ key, tasks }) => {
+                const task = tasks[0];
+                const busy = tasks.some((member) => busyTask === member.id);
+                return (
+                <article className="task-card" key={key}>
+                  <div className="animal-badge" aria-hidden="true">{tasks.length > 1 ? tasks.length : task.animalName.slice(0, 1)}</div>
                   <div className="task-copy">
                     <span>
                       {task.species}
@@ -958,27 +997,28 @@ export default function HusbandryApp() {
                           on its own due date it is simply today's work. */}
                       {data && (task.graceDays ?? 0) > 0 && task.dueDate < data.date
                         && ` · due ${shortDate(task.dueDate)}, through ${shortDate(taskLastDay(task.dueDate, task.graceDays ?? 0))}`}
-                    </span><h3>{task.animalName}</h3><p><b>{task.title}</b>{taskDetails(task) ? ` · ${taskDetails(task)}` : ""}</p>
+                    </span><h3>{groupAnimals(tasks)}</h3><p><b>{task.title}</b>{taskDetails(task) ? ` · ${taskDetails(task)}` : ""}</p>
                   </div>
                   <div className="task-actions">
-                    <button className="complete-button" disabled={busyTask === task.id} onClick={() => completeTask(task)}>
-                      {busyTask === task.id ? "Saving…" : "Mark done"}<span>✓</span>
+                    <button className="complete-button" disabled={busy} onClick={() => completeGroup(tasks)}>
+                      {busy ? "Saving…" : tasks.length > 1 ? `Mark all ${tasks.length} done` : "Mark done"}<span>✓</span>
                     </button>
                     <div className="task-alt-actions">
                       {task.taskType === "feeding" && (
-                        <button className="refuse-button" disabled={busyTask === task.id} onClick={() => refuseMeal(task)}>Refused</button>
+                        <button className="refuse-button" disabled={busy} onClick={() => completeGroup(tasks, "refused")}>Refused</button>
                       )}
-                      <button className="skip-button" disabled={busyTask === task.id} onClick={() => skipTask(task)}>Skip</button>
+                      <button className="skip-button" disabled={busy} onClick={() => { for (const member of tasks) void skipTask(member); }}>Skip</button>
                       {/* Missed belongs on today's card as well as on overdue ones.
                           A keeper knows at ten at night that the animal is asleep and
                           the pellets are not happening; making them wait until
                           tomorrow leaves the task on today's list pretending it might
                           still get done, and the day never reads as settled. */}
-                      {can("care.miss") && <button className="miss-button" disabled={busyTask === task.id} onClick={() => missTask(task)}>Missed</button>}
+                      {can("care.miss") && <button className="miss-button" disabled={busy} onClick={() => { for (const member of tasks) void missTask(member); }}>Missed</button>}
                     </div>
                   </div>
                 </article>
-              ))}
+                );
+              })}
               {!pending.length && <div className="empty-card"><span>✓</span><h3>That’s everything</h3><p>There are no remaining scheduled tasks today.</p></div>}
             </div>
 
@@ -1415,7 +1455,7 @@ export default function HusbandryApp() {
             <header className="sheet-head">
               <div>
                 <h2 id="timing-title">When did this happen?</h2>
-                <p>{timingTask.task.animalName} · {timingTask.task.title}</p>
+                <p>{timingTask.tasks.length > 1 ? `${timingTask.tasks.length} animals` : timingTask.task.animalName} · {timingTask.task.title}</p>
               </div>
               <button type="button" className="sheet-close" onClick={() => setTimingTask(null)} aria-label="Close">✕</button>
             </header>
@@ -1451,7 +1491,7 @@ export default function HusbandryApp() {
                   <button
                     type="button"
                     disabled={busyTask === timingTask.task.id}
-                    onClick={() => recordCompletion(timingTask.task, timingTask.outcome, timingDate)}
+                    onClick={() => recordCompletionAll(timingTask.tasks, timingTask.outcome, timingDate)}
                   >
                     {busyTask === timingTask.task.id ? "Saving…" : `On ${shortDate(timingDate)}`}
                   </button>
@@ -1460,14 +1500,14 @@ export default function HusbandryApp() {
                   type="button"
                   className="ghost"
                   disabled={busyTask === timingTask.task.id}
-                  onClick={() => recordCompletion(timingTask.task, timingTask.outcome, timingTask.task.dueDate)}
+                  onClick={() => recordCompletionAll(timingTask.tasks, timingTask.outcome, timingTask.task.dueDate)}
                 >
                   On {shortDate(timingTask.task.dueDate)}
                 </button>
                 <button
                   type="button"
                   disabled={busyTask === timingTask.task.id}
-                  onClick={() => recordCompletion(timingTask.task, timingTask.outcome, data.date)}
+                  onClick={() => recordCompletionAll(timingTask.tasks, timingTask.outcome, data.date)}
                 >
                   {busyTask === timingTask.task.id ? "Saving…" : "Today"}
                 </button>
