@@ -272,7 +272,7 @@ unauthenticated request would turn login into a database-write amplifier; the
 
 ## Backups and restore
 
-- `GET /api/export?format=json` returns schema version 12 with all portable husbandry
+- `GET /api/export?format=json` returns schema version 15 with all portable husbandry
   tables, task rewards, payout history, missed-task state, and portable app settings
   (including the care baseline), lighting records, and base64-encoded plan-sheet attachments. Household access-code hashes are deliberately excluded.
 - `GET /api/export?format=csv` provides a flat open-format copy.

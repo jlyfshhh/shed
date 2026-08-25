@@ -8,6 +8,13 @@ export const MAX_BUNDLE_BYTES = 64 * 1024 * 1024;
 export const MAX_ROWS_PER_RESOURCE = 100_000;
 export const MAX_ATTACHMENTS = 2_000;
 export const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+/**
+ * Ceiling on any single stored value. D1 refuses a value over roughly 2.1 MB
+ * with SQLITE_TOOBIG, which surfaced as a bare 500 partway through a restore
+ * rather than a refusal naming the row. Checking here means an oversized field
+ * is reported like every other bad row, before anything is written.
+ */
+export const MAX_FIELD_CHARS = 2_000_000;
 
 export type BundlePlan = { errors: string[]; counts: Record<string, number> };
 
@@ -47,6 +54,11 @@ export function validateBundle(bundle: Record<string, unknown>): BundlePlan {
       if (!row || typeof row !== "object" || Array.isArray(row)) {
         add(`${bundleKey}[${index}] is not an object`);
         return;
+      }
+      for (const [column, value] of Object.entries(row as Record<string, unknown>)) {
+        if (typeof value === "string" && value.length > MAX_FIELD_CHARS) {
+          add(`${bundleKey}[${index}].${column} is ${value.length} characters, more than the ${MAX_FIELD_CHARS} a single value can hold`);
+        }
       }
       const record = row as Record<string, unknown>;
       const key = record[definition.key];

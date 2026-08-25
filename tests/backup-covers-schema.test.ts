@@ -110,3 +110,37 @@ test("the manifest does not claim columns the schema does not have", () => {
   }
   assert.deepEqual(unknown, [], `manifest lists columns that do not exist:\n  ${unknown.join("\n  ")}`);
 });
+
+// household_members is deliberately outside PORTABLE_RESOURCES: a restore
+// rebuilds keepers with fresh, disabled credentials rather than carrying access
+// code hashes between installs. But that means the export hand-writes one
+// column list and the restore hand-writes another, with nothing holding either
+// to the schema — the same two-independent-lists shape that lost shed_events.
+// Every column has to be named as carried or as deliberately left behind.
+const HOUSEHOLD_CARRIED = ["id", "display_name", "role", "earning_enabled", "created_at", "updated_at"];
+const HOUSEHOLD_DELIBERATELY_DROPPED = [
+  "access_code_hash", // never leaves an install; restore mints a disabled one
+  "active",           // restored keepers arrive disabled until reissued a code
+  "last_login_at",    // belongs to the install it happened on
+];
+
+test("every household_members column is classified as carried or dropped", () => {
+  const columns = columnsFromCreateStatements(runtimeSource).get("household_members");
+  assert.ok(columns, "household_members should be created by the runtime schema");
+  const classified = new Set([...HOUSEHOLD_CARRIED, ...HOUSEHOLD_DELIBERATELY_DROPPED]);
+  const unclassified = [...columns].filter((column) => !classified.has(column));
+  assert.deepEqual(unclassified, [], `household_members columns nobody has decided about: ${unclassified.join(", ")}`);
+});
+
+test("the household_members export actually names the columns it carries", () => {
+  const exportSource = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "..", "app", "api", "export", "route.ts"),
+    "utf8",
+  );
+  for (const column of HOUSEHOLD_CARRIED) {
+    assert.ok(exportSource.includes(column), `export drops household_members.${column}`);
+  }
+  // A credential must never be written into a portable bundle.
+  assert.ok(!/household_members[\s\S]{0,400}access_code_hash/.test(exportSource),
+    "the export must not carry access code hashes");
+});

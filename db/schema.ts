@@ -263,3 +263,21 @@ export const rewardPayouts = sqliteTable("reward_payouts", {
 }, (table) => [
   index("reward_payouts_member_idx").on(table.memberId, table.paidAt),
 ]);
+
+/**
+ * One photo per animal, stored as base64 in the row.
+ *
+ * This table is created by db/runtime.ts and has always existed in live
+ * databases; it was simply never declared here, so the ORM schema and the
+ * database had drifted. The backup manifest and its coverage test both read
+ * runtime.ts, which is why backups were unaffected.
+ */
+export const animalPhotos = sqliteTable("animal_photos", {
+  animalId: text("animal_id").primaryKey(),
+  mime: text("mime").notNull(),
+  data: text("data").notNull(),
+  byteSize: integer("byte_size").notNull(),
+  updatedAt: text("updated_at").notNull(),
+  updatedByMemberId: text("updated_by_member_id"),
+  updatedByName: text("updated_by_name"),
+});
