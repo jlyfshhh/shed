@@ -174,7 +174,7 @@ function feederMatchesEvent(feeder: AvailableFeeder, event: FeederForecastEvent)
   return normalizeLabel(feeder.sizeClass) === normalizeLabel(event.preySizeClass);
 }
 
-function normalizeLabel(value: string): string {
+export function normalizeLabel(value: string): string {
   return value.trim().toLocaleLowerCase().replace(/\s+/g, " ");
 }
 

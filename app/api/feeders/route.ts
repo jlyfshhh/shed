@@ -1,3 +1,4 @@
+import { normalizeLabel } from "@/lib/feeding-forecast";
 import { ensureDatabase } from "@/db/runtime";
 import { internalErrorResponse } from "@/lib/api-errors";
 import { requireCapability } from "@/lib/household-auth";
@@ -37,7 +38,9 @@ export async function GET(request: Request) {
       inventory
         .filter((row) => row.status === "available")
         .reduce<Record<string, { preySpecies: string; sizeClass: string; count: number }>>((groups, row) => {
-          const key = `${row.preySpecies}:${row.sizeClass}`;
+          // Group the way the allocator matches, or "rat/SMALL" and "rat/small"
+          // show as two separate stock lines while being spent as one.
+          const key = `${normalizeLabel(row.preySpecies)}:${normalizeLabel(row.sizeClass)}`;
           const group = groups[key] ?? {
             preySpecies: row.preySpecies,
             sizeClass: row.sizeClass,
