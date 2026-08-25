@@ -347,7 +347,16 @@ function requireResource(value: Resource | undefined): Resource {
 }
 function requireId(value: string | undefined) { const id = cleanId(value); if (!id) throw new ApiInputError("A valid record id is required"); return id; }
 function cleanId(value: unknown) { const text = typeof value === "string" ? value.trim() : ""; return /^[a-zA-Z0-9][a-zA-Z0-9:_-]{0,99}$/.test(text) ? text : null; }
-function cleanText(value: unknown, max: number) { if (value === undefined || value === null) return null; const text = String(value).trim(); return text ? text.slice(0, max) : null; }
+// String() happily turns an object into "[object Object]" and an array into
+// "1,2", so a species of {nested:true} was stored verbatim as garbage and
+// reported as saved. Numbers and booleans are still accepted — a name typed as
+// 12345 is a reasonable thing to mean — but a structure is not a value.
+function cleanText(value: unknown, max: number) {
+  if (value === undefined || value === null) return null;
+  if (typeof value === "object") throw new ApiInputError("A text value cannot be a list or an object");
+  const text = String(value).trim();
+  return text ? text.slice(0, max) : null;
+}
 async function readPayload(request: Request): Promise<Payload> {
   try {
     const value = await request.json();
