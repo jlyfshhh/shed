@@ -29,7 +29,7 @@ const configs: Record<Resource, Config> = {
     startDate: { column: "start_date", kind: "date" }, endDate: { column: "end_date", kind: "date" }, active: { column: "active", kind: "boolean" }, createdAt: { column: "created_at" }, updatedAt: { column: "updated_at" },
     preySpecies: { column: "prey_species" }, preyDescription: { column: "prey_description" }, preySizeClass: { column: "prey_size_class" }, targetPercent: { column: "target_percent", kind: "number" },
     minimumPercent: { column: "minimum_percent", kind: "number" }, maximumPercent: { column: "maximum_percent", kind: "number" }, buyAsNeeded: { column: "buy_as_needed", kind: "boolean" },
-    rewardCents: { column: "reward_cents", kind: "number" }, animalIdsJson: { column: "animal_ids_json" },
+    rewardCents: { column: "reward_cents", kind: "number" }, animalIdsJson: { column: "animal_ids_json" }, graceDays: { column: "grace_days", kind: "number" },
   } },
   note: { table: "animal_notes", required: ["title", "body"], fields: {
     animalId: { column: "animal_id" }, enclosureId: { column: "enclosure_id" }, category: { column: "category" }, title: { column: "title" }, body: { column: "body" },

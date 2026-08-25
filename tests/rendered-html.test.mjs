@@ -69,3 +69,19 @@ test("a plan's animal list is not truncated like prose", async () => {
   // And a list that does not parse must be refused, never stored.
   assert.match(route, /was not readable/);
 });
+
+test("every field the manage form offers can actually be saved", async () => {
+  const [form, route] = await Promise.all([
+    readFile(new URL("../app/manage.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/manage/route.ts", import.meta.url), "utf8"),
+  ]);
+  // normalize() drops any key the route's field map does not know, without an
+  // error, so a field present in the form but missing from the map is accepted,
+  // reported as saved, and thrown away. graceDays was in exactly that state:
+  // every weekend-chore window a keeper set was silently discarded.
+  const schedule = form.slice(form.indexOf('key: "schedule"'), form.indexOf('key: "note"'));
+  const offered = [...schedule.matchAll(/\{ key: "(\w+)"/g)].map((m) => m[1]);
+  const map = route.slice(route.indexOf("schedule: { table:"), route.indexOf("note: { table:"));
+  const missing = offered.filter((key) => !map.includes(`${key}: { column:`));
+  assert.deepEqual(missing, [], `care plan fields the API would silently discard: ${missing.join(", ")}`);
+});
