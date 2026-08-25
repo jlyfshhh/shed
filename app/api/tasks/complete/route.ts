@@ -1,3 +1,4 @@
+import { readJsonObject } from "@/lib/json-body";
 import { ensureDatabase } from "@/db/runtime";
 import { internalErrorResponse } from "@/lib/api-errors";
 import { CompletionTimingError, resolveOccurredAt } from "@/lib/completion-timing";
@@ -53,7 +54,9 @@ const noStore = { "Cache-Control": "no-store" };
 
 export async function POST(request: Request) {
   try {
-    const payload = await request.json() as CompletionPayload;
+    const parsed = await readJsonObject(request);
+    if (parsed.response) return parsed.response;
+    const payload = parsed.body as unknown as CompletionPayload;
     if (!payload.taskId || !payload.dueDate) {
       return Response.json({ error: "Task and due date are required" }, { status: 400, headers: noStore });
     }

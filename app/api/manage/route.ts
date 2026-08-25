@@ -225,11 +225,16 @@ function normalize(resource: Resource, data: Record<string, unknown>, creating: 
   }
   if (resource === "schedule") {
     validateSchedule(output);
-    if ("animalIdsJson" in output || "animalId" in output) {
+    // Only when the caller actually said something about the group. Running on
+    // "animalId" too meant a PATCH that merely renamed the plan's animal was
+    // read as "this plan now covers one animal", erasing a twelve-animal group
+    // and reporting success. Leaving the stored list alone is safe: the primary
+    // is prepended when the list is read, so the two can never disagree.
+    if ("animalIdsJson" in output) {
       const raw = output.animalIdsJson;
-      // Reject a list that does not parse rather than storing it. Silently
-      // dropping it would ungroup the plan without saying so, which is exactly
-      // the failure a truncated value used to produce.
+      // Refuse a list that does not parse rather than storing it. Dropping it
+      // would ungroup the plan without saying so, which is what a truncated
+      // value used to do.
       if (typeof raw === "string" && raw !== "" && parseAnimalIds(raw).length === 0) {
         throw new ApiInputError("The list of animals for this plan was not readable");
       }

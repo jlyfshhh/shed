@@ -5,6 +5,7 @@
 // Owner-only, matching weights: a shed cannot be corrected from the profile
 // once it is saved. Quality is the useful part over time — a run of patchy or
 // stuck sheds usually means humidity has drifted.
+import { readJsonObject } from "@/lib/json-body";
 import { ensureDatabase } from "@/db/runtime";
 import { internalErrorResponse } from "@/lib/api-errors";
 import { dateInTimeZone, isIsoDate } from "@/lib/date";
@@ -20,7 +21,9 @@ export async function POST(request: Request) {
     if (auth.response) return auth.response;
     const member = auth.member;
 
-    const payload = await request.json() as { animalId?: string; recordedOn?: string; quality?: string; notes?: string };
+    const parsed = await readJsonObject(request);
+    if (parsed.response) return parsed.response;
+    const payload = parsed.body as unknown as { animalId?: string; recordedOn?: string; quality?: string; notes?: string };
     const animalId = payload.animalId?.trim();
     if (!animalId) return Response.json({ error: "An animal is required" }, { status: 400, headers: noStore });
 

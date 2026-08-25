@@ -1,3 +1,4 @@
+import { readJsonObject } from "@/lib/json-body";
 import { ensureDatabase } from "@/db/runtime";
 import { safeErrorResponse } from "@/lib/api-errors";
 import { normalizeBulkFeeders, type BulkFeederInput } from "@/lib/bulk-feeders";
@@ -12,7 +13,9 @@ export async function POST(request: Request) {
     const db = await ensureDatabase();
     const auth = await requireCapability(request, db, "feeders.manage");
     if (auth.response) return auth.response;
-    const batch = normalizeBulkFeeders(await request.json() as BulkFeederInput, dateInTimeZone());
+    const parsed = await readJsonObject(request);
+    if (parsed.response) return parsed.response;
+    const batch = normalizeBulkFeeders(parsed.body as unknown as BulkFeederInput, dateInTimeZone());
     const ids = Array.from({ length: batch.count }, () => crypto.randomUUID());
     await db.batch(ids.map((id) =>
       db.prepare(

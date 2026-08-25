@@ -1,3 +1,4 @@
+import { readJsonObject } from "@/lib/json-body";
 import { ensureDatabase } from "@/db/runtime";
 import { internalErrorResponse } from "@/lib/api-errors";
 import { createAccessCode, hashAccessCode, requireCapability } from "@/lib/household-auth";
@@ -36,7 +37,9 @@ export async function POST(request: Request) {
     const db = await ensureDatabase();
     const auth = await requireCapability(request, db, "household.manage");
     if (auth.response) return auth.response;
-    const payload = await request.json() as { displayName?: string };
+    const parsed = await readJsonObject(request);
+    if (parsed.response) return parsed.response;
+    const payload = parsed.body as unknown as { displayName?: string };
     const displayName = payload.displayName?.trim().replace(/\s+/g, " ");
     if (!displayName || displayName.length > 40) {
       return Response.json({ error: "A display name of 1–40 characters is required" }, { status: 400 });

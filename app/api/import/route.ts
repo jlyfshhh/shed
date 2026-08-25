@@ -1,3 +1,4 @@
+import { readJsonObject } from "@/lib/json-body";
 import { ensureDatabase } from "@/db/runtime";
 import { env } from "cloudflare:workers";
 import { requireCapability } from "@/lib/household-auth";
@@ -65,7 +66,9 @@ export async function POST(request: Request) {
 
     let payload: RestorePayload;
     try {
-      payload = await request.json() as RestorePayload;
+      const parsed = await readJsonObject(request);
+      if (parsed.response) return parsed.response;
+      payload = parsed.body as unknown as RestorePayload;
     } catch {
       return Response.json({ error: "This backup is not valid JSON." }, { status: 400, headers: noStore });
     }

@@ -1,3 +1,4 @@
+import { readJsonObject } from "./json-body.ts";
 import { accessCookie, hashAccessCode } from "./access-code.ts";
 import { capabilitiesForRole, type HouseholdRole } from "./capabilities.ts";
 import {
@@ -49,7 +50,9 @@ export async function handleLoginRequest(
     const earlyGate = dependencies.throttle.check({ source });
     if (!earlyGate.allowed) return tooManyAttempts(earlyGate);
 
-    const payload = await request.json() as { accessCode?: string };
+    const parsed = await readJsonObject(request);
+    if (parsed.response) return parsed.response;
+    const payload = parsed.body as unknown as { accessCode?: string };
     const accessCode = payload.accessCode?.trim();
     if (!accessCode) {
       return Response.json({ error: "Access code is required" }, { status: 400, headers: noStore });

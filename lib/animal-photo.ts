@@ -6,8 +6,14 @@ export const PHOTO_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"] as con
  * Ceiling on the stored base64 string. The browser downscales to ~1200px JPEG
  * before uploading, which lands well under 300 KB — this is a backstop against
  * a hand-rolled request, not the normal path.
+ *
+ * Held below what the database will actually take. D1 refuses a value over
+ * roughly 2.1 MB with SQLITE_TOOBIG, so the previous 2,800,000 accepted photos
+ * the app then failed to store: the keeper got "Unable to save the photo" and a
+ * 500, having passed every check the app performs. Refusing early gives them
+ * the honest answer instead.
  */
-export const MAX_PHOTO_BASE64_LENGTH = 2_800_000;
+export const MAX_PHOTO_BASE64_LENGTH = 2_000_000;
 
 export type ParsedPhoto = { mime: string; base64: string; byteSize: number };
 

@@ -2,6 +2,7 @@
 // Marks a leftover task as "missed" (acknowledged as not done) so it stops
 // showing without fabricating a completion event. Reversible: completing the
 // task later clears the missed mark.
+import { readJsonObject } from "@/lib/json-body";
 import { ensureDatabase } from "@/db/runtime";
 import { internalErrorResponse } from "@/lib/api-errors";
 import { dateInTimeZone } from "@/lib/date";
@@ -16,7 +17,9 @@ const noStore = { "Cache-Control": "no-store" };
 
 export async function POST(request: Request) {
   try {
-    const payload = await request.json() as { taskId?: string; dueDate?: string; all?: boolean };
+    const parsed = await readJsonObject(request);
+    if (parsed.response) return parsed.response;
+    const payload = parsed.body as unknown as { taskId?: string; dueDate?: string; all?: boolean };
     const db = await ensureDatabase();
     // Both actions alter the expected-care record rather than record work that
     // happened, so they stay with the Head Keeper. The named capabilities keep
