@@ -336,7 +336,15 @@ async function completeLightingVerification(db: D1Database, planId: string, memb
     .bind(crypto.randomUUID(), task.id, task.animalId, `${metric}: ${value} ${unit}`, task.dueDate, occurredAt, memberId, memberName).run();
 }
 
-function requireResource(value: Resource | undefined): Resource { if (!value || !configs[value]) throw new ApiInputError("A supported resource is required"); return value; }
+// Resource names come from the request, so a plain lookup answers with
+// Object.prototype for "__proto__" and "constructor" — truthy, so validation
+// passed and the request blew up downstream as a 500 instead of being refused.
+function requireResource(value: Resource | undefined): Resource {
+  if (typeof value !== "string" || !Object.prototype.hasOwnProperty.call(configs, value)) {
+    throw new ApiInputError("A supported resource is required");
+  }
+  return value;
+}
 function requireId(value: string | undefined) { const id = cleanId(value); if (!id) throw new ApiInputError("A valid record id is required"); return id; }
 function cleanId(value: unknown) { const text = typeof value === "string" ? value.trim() : ""; return /^[a-zA-Z0-9][a-zA-Z0-9:_-]{0,99}$/.test(text) ? text : null; }
 function cleanText(value: unknown, max: number) { if (value === undefined || value === null) return null; const text = String(value).trim(); return text ? text.slice(0, max) : null; }

@@ -135,7 +135,7 @@ h1, h2, h3, p { margin-top: 0; }
 .progress-track { height: 7px; background: rgba(255,255,255,.14); border-radius: 99px; overflow: hidden; }
 .progress-track span { display: block; height: 100%; border-radius: inherit; background: var(--gold); transition: width .35s ease; }
 .progress-card > b { color: var(--lime); font-size: 13px; }
-.section-title { display: flex; align-items: baseline; justify-content: space-between; margin: 42px 0 16px; }
+.section-title { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 42px 0 16px; }
 .section-title h2 { margin: 0; font-size: 23px; font-weight: 800; letter-spacing: -.025em; }
 .section-title > span { color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
 .section-title.compact { margin-top: 34px; }
@@ -145,6 +145,11 @@ h1, h2, h3, p { margin-top: 0; }
 .task-copy > span { color: var(--muted); text-transform: uppercase; letter-spacing: .11em; font-size: 9px; font-weight: 800; }
 .task-copy h3 { margin: 2px 0 3px; font-size: 19px; font-weight: 800; letter-spacing: -.02em; }
 .task-copy p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
+/* A keeper pasting a MorphMarket or care-sheet link is ordinary use, and a URL
+   offers nowhere to wrap. Without this the card grows past a phone screen and
+   pushes "Mark done" out of reach — on every card in the list, because they
+   share a row width. Animal names can be just as unbroken. */
+.task-copy, .task-copy h3, .task-copy p, .task-copy > span { min-width: 0; overflow-wrap: anywhere; }
 .task-copy p b { color: var(--ink); }
 .complete-button { border: 1px solid var(--accent-line); background: var(--accent-soft); color: var(--accent-ink); border-radius: 999px; padding: 11px 12px 11px 16px; min-width: 122px; display: flex; justify-content: space-between; gap: 12px; align-items: center; font-weight: 800; font-size: 12px; cursor: pointer; }
 .complete-button span { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; background: var(--moss); color: var(--paper); }
@@ -206,7 +211,7 @@ h1, h2, h3, p { margin-top: 0; }
    one left them at different heights and the row read as ragged. Pinning the
    chips to the bottom of the body lines them up across the row. */
 .animal-meta { margin-top: auto; padding-top: 11px; display: flex; flex-wrap: wrap; gap: 5px; }
-.animal-meta span { display: inline-flex; align-items: center; gap: 4px; background: var(--accent-wash); border: 1px solid var(--accent-line); color: var(--accent-ink); border-radius: 999px; padding: 3px 8px; font-size: 10.5px; font-weight: 700; white-space: nowrap; }
+.animal-meta span { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; background: var(--accent-wash); border: 1px solid var(--accent-line); color: var(--accent-ink); border-radius: 999px; padding: 3px 8px; font-size: 10.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .trend-summary { padding: 14px 17px; background: #e9eddf; border-radius: 13px; display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; margin-bottom: 16px; }.trend-summary b { color: var(--moss); }
 .trend-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .trend-card { background: var(--paper); border: 1px solid var(--line); border-radius: 18px; padding: 18px; }

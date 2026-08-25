@@ -116,8 +116,18 @@ export default function DialogAccessibilityManager() {
         const closed = removed.at(-1)!;
         const opener = openers.get(closed);
         window.requestAnimationFrame(() => {
-          if (opener?.isConnected && !opener.closest("[inert]")) opener.focus({ preventScroll: true });
-          else visibleDialogs().at(-1)?.focus({ preventScroll: true });
+          if (opener?.isConnected && !opener.closest("[inert]")) return opener.focus({ preventScroll: true });
+          const dialog = visibleDialogs().at(-1);
+          if (dialog) return dialog.focus({ preventScroll: true });
+          // Neither survived. Completing a task removes the very button that
+          // opened the timing sheet, so a keeper working down the list by
+          // keyboard was dropped on <body> and had to tab from the top of the
+          // document again after every single task. Land in the main content
+          // instead, so the next Tab continues roughly where they were.
+          const main = document.querySelector("main");
+          if (!main) return;
+          if (!main.hasAttribute("tabindex")) main.setAttribute("tabindex", "-1");
+          main.focus({ preventScroll: true });
         });
       }
       previous = current;

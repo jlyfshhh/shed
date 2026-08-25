@@ -40,7 +40,11 @@ export async function POST(request: Request) {
     const parsed = await readJsonObject(request);
     if (parsed.response) return parsed.response;
     const payload = parsed.body as unknown as { displayName?: string };
-    const displayName = payload.displayName?.trim().replace(/\s+/g, " ");
+    // A non-string here used to reach .trim() and answer 500. A number is not
+    // a name; say so rather than crashing or silently coercing one.
+    const displayName = typeof payload.displayName === "string"
+      ? payload.displayName.trim().replace(/\s+/g, " ")
+      : undefined;
     if (!displayName || displayName.length > 40) {
       return Response.json({ error: "A display name of 1–40 characters is required" }, { status: 400 });
     }

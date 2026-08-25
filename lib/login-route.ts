@@ -53,7 +53,8 @@ export async function handleLoginRequest(
     const parsed = await readJsonObject(request);
     if (parsed.response) return parsed.response;
     const payload = parsed.body as unknown as { accessCode?: string };
-    const accessCode = payload.accessCode?.trim();
+    // Unauthenticated, so a non-string body must not be able to raise a 500.
+    const accessCode = typeof payload.accessCode === "string" ? payload.accessCode.trim() : undefined;
     if (!accessCode) {
       return Response.json({ error: "Access code is required" }, { status: 400, headers: noStore });
     }
