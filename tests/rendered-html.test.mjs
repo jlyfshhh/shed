@@ -58,3 +58,14 @@ test("Today collapses a grouped plan into one line", async () => {
   assert.match(app, /recordCompletionAll\(timingTask\.tasks/);
   assert.doesNotMatch(app, /recordCompletion\(timingTask\.task,/);
 });
+
+test("a plan's animal list is not truncated like prose", async () => {
+  const route = await readFile(new URL("../app/api/manage/route.ts", import.meta.url), "utf8");
+  // Text fields are capped at 200 characters. An animal id costs about 39
+  // characters inside a JSON array, so that cap cut the list mid-string past
+  // roughly five animals and stored unparseable JSON — the plan silently
+  // ungrouped and the extra animals lost their tasks.
+  assert.match(route, /animalIdsJson" \? \d{4,}/, "the animal list needs its own, larger cap");
+  // And a list that does not parse must be refused, never stored.
+  assert.match(route, /was not readable/);
+});

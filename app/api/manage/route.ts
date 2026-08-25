@@ -217,14 +217,25 @@ function normalize(resource: Resource, data: Record<string, unknown>, creating: 
     else if (field.kind === "number") { const number = Number(value); if (!Number.isFinite(number) || number < 0) throw new ApiInputError(`${key} must be a positive number`); output[key] = number; }
     else if (field.kind === "date") { const text = String(value); if (!isIsoDate(text)) throw new ApiInputError(`${key} must use YYYY-MM-DD`); output[key] = text; }
     else if (field.kind === "datetime") { const text = String(value); if (Number.isNaN(Date.parse(text))) throw new ApiInputError(`${key} must be a valid date and time`); output[key] = new Date(text).toISOString(); }
-    else output[key] = cleanText(value, key === "notes" || key === "body" || key === "details" ? 5000 : 200) ?? "";
+    // A JSON list of animal ids is not prose: at ~39 characters per id the
+    // default 200-character cap silently cut it mid-string past about five
+    // animals, storing unparseable JSON and quietly ungrouping the plan.
+    else output[key] = cleanText(value, key === "notes" || key === "body" || key === "details" ? 5000
+      : key === "animalIdsJson" ? 8000 : 200) ?? "";
   }
   if (resource === "schedule") {
     validateSchedule(output);
     if ("animalIdsJson" in output || "animalId" in output) {
+      const raw = output.animalIdsJson;
+      // Reject a list that does not parse rather than storing it. Silently
+      // dropping it would ungroup the plan without saying so, which is exactly
+      // the failure a truncated value used to produce.
+      if (typeof raw === "string" && raw !== "" && parseAnimalIds(raw).length === 0) {
+        throw new ApiInputError("The list of animals for this plan was not readable");
+      }
       const primary = String(output.animalId ?? "");
       if (primary) {
-        output.animalIdsJson = serializeAnimalIds(parseAnimalIds(output.animalIdsJson as string | null), primary);
+        output.animalIdsJson = serializeAnimalIds(parseAnimalIds(raw as string | null), primary);
       }
     }
   }
