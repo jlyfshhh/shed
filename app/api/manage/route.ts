@@ -212,7 +212,21 @@ function normalize(resource: Resource, data: Record<string, unknown>, creating: 
   const output: Record<string, string | number | null> = {};
   for (const [key, value] of Object.entries(data)) {
     const field = config.fields[key]; if (!field) continue;
-    if (value === null || value === "") { output[key] = normalizedEmptyValue(resource, key); continue; }
+    if (value === null || value === "") {
+      // Clearing a required field on an update used to write NULL into a NOT
+      // NULL column: the database refused it, so the record survived, but the
+      // caller got a 500 rather than being told the field is required.
+      if (!creating && config.required.includes(key)) throw new ApiInputError(`${key} cannot be cleared`);
+      // A yes/no field has no blank. Its column is NOT NULL, so writing one
+      // failed the insert; guessing a value instead would silently archive or
+      // unarchive a record nobody asked to change.
+      if (field.kind === "boolean") throw new ApiInputError(`${key} must be true or false`);
+      // Timestamps belong to the server. A client clearing one is nonsense,
+      // and the column is NOT NULL, so it failed as a 500 rather than a refusal.
+      if (key === "createdAt" || key === "updatedAt") throw new ApiInputError(`${key} is set automatically`);
+      output[key] = normalizedEmptyValue(resource, key);
+      continue;
+    }
     if (field.kind === "boolean") output[key] = value ? 1 : 0;
     else if (field.kind === "number") { const number = Number(value); if (!Number.isFinite(number) || number < 0) throw new ApiInputError(`${key} must be a positive number`); output[key] = number; }
     else if (field.kind === "date") { const text = String(value); if (!isIsoDate(text)) throw new ApiInputError(`${key} must use YYYY-MM-DD`); output[key] = text; }

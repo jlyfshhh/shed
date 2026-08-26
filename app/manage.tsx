@@ -87,6 +87,8 @@ type Field = {
   step?: string;
   optional?: boolean; // ref selects that allow "none"
   showIf?: (values: Record<string, string>) => boolean;
+  /** Says something about the answer given, when it deserves saying. */
+  warn?: (values: Record<string, string>) => string | null;
 };
 type ResourceDef = {
   key: ResourceKey;
@@ -163,7 +165,23 @@ const resourceDefs: ResourceDef[] = [
       { key: "frequency", column: "frequency", label: "Frequency", type: "select", options: frequencyOptions, required: true },
       { key: "weekdaysJson", column: "weekdays_json", label: "Days of week", type: "weekdays", showIf: (v) => v.frequency === "weekly" || v.frequency === "monthly", help: "For monthly care, choose one weekday to schedule its first, second, third, fourth, or fifth occurrence." },
       { key: "intervalDays", column: "interval_days", label: "Every N days", type: "number", showIf: (v) => v.frequency === "interval", help: "1 = daily, 2 = every other day" },
-      { key: "dayOfMonth", column: "day_of_month", label: "Day / occurrence in month", type: "number", showIf: (v) => v.frequency === "monthly", help: "With no weekday selected: calendar day 1–31. With a weekday selected: 1 = first, 2 = second … 5 = fifth." },
+      { key: "dayOfMonth", column: "day_of_month", label: "Day / occurrence in month", type: "number", showIf: (v) => v.frequency === "monthly", help: "With no weekday selected: calendar day 1–31. With a weekday selected: 1 = first, 2 = second … 5 = fifth.",
+        // A calendar day that some months do not have simply produces no task
+        // in those months. That is what the number means, but it is worth
+        // saying out loud at the moment it is typed.
+        warn: (v) => {
+          if (v.frequency !== "monthly") return null;
+          let weekdays: unknown = [];
+          try { weekdays = JSON.parse(v.weekdaysJson || "[]"); } catch { weekdays = []; }
+          // With a weekday chosen the number is an occurrence, not a date.
+          if (Array.isArray(weekdays) && weekdays.length) return null;
+          const day = Number(v.dayOfMonth);
+          if (!Number.isInteger(day)) return null;
+          if (day === 31) return "April, June, September and November have no 31st, so this plan skips those four months. For something every month, use “Every N days” or pick a weekday occurrence instead.";
+          if (day === 30) return "February has no 30th, so this plan skips February.";
+          if (day === 29) return "February only has a 29th in leap years, so this plan skips it in most years.";
+          return null;
+        } },
       { key: "graceDays", column: "grace_days", label: "Extra days to finish", type: "number", help: "Blank or 0 = due on the day. 1 = a Saturday task stays on the list through Sunday instead of going overdue. Use it for chores that just need doing that weekend, not for feedings." },
       { key: "startDate", column: "start_date", label: "Start date", type: "date", required: true },
       { key: "endDate", column: "end_date", label: "End date", type: "date", help: "Optional — leave blank to run indefinitely" },
@@ -583,6 +601,7 @@ function ResourceForm({ def, catalog, editing, onClose, onSaved, defaults, prese
             onCreateNew={field.type === "enclosureRef" ? () => setCreatingFor(field) : undefined}
           />
           {field.help && <small>{field.help}</small>}
+          {field.warn?.(values) && <small className="field-warning">{field.warn(values)}</small>}
         </label>
       ))}
       {def.key === "lightingPlan" && (
