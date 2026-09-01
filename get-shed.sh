@@ -337,7 +337,18 @@ prepare_storage_path() {
   elif ! create_internal_directory "$candidate"; then
     fail_with_rollback "External $label must already be a dedicated directory, and internal paths cannot traverse symlinks or '..': $candidate"
   fi
-  canonical="$(cd -- "$candidate" && pwd -P)"
+  # Resolving the path by entering it fails once the container owns the data
+  # directory: it is created 0700 and chowned to the container's uid, so the
+  # keeper running the installer cannot cd into their own data directory and
+  # every update after the first died here. Fall back to resolving the parent
+  # and refusing a symlinked final component, which keeps the symlink guarantee
+  # that create_internal_directory already enforces component by component.
+  if ! canonical="$(cd -- "$candidate" 2>/dev/null && pwd -P)"; then
+    [ ! -L "$candidate" ] || fail_with_rollback "$label must not be a symlink: $candidate"
+    parent="$(cd -- "$(dirname -- "$candidate")" 2>/dev/null && pwd -P)" ||
+      fail_with_rollback "$label cannot be resolved; its parent directory is unreadable: $candidate"
+    canonical="$parent/$(basename -- "$candidate")"
+  fi
 
   case "$canonical" in
     /|/bin|/bin/*|/boot|/boot/*|/dev|/dev/*|/etc|/etc/*|/lib|/lib/*|/lib64|/lib64/*|/private/etc|/private/etc/*|/private/tmp|/private/tmp/*|/private/var|/private/var/*|/proc|/proc/*|/run|/run/*|/sbin|/sbin/*|/sys|/sys/*|/tmp|/tmp/*|/usr|/usr/*|/var|/var/*|/home|/mnt|/opt|/root|/srv|"${HOME:-/nonexistent}")
