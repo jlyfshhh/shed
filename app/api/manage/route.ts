@@ -1,12 +1,13 @@
 import { ensureDatabase, invalidateMaterializedTasks } from "@/db/runtime";
 import { ApiInputError, safeErrorResponse } from "@/lib/api-errors";
 import { parseAnimalIds, serializeAnimalIds } from "@/lib/care-group";
+import { ANIMAL_PURGE_STEPS, EVENT_PURGE_STEPS, animalIdsWithout } from "@/lib/purge";
 import { dateInTimeZone, isIsoDate } from "@/lib/date";
 import { attributedTo, requireCapability } from "@/lib/household-auth";
 import { normalizedEmptyValue } from "@/lib/manage-values";
 
 type Resource = "animal" | "enclosure" | "schedule" | "note" | "equipment" | "weight" | "event" | "feeder" | "lightingPlan" | "lightingFixture" | "lightingMeasurement";
-type Payload = { resource?: Resource; id?: string; data?: Record<string, unknown>; reason?: string };
+type Payload = { resource?: Resource; id?: string; data?: Record<string, unknown>; reason?: string; purge?: boolean };
 type Field = { column: string; kind?: "text" | "number" | "boolean" | "date" | "datetime" };
 type Config = { table: string; fields: Record<string, Field>; required: string[]; softDelete?: boolean };
 
@@ -177,6 +178,39 @@ export async function DELETE(request: Request) {
     const payload = await readPayload(request);
     const resource = requireResource(payload.resource);
     const id = requireId(payload.id);
+
+    // Permanent removal, kept deliberately hard to reach: only something the
+    // keeper has already archived or already voided, and only when they say so
+    // explicitly. Everything else still archives or voids, which is what makes
+    // the records worth trusting.
+    if (payload.purge === true) {
+      if (resource === "animal") {
+        const animal = await db.prepare("SELECT id, active FROM animals WHERE id = ?").bind(id).first<{ id: string; active: number }>();
+        if (!animal) return Response.json({ error: "Record not found" }, { status: 404 });
+        if (Number(animal.active) !== 0) throw new ApiInputError("Archive the animal first, then it can be deleted permanently");
+        // A grouped plan loses this member rather than the whole plan: the other
+        // animals on that routine are still on it.
+        const grouped = await db.prepare(
+          "SELECT id, animal_id AS animalId, animal_ids_json AS animalIdsJson FROM care_schedules WHERE animal_ids_json IS NOT NULL AND animal_id <> ?",
+        ).bind(id).all<{ id: string; animalId: string; animalIdsJson: string | null }>();
+        const regroup = grouped.results
+          .filter((row) => parseAnimalIds(row.animalIdsJson).includes(id))
+          .map((row) => db.prepare("UPDATE care_schedules SET animal_ids_json = ? WHERE id = ?")
+            .bind(animalIdsWithout(row.animalIdsJson, id, row.animalId), row.id));
+        await db.batch([...regroup, ...ANIMAL_PURGE_STEPS.map((step) => db.prepare(step.sql).bind(id))]);
+        invalidateMaterializedTasks();
+        return Response.json({ saved: true, id, purged: true }, { headers: { "Cache-Control": "no-store" } });
+      }
+      if (resource === "event") {
+        const event = await db.prepare("SELECT id, voided_at AS voidedAt FROM husbandry_events WHERE id = ?").bind(id).first<{ id: string; voidedAt: string | null }>();
+        if (!event) return Response.json({ error: "Record not found" }, { status: 404 });
+        if (!event.voidedAt) throw new ApiInputError("Correct the entry first, then it can be deleted permanently");
+        await db.batch(EVENT_PURGE_STEPS.map((step) => db.prepare(step.sql).bind(id)));
+        return Response.json({ saved: true, id, purged: true }, { headers: { "Cache-Control": "no-store" } });
+      }
+      throw new ApiInputError("Only an archived animal or a corrected history entry can be deleted permanently");
+    }
+
     if (resource === "event") {
       await db.prepare("UPDATE husbandry_events SET voided_at = ?, voided_by_member_id = ?, voided_by_name = ?, void_reason = ? WHERE id = ? AND voided_at IS NULL")
         .bind(new Date().toISOString(), actor.id, actor.name, cleanText(payload.reason, 500) ?? "Voided by the Head Keeper.", id).run();

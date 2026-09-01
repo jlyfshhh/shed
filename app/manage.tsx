@@ -930,6 +930,22 @@ function LightingImportSheet({ catalog, onClose, onSaved }: { catalog: Catalog; 
 }
 
 // ── Management console ─────────────────────────────────────────────────────────
+
+/** What a permanent delete would take with it, counted from the loaded catalog. */
+function countAnimalRecords(catalog: Catalog, animalId: string): { total: number; summary: string } {
+  const parts: string[] = [];
+  const add = (n: number, one: string, many: string) => { if (n) parts.push(`${n} ${n === 1 ? one : many}`); };
+  const events = catalog.events.filter((row) => str(row.animal_id) === animalId).length;
+  const weights = catalog.weights.filter((row) => str(row.animal_id) === animalId).length;
+  const notes = catalog.notes.filter((row) => str(row.animal_id) === animalId).length;
+  const plans = catalog.schedules.filter((row) => str(row.animal_id) === animalId).length;
+  add(events, "history entry", "history entries");
+  add(weights, "weight", "weights");
+  add(notes, "note", "notes");
+  add(plans, "care plan", "care plans");
+  return { total: events + weights + notes + plans, summary: parts.join(", ") };
+}
+
 export function ManageConsole({ onClose, onChanged, toast, initialResource = "animal", focusAnimalId }: {
   onClose: () => void;
   onChanged: () => void;
@@ -1038,6 +1054,41 @@ export function ManageConsole({ onClose, onChanged, toast, initialResource = "an
   const showDetailsForm = Boolean(focusAnimal) && def.key === "animal";
   // Lighting hangs off the enclosure, so without one there is nothing to show.
   const needsEnclosure = Boolean(focusAnimalId) && !focusEnclosureId && (def.key === "enclosure" || def.key === "lightingPlan" || def.key === "lightingFixture" || def.key === "lightingMeasurement");
+
+  /**
+   * Permanent removal, offered only once something is already archived or
+   * voided. Everything is kept by default, which is right for care actually
+   * given — but somebody who evaluated the app should not be stuck with test
+   * records beside their real animals forever.
+   */
+  const purge = async (row: Row) => {
+    const meta = def.summary(row, catalog!);
+    const id = str(row.id);
+    const counts = def.key === "animal" ? countAnimalRecords(catalog!, id) : null;
+    const carries = counts && counts.total > 0 ? `\n\nThis also deletes ${counts.summary}.` : "";
+    const typed = window.prompt(
+      `Permanently delete “${meta.title}”?${carries}\n\nThis cannot be undone. Type DELETE to confirm.`,
+      "",
+    );
+    if (typed?.trim().toUpperCase() !== "DELETE") return;
+    setBusyId(id);
+    try {
+      const response = await fetch("/api/manage", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ resource: def.key, id, purge: true }),
+      });
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "Couldn’t delete that.");
+      toast(`Deleted ${meta.title} permanently.`);
+      await load();
+      onChanged();
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Couldn’t delete that.");
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   const remove = async (row: Row) => {
     const meta = def.summary(row, catalog!);
@@ -1151,6 +1202,11 @@ export function ManageConsole({ onClose, onChanged, toast, initialResource = "an
                 <div className="manage-row-actions">
                   {def.action !== "Void" && <button disabled={busyId === str(row.id)} onClick={() => setEditing({ def, row })}>Edit</button>}
                   <button className="danger" disabled={busyId === str(row.id) || meta.archived} onClick={() => void remove(row)}>{def.action}</button>
+                  {/* Only once it is already put away, and only where permanent
+                      removal makes sense: an animal, or a corrected entry. */}
+                  {meta.archived && (def.key === "animal" || def.key === "event") && (
+                    <button className="danger" disabled={busyId === str(row.id)} onClick={() => void purge(row)}>Delete permanently</button>
+                  )}
                 </div>
               </div>
             ))}
