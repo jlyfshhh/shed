@@ -323,6 +323,25 @@ create_internal_directory() {
   done
 }
 
+# Resolve a directory to its physical path without needing to enter it.
+#
+# The data directory is created 0700 and chowned to the container's uid, so
+# after the first install the keeper running this script cannot cd into their
+# own data directory. Anything that resolved a path by entering it therefore
+# failed with "Permission denied" on every later update. Falling back to the
+# parent keeps the symlink guarantee: a symlinked final component is refused
+# outright, and create_internal_directory already checks every component above.
+canonical_dir() {
+  local dir="$1" resolved parent
+  if resolved="$(cd -- "$dir" 2>/dev/null && pwd -P)"; then
+    printf '%s\n' "$resolved"
+    return 0
+  fi
+  [ ! -L "$dir" ] || return 1
+  parent="$(cd -- "$(dirname -- "$dir")" 2>/dev/null && pwd -P)" || return 1
+  printf '%s/%s\n' "$parent" "$(basename -- "$dir")"
+}
+
 prepare_storage_path() {
   local label="$1" raw_value="$2" path_var="$3" external_var="$4"
   local candidate canonical is_external=false
@@ -337,18 +356,8 @@ prepare_storage_path() {
   elif ! create_internal_directory "$candidate"; then
     fail_with_rollback "External $label must already be a dedicated directory, and internal paths cannot traverse symlinks or '..': $candidate"
   fi
-  # Resolving the path by entering it fails once the container owns the data
-  # directory: it is created 0700 and chowned to the container's uid, so the
-  # keeper running the installer cannot cd into their own data directory and
-  # every update after the first died here. Fall back to resolving the parent
-  # and refusing a symlinked final component, which keeps the symlink guarantee
-  # that create_internal_directory already enforces component by component.
-  if ! canonical="$(cd -- "$candidate" 2>/dev/null && pwd -P)"; then
-    [ ! -L "$candidate" ] || fail_with_rollback "$label must not be a symlink: $candidate"
-    parent="$(cd -- "$(dirname -- "$candidate")" 2>/dev/null && pwd -P)" ||
-      fail_with_rollback "$label cannot be resolved; its parent directory is unreadable: $candidate"
-    canonical="$parent/$(basename -- "$candidate")"
-  fi
+  canonical="$(canonical_dir "$candidate")" ||
+    fail_with_rollback "$label cannot be resolved; it is a symlink or its parent is unreadable: $candidate"
 
   case "$canonical" in
     /|/bin|/bin/*|/boot|/boot/*|/dev|/dev/*|/etc|/etc/*|/lib|/lib/*|/lib64|/lib64/*|/private/etc|/private/etc/*|/private/tmp|/private/tmp/*|/private/var|/private/var/*|/proc|/proc/*|/run|/run/*|/sbin|/sbin/*|/sys|/sys/*|/tmp|/tmp/*|/usr|/usr/*|/var|/var/*|/home|/mnt|/opt|/root|/srv|"${HOME:-/nonexistent}")
@@ -433,7 +442,8 @@ if [ "$previous_container" = true ]; then
   reject_unsafe_path_text "the running container's /data mount" "$running_mount"
   [ -d "$running_mount" ] ||
     fail_with_rollback "The running container's /data source is not a host directory: $running_mount"
-  backup_data_path="$(cd -- "$running_mount" && pwd -P)"
+  backup_data_path="$(canonical_dir "$running_mount")" ||
+    fail_with_rollback "The running container's /data source cannot be resolved: $running_mount"
   case "$backup_data_path" in "$install_dir"/*) ;; *) backup_allow_external=true ;; esac
 fi
 d1_dir="$backup_data_path/v3/d1/miniflare-D1DatabaseObject"
