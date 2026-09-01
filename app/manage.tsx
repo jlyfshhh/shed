@@ -89,6 +89,8 @@ type Field = {
   showIf?: (values: Record<string, string>) => boolean;
   /** Says something about the answer given, when it deserves saying. */
   warn?: (values: Record<string, string>) => string | null;
+  /** Plain-language names for select options; the stored value is unchanged. */
+  optionLabels?: Record<string, string>;
 };
 type ResourceDef = {
   key: ResourceKey;
@@ -103,6 +105,16 @@ type ResourceDef = {
 const groupOptions = ["Reptile", "Amphibian", "Invertebrate", "Fish", "Community", "Other"];
 const sexOptions = ["", "male", "female", "unknown"];
 const frequencyOptions = ["daily", "weekly", "interval", "monthly", "once"];
+// "interval" is what the column stores, but nobody setting up a gecko thinks in
+// those words. A keeper asked for an every-other-week option that already
+// existed — as "interval" with 14 days — and could not find it.
+const frequencyLabels: Record<string, string> = {
+  daily: "Every day",
+  weekly: "Certain days of the week",
+  interval: "Every N days (2 = every other day, 14 = every other week)",
+  monthly: "Monthly",
+  once: "One time only",
+};
 const feederStatusOptions = ["available", "consumed", "discarded"];
 
 const isFeeding = (values: Record<string, string>) => values.taskType?.toLowerCase() === "feeding";
@@ -162,9 +174,9 @@ const resourceDefs: ResourceDef[] = [
       { key: "title", column: "title", label: "Task title", type: "text", required: true, help: "e.g. Feed, Mist, Water change" },
       { key: "taskType", column: "task_type", label: "Task type", type: "text", required: true, help: "feeding, misting, water, cleaning…" },
       { key: "details", column: "details", label: "Details", type: "text", help: "Short note shown on the task, e.g. “Every 2 weeks”" },
-      { key: "frequency", column: "frequency", label: "Frequency", type: "select", options: frequencyOptions, required: true },
+      { key: "frequency", column: "frequency", label: "Frequency", type: "select", options: frequencyOptions, optionLabels: frequencyLabels, required: true },
       { key: "weekdaysJson", column: "weekdays_json", label: "Days of week", type: "weekdays", showIf: (v) => v.frequency === "weekly" || v.frequency === "monthly", help: "For monthly care, choose one weekday to schedule its first, second, third, fourth, or fifth occurrence." },
-      { key: "intervalDays", column: "interval_days", label: "Every N days", type: "number", showIf: (v) => v.frequency === "interval", help: "1 = daily, 2 = every other day" },
+      { key: "intervalDays", column: "interval_days", label: "Every N days", type: "number", showIf: (v) => v.frequency === "interval", help: "1 = daily, 2 = every other day, 7 = weekly, 14 = every other week" },
       { key: "dayOfMonth", column: "day_of_month", label: "Day / occurrence in month", type: "number", showIf: (v) => v.frequency === "monthly", help: "With no weekday selected: calendar day 1–31. With a weekday selected: 1 = first, 2 = second … 5 = fifth.",
         // A calendar day that some months do not have simply produces no task
         // in those months. That is what the number means, but it is worth
@@ -677,7 +689,7 @@ function FieldInput({ field, value, values, catalog, onChange, onCreateNew }: {
   );
   if (field.type === "select") return (
     <select value={value} onChange={(event) => onChange(event.target.value)}>
-      {(field.options ?? []).map((option) => <option key={option} value={option}>{option === "" ? "—" : option}</option>)}
+      {(field.options ?? []).map((option) => <option key={option} value={option}>{option === "" ? "—" : field.optionLabels?.[option] ?? option}</option>)}
     </select>
   );
   if (field.type === "animalRef" || field.type === "enclosureRef" || field.type === "lightingPlanRef" || field.type === "equipmentRef") {
