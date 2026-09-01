@@ -49,6 +49,11 @@ const configs: Record<Resource, Config> = {
     animalId: { column: "animal_id" }, taskType: { column: "task_type" }, title: { column: "title" }, notes: { column: "notes" }, dueDate: { column: "due_date", kind: "date" },
     occurredAt: { column: "occurred_at" }, actorRole: { column: "actor_role" }, completedByMemberId: { column: "completed_by_member_id" }, completedByName: { column: "completed_by_name" },
     editedAt: { column: "edited_at" }, editedByMemberId: { column: "edited_by_member_id" }, editedByName: { column: "edited_by_name" },
+    // A refused meal is the observation most worth keeping for a snake, and
+    // history could record that a feeding happened but not that it was
+    // refused — only completing a live task could do that. With no task in
+    // range there was nowhere to put it.
+    outcome: { column: "outcome" },
   } },
   feeder: { table: "feeder_inventory", required: ["preySpecies", "sizeClass", "addedOn"], fields: {
     preySpecies: { column: "prey_species" }, sizeClass: { column: "size_class" }, weightGrams: { column: "weight_grams", kind: "number" }, status: { column: "status" },
@@ -236,6 +241,9 @@ function normalize(resource: Resource, data: Record<string, unknown>, creating: 
     // animals, storing unparseable JSON and quietly ungrouping the plan.
     else output[key] = cleanText(value, key === "notes" || key === "body" || key === "details" ? 5000
       : key === "animalIdsJson" ? 8000 : 200) ?? "";
+  }
+  if (resource === "event" && typeof output.outcome === "string" && !["done", "refused"].includes(output.outcome)) {
+    throw new ApiInputError("A care outcome is either done or refused");
   }
   if (resource === "schedule") {
     validateSchedule(output);
