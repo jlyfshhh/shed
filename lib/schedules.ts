@@ -12,7 +12,26 @@ export type CareScheduleRow = {
   dayOfMonth: number | null;
   startDate: string;
   endDate: string | null;
+  /** Weeks between occurrences of a weekly plan. 1, or absent, means every week. */
+  weekInterval?: number | null;
 };
+
+
+/** A whole number of weeks, or 1. A zero or fraction would divide by nothing. */
+export function weekInterval(value: unknown): number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : 1;
+}
+
+/** Sunday of the week a date falls in — the app's weeks start on Sunday. */
+function weekStart(date: string): string {
+  const at = new Date(`${date}T12:00:00Z`);
+  at.setUTCDate(at.getUTCDate() - at.getUTCDay());
+  return at.toISOString().slice(0, 10);
+}
+
+function weeksBetween(from: string, to: string): number {
+  return Math.round(daysBetween(weekStart(from), weekStart(to)) / 7);
+}
 
 export function scheduleIsDue(schedule: CareScheduleRow, date: string): boolean {
   if (!isIsoDate(date) || date < schedule.startDate || (schedule.endDate && date > schedule.endDate)) return false;
@@ -32,7 +51,14 @@ export function scheduleIsDue(schedule: CareScheduleRow, date: string): boolean 
   }
   if (schedule.frequency === "weekly") {
     const weekdays = parseWeekdays(schedule.weekdaysJson);
-    return weekdays.includes(new Date(`${date}T12:00:00Z`).getUTCDay());
+    if (!weekdays.includes(new Date(`${date}T12:00:00Z`).getUTCDay())) return false;
+    // Weekly plans may skip weeks: dusting with vitamins on Tuesday and
+    // Thursday one week and plain calcium the next used to need four separate
+    // plans. Counted in whole weeks from the week the plan started, so which
+    // week is "on" never drifts with the weekday being asked about.
+    const every = weekInterval(schedule.weekInterval);
+    if (every === 1) return true;
+    return weeksBetween(schedule.startDate, date) % every === 0;
   }
   return false;
 }

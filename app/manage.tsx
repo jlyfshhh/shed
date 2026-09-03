@@ -177,6 +177,12 @@ const resourceDefs: ResourceDef[] = [
       { key: "frequency", column: "frequency", label: "Frequency", type: "select", options: frequencyOptions, optionLabels: frequencyLabels, required: true },
       { key: "weekdaysJson", column: "weekdays_json", label: "Days of week", type: "weekdays", showIf: (v) => v.frequency === "weekly" || v.frequency === "monthly", help: "For monthly care, choose one weekday to schedule its first, second, third, fourth, or fifth occurrence." },
       { key: "intervalDays", column: "interval_days", label: "Every N days", type: "number", showIf: (v) => v.frequency === "interval", help: "1 = daily, 2 = every other day, 7 = weekly, 14 = every other week" },
+      { key: "weekInterval", column: "week_interval", label: "Repeat every N weeks", type: "number", showIf: (v) => v.frequency === "weekly", help: "Blank or 1 = every week. 2 = every other week, on the days chosen above. Counted from the week this plan starts.",
+        warn: (v) => {
+          const weeks = Number(v.weekInterval);
+          if (!Number.isInteger(weeks) || weeks <= 1) return null;
+          return `On the weeks in between, this plan does nothing. Start a second plan a week later for the alternate care.`;
+        } },
       { key: "dayOfMonth", column: "day_of_month", label: "Day / occurrence in month", type: "number", showIf: (v) => v.frequency === "monthly", help: "With no weekday selected: calendar day 1–31. With a weekday selected: 1 = first, 2 = second … 5 = fifth.",
         // A calendar day that some months do not have simply produces no task
         // in those months. That is what the number means, but it is worth
@@ -946,6 +952,16 @@ function countAnimalRecords(catalog: Catalog, animalId: string): { total: number
   return { total: events + weights + notes + plans, summary: parts.join(", ") };
 }
 
+/** What deleting a lighting plan would take with it. */
+function countPlanRecords(catalog: Catalog, planId: string): { total: number; summary: string } {
+  const fixtures = catalog.lightingFixtures.filter((row) => str(row.plan_id) === planId).length;
+  const measurements = catalog.lightingMeasurements.filter((row) => str(row.plan_id) === planId).length;
+  const parts: string[] = [];
+  if (fixtures) parts.push(`${fixtures} ${fixtures === 1 ? "fixture" : "fixtures"}`);
+  if (measurements) parts.push(`${measurements} ${measurements === 1 ? "measurement" : "measurements"}`);
+  return { total: fixtures + measurements, summary: parts.join(", ") };
+}
+
 export function ManageConsole({ onClose, onChanged, toast, initialResource = "animal", focusAnimalId }: {
   onClose: () => void;
   onChanged: () => void;
@@ -1064,7 +1080,8 @@ export function ManageConsole({ onClose, onChanged, toast, initialResource = "an
   const purge = async (row: Row) => {
     const meta = def.summary(row, catalog!);
     const id = str(row.id);
-    const counts = def.key === "animal" ? countAnimalRecords(catalog!, id) : null;
+    const counts = def.key === "animal" ? countAnimalRecords(catalog!, id)
+      : def.key === "lightingPlan" ? countPlanRecords(catalog!, id) : null;
     const carries = counts && counts.total > 0 ? `\n\nThis also deletes ${counts.summary}.` : "";
     const typed = window.prompt(
       `Permanently delete “${meta.title}”?${carries}\n\nThis cannot be undone. Type DELETE to confirm.`,
@@ -1204,7 +1221,7 @@ export function ManageConsole({ onClose, onChanged, toast, initialResource = "an
                   <button className="danger" disabled={busyId === str(row.id) || meta.archived} onClick={() => void remove(row)}>{def.action}</button>
                   {/* Only once it is already put away, and only where permanent
                       removal makes sense: an animal, or a corrected entry. */}
-                  {meta.archived && (def.key === "animal" || def.key === "event") && (
+                  {meta.archived && ["animal", "event", "equipment", "lightingPlan"].includes(def.key) && (
                     <button className="danger" disabled={busyId === str(row.id)} onClick={() => void purge(row)}>Delete permanently</button>
                   )}
                 </div>

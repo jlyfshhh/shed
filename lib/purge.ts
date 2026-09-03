@@ -55,3 +55,22 @@ export function animalIdsWithout(animalIdsJson: string | null | undefined, anima
     .filter((value) => value && value !== animalId && value !== primaryAnimalId);
   return remaining.length ? JSON.stringify([primaryAnimalId, ...remaining]) : null;
 }
+
+/** A piece of equipment, and the plan fixtures that mounted it. */
+export const EQUIPMENT_PURGE_STEPS: ReadonlyArray<{ sql: string; why: string }> = [
+  { sql: "DELETE FROM lighting_plan_fixtures WHERE equipment_id = ?", why: "where this fixture sat in a lighting plan" },
+  { sql: "DELETE FROM equipment WHERE id = ?", why: "the equipment" },
+] as const;
+
+/**
+ * A lighting plan, its fixtures and its readings.
+ *
+ * The plan sheet is a file in object storage rather than a row, so the caller
+ * deletes that separately; leaving it behind would orphan an upload nothing
+ * points at any more.
+ */
+export const LIGHTING_PLAN_PURGE_STEPS: ReadonlyArray<{ sql: string; why: string }> = [
+  { sql: "DELETE FROM lighting_measurements WHERE plan_id = ?", why: "readings taken against it" },
+  { sql: "DELETE FROM lighting_plan_fixtures WHERE plan_id = ?", why: "its fixture layout" },
+  { sql: "DELETE FROM lighting_plans WHERE id = ?", why: "the plan" },
+] as const;

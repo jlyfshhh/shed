@@ -6,7 +6,7 @@
  * grace_days started being sent: the form posts `graceDays: null` whenever the
  * box is empty, so every care plan created through the form was refused.
  */
-export function normalizedEmptyValue(resource: string, key: string): "" | 0 | "Reptile" | "done" | null {
+export function normalizedEmptyValue(resource: string, key: string): "" | 0 | 1 | "Reptile" | "done" | null {
   if (resource === "animal" && key === "location") return "";
   if (resource === "schedule" && key === "details") return "";
   // grace_days is INTEGER NOT NULL DEFAULT 0; blank means "no window", not NULL.
@@ -16,5 +16,7 @@ export function normalizedEmptyValue(resource: string, key: string): "" | 0 | "R
   if (resource === "animal" && key === "group") return "Reptile";
   // outcome is TEXT NOT NULL DEFAULT 'done'; care with no stated outcome happened.
   if (resource === "event" && key === "outcome") return "done";
+  // week_interval is INTEGER NOT NULL DEFAULT 1; blank means every week.
+  if (resource === "schedule" && key === "weekInterval") return 1;
   return null;
 }

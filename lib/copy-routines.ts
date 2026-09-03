@@ -29,6 +29,9 @@ export const COPYABLE_SCHEDULE_COLUMNS = [
   // were dropped simply by not being listed here.
   "grace_days",
   "end_date",
+  // A fortnightly plan copied onto another animal has to stay fortnightly;
+  // dropping this would quietly double how often that animal is dusted.
+  "week_interval",
 ] as const;
 
 /**

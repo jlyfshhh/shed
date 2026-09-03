@@ -43,6 +43,8 @@ export const careSchedules = sqliteTable("care_schedules", {
   graceDays: integer("grace_days").notNull().default(0),
   /** Animals this plan covers, primary first. Null means the one in animalId. */
   animalIdsJson: text("animal_ids_json"),
+  /** Weeks between occurrences of a weekly plan; 1 is every week. */
+  weekInterval: integer("week_interval").notNull().default(1),
 });
 
 export const careTasks = sqliteTable("care_tasks", {

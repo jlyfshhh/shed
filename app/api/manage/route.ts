@@ -1,7 +1,8 @@
+import { env } from "cloudflare:workers";
 import { ensureDatabase, invalidateMaterializedTasks } from "@/db/runtime";
 import { ApiInputError, safeErrorResponse } from "@/lib/api-errors";
 import { parseAnimalIds, serializeAnimalIds } from "@/lib/care-group";
-import { ANIMAL_PURGE_STEPS, EVENT_PURGE_STEPS, animalIdsWithout } from "@/lib/purge";
+import { ANIMAL_PURGE_STEPS, EQUIPMENT_PURGE_STEPS, EVENT_PURGE_STEPS, LIGHTING_PLAN_PURGE_STEPS, animalIdsWithout } from "@/lib/purge";
 import { dateInTimeZone, isIsoDate } from "@/lib/date";
 import { attributedTo, requireCapability } from "@/lib/household-auth";
 import { normalizedEmptyValue } from "@/lib/manage-values";
@@ -30,7 +31,7 @@ const configs: Record<Resource, Config> = {
     startDate: { column: "start_date", kind: "date" }, endDate: { column: "end_date", kind: "date" }, active: { column: "active", kind: "boolean" }, createdAt: { column: "created_at" }, updatedAt: { column: "updated_at" },
     preySpecies: { column: "prey_species" }, preyDescription: { column: "prey_description" }, preySizeClass: { column: "prey_size_class" }, targetPercent: { column: "target_percent", kind: "number" },
     minimumPercent: { column: "minimum_percent", kind: "number" }, maximumPercent: { column: "maximum_percent", kind: "number" }, buyAsNeeded: { column: "buy_as_needed", kind: "boolean" },
-    rewardCents: { column: "reward_cents", kind: "number" }, animalIdsJson: { column: "animal_ids_json" }, graceDays: { column: "grace_days", kind: "number" },
+    rewardCents: { column: "reward_cents", kind: "number" }, animalIdsJson: { column: "animal_ids_json" }, graceDays: { column: "grace_days", kind: "number" }, weekInterval: { column: "week_interval", kind: "number" },
   } },
   note: { table: "animal_notes", required: ["title", "body"], fields: {
     animalId: { column: "animal_id" }, enclosureId: { column: "enclosure_id" }, category: { column: "category" }, title: { column: "title" }, body: { column: "body" },
@@ -208,7 +209,22 @@ export async function DELETE(request: Request) {
         await db.batch(EVENT_PURGE_STEPS.map((step) => db.prepare(step.sql).bind(id)));
         return Response.json({ saved: true, id, purged: true }, { headers: { "Cache-Control": "no-store" } });
       }
-      throw new ApiInputError("Only an archived animal or a corrected history entry can be deleted permanently");
+      if (resource === "equipment" || resource === "lightingPlan") {
+        const table = configs[resource].table;
+        const existing = await db.prepare(`SELECT * FROM ${table} WHERE id = ?`).bind(id).first<Record<string, unknown>>();
+        if (!existing) return Response.json({ error: "Record not found" }, { status: 404 });
+        if (Number(existing.active) !== 0) throw new ApiInputError("Archive it first, then it can be deleted permanently");
+        const steps = resource === "equipment" ? EQUIPMENT_PURGE_STEPS : LIGHTING_PLAN_PURGE_STEPS;
+        await db.batch(steps.map((step) => db.prepare(step.sql).bind(id)));
+        // The plan sheet is a stored file, not a row. Left behind it is an
+        // upload nothing points at any more.
+        const sheetKey = existing.plan_sheet_key;
+        if (resource === "lightingPlan" && typeof sheetKey === "string" && sheetKey) {
+          await env.FILES.delete(sheetKey).catch(() => undefined);
+        }
+        return Response.json({ saved: true, id, purged: true }, { headers: { "Cache-Control": "no-store" } });
+      }
+      throw new ApiInputError("Only an archived animal, equipment, lighting plan, or a corrected history entry can be deleted permanently");
     }
 
     if (resource === "event") {

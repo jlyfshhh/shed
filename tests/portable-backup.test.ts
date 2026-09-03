@@ -9,8 +9,11 @@ import {
   remapMemberReferences,
 } from "../lib/portable-backup.ts";
 
-test("schema 15 carries feeders, allowance, lighting imports, sheds, payouts, care-baseline data, and grouped plans", () => {
-  assert.equal(BACKUP_SCHEMA_VERSION, 15);
+test("schema 16 carries feeders, allowance, lighting imports, sheds, payouts, care-baseline data, grouped plans, and week intervals", () => {
+  assert.equal(BACKUP_SCHEMA_VERSION, 16);
+  // A fortnightly plan restored as weekly would silently double how often an
+  // animal is dusted or fed. Same shape of loss as grace_days before it.
+  assert.ok(PORTABLE_RESOURCES.careSchedules.columns.includes("week_interval"));
   // A plan covering several animals keeps that list in one column. Leaving it
   // out of the manifest would silently ungroup every plan on restore, which is
   // the same shape of loss that dropped grace_days and recorded_at before.
