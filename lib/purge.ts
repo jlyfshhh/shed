@@ -74,3 +74,19 @@ export const LIGHTING_PLAN_PURGE_STEPS: ReadonlyArray<{ sql: string; why: string
   { sql: "DELETE FROM lighting_plan_fixtures WHERE plan_id = ?", why: "its fixture layout" },
   { sql: "DELETE FROM lighting_plans WHERE id = ?", why: "the plan" },
 ] as const;
+
+/**
+ * A care plan, its tasks, and the history recorded against those tasks.
+ *
+ * Deleting the plan alone would leave tasks pointing at nothing. History that
+ * was recorded without a task — care entered by hand — is not the plan's to
+ * take, so only task-linked entries go.
+ */
+export const SCHEDULE_PURGE_STEPS: ReadonlyArray<{ sql: string; why: string }> = [
+  { sql: "DELETE FROM husbandry_event_revisions WHERE event_id IN (SELECT id FROM husbandry_events WHERE task_id IN (SELECT id FROM care_tasks WHERE schedule_id = ?))",
+    why: "corrections to care recorded against this plan" },
+  { sql: "DELETE FROM husbandry_events WHERE task_id IN (SELECT id FROM care_tasks WHERE schedule_id = ?)",
+    why: "care recorded against this plan's tasks" },
+  { sql: "DELETE FROM care_tasks WHERE schedule_id = ?", why: "its tasks" },
+  { sql: "DELETE FROM care_schedules WHERE id = ?", why: "the plan" },
+] as const;

@@ -819,6 +819,14 @@ button.primary:disabled { opacity: .6; cursor: wait; }
    offers Missed. Keep them in lockstep. */
 .task-actions, .overdue-actions { display: grid; gap: 7px; justify-items: stretch; align-content: center; }
 .task-alt-actions { display: flex; gap: 6px; justify-content: flex-end; }
+/* Acting on one animal inside a grouped line. */
+.group-toggle { margin-top: 8px; border: 0; background: none; color: var(--muted); font-size: 12px; font-weight: 700; text-decoration: underline; cursor: pointer; padding: 2px 0; }
+.group-toggle:hover { color: var(--ink); }
+.group-members { grid-column: 1 / -1; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); display: grid; gap: 10px; }
+.group-member { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.group-member b { font-size: 14px; }
+.group-member-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.group-member-actions button { padding: 6px 11px; font-size: 12px; }
 .skip-button, .refuse-button {
   border: 1px solid var(--line); background: var(--paper); color: var(--muted);
   border-radius: 999px; padding: 6px 13px; font-size: 12px; font-weight: 800; cursor: pointer;

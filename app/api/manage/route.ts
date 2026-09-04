@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { ensureDatabase, invalidateMaterializedTasks } from "@/db/runtime";
 import { ApiInputError, safeErrorResponse } from "@/lib/api-errors";
 import { parseAnimalIds, serializeAnimalIds } from "@/lib/care-group";
-import { ANIMAL_PURGE_STEPS, EQUIPMENT_PURGE_STEPS, EVENT_PURGE_STEPS, LIGHTING_PLAN_PURGE_STEPS, animalIdsWithout } from "@/lib/purge";
+import { ANIMAL_PURGE_STEPS, EQUIPMENT_PURGE_STEPS, EVENT_PURGE_STEPS, LIGHTING_PLAN_PURGE_STEPS, SCHEDULE_PURGE_STEPS, animalIdsWithout } from "@/lib/purge";
 import { dateInTimeZone, isIsoDate } from "@/lib/date";
 import { attributedTo, requireCapability } from "@/lib/household-auth";
 import { normalizedEmptyValue } from "@/lib/manage-values";
@@ -209,12 +209,13 @@ export async function DELETE(request: Request) {
         await db.batch(EVENT_PURGE_STEPS.map((step) => db.prepare(step.sql).bind(id)));
         return Response.json({ saved: true, id, purged: true }, { headers: { "Cache-Control": "no-store" } });
       }
-      if (resource === "equipment" || resource === "lightingPlan") {
+      if (resource === "equipment" || resource === "lightingPlan" || resource === "schedule") {
         const table = configs[resource].table;
         const existing = await db.prepare(`SELECT * FROM ${table} WHERE id = ?`).bind(id).first<Record<string, unknown>>();
         if (!existing) return Response.json({ error: "Record not found" }, { status: 404 });
         if (Number(existing.active) !== 0) throw new ApiInputError("Archive it first, then it can be deleted permanently");
-        const steps = resource === "equipment" ? EQUIPMENT_PURGE_STEPS : LIGHTING_PLAN_PURGE_STEPS;
+        const steps = resource === "equipment" ? EQUIPMENT_PURGE_STEPS
+          : resource === "schedule" ? SCHEDULE_PURGE_STEPS : LIGHTING_PLAN_PURGE_STEPS;
         await db.batch(steps.map((step) => db.prepare(step.sql).bind(id)));
         // The plan sheet is a stored file, not a row. Left behind it is an
         // upload nothing points at any more.
@@ -222,9 +223,10 @@ export async function DELETE(request: Request) {
         if (resource === "lightingPlan" && typeof sheetKey === "string" && sheetKey) {
           await env.FILES.delete(sheetKey).catch(() => undefined);
         }
+        if (resource === "schedule") invalidateMaterializedTasks();
         return Response.json({ saved: true, id, purged: true }, { headers: { "Cache-Control": "no-store" } });
       }
-      throw new ApiInputError("Only an archived animal, equipment, lighting plan, or a corrected history entry can be deleted permanently");
+      throw new ApiInputError("Only an archived animal, care plan, equipment, lighting plan, or a corrected history entry can be deleted permanently");
     }
 
     if (resource === "event") {

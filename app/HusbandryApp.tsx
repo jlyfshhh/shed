@@ -218,6 +218,8 @@ export default function HusbandryApp() {
   // A personal access code just issued because the keeper signed in with the
   // install's setup token. Shown once, so it needs somewhere deliberate to go.
   const [issuedCode, setIssuedCode] = useState<string | null>(null);
+  // Grouped lines the keeper has opened up to act on one animal at a time.
+  const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set());
   const [loginError, setLoginError] = useState<string | null>(null);
 
   // ── Household management (Head Keeper only) ──
@@ -558,6 +560,37 @@ export default function HusbandryApp() {
    * rather than assume, because `occurredAt` is what the animal's history is
    * ordered by. On-time work is unambiguous and is never interrupted.
    */
+
+  const toggleGroup = (key: string) => setOpenGroups((current) => {
+    const next = new Set(current);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
+
+  /**
+   * One animal's row inside a grouped line.
+   *
+   * A group is a convenience, not a claim that the animals are interchangeable:
+   * one gecko can refuse while the others eat, and a brumating dragon is skipped
+   * while its housemates are fed. Settling the line as a whole stays the fast
+   * path; this is how the exception gets recorded truthfully.
+   */
+  const memberRow = (member: Task) => (
+    <div className="group-member" key={member.id}>
+      <b>{member.animalName}</b>
+      <div className="group-member-actions">
+        <button className="complete-button" disabled={busyTask === member.id} onClick={() => void completeGroup([member])}>
+          {busyTask === member.id ? "Saving…" : "Done"}<span>✓</span>
+        </button>
+        {member.taskType === "feeding" && (
+          <button className="refuse-button" disabled={busyTask === member.id} onClick={() => void completeGroup([member], "refused")}>Refused</button>
+        )}
+        <button className="skip-button" disabled={busyTask === member.id} onClick={() => void skipTask(member)}>Skip</button>
+        {can("care.miss") && <button className="miss-button" disabled={busyTask === member.id} onClick={() => void missTask(member)}>Missed</button>}
+      </div>
+    </div>
+  );
+
   const completeTask = async (task: Task, outcome: "done" | "refused" = "done") => completeGroup([task], outcome);
 
   /**
@@ -684,6 +717,31 @@ export default function HusbandryApp() {
     }
   };
 
+  /**
+   * Skip or miss every animal on one line, asking once.
+   *
+   * Looping the single-task versions put one dialog per animal in front of the
+   * keeper — six prompts to skip a group of six. The reason, and the decision,
+   * are the same for the whole line.
+   */
+  const skipGroup = async (tasks: Task[]) => {
+    if (!tasks.length) return;
+    if (tasks.length === 1) return skipTask(tasks[0]);
+    const reason = window.prompt(
+      `Skip “${tasks[0].title}” for all ${tasks.length} animals?\n\nThis records that it did not need doing, so it will not count against their husbandry scores. Add a reason if you like:`,
+      "",
+    );
+    if (reason === null) return;
+    for (const task of tasks) await recordSkip(task, reason);
+  };
+
+  const missGroup = async (tasks: Task[]) => {
+    if (!tasks.length) return;
+    if (tasks.length === 1) return missTask(tasks[0]);
+    if (!window.confirm(`Mark “${tasks[0].title}” as missed for all ${tasks.length} animals? It'll be recorded as not done and leave the list.`)) return;
+    for (const task of tasks) await recordMiss(task);
+  };
+
   const skipTask = async (task: Task) => {
     // A reason is optional but strongly worth having: in three months "skipped"
     // alone tells the keeper nothing, and "already damp" tells them everything.
@@ -692,6 +750,10 @@ export default function HusbandryApp() {
       "",
     );
     if (reason === null) return;
+    await recordSkip(task, reason);
+  };
+
+  const recordSkip = async (task: Task, reason: string) => {
     setBusyTask(task.id);
     try {
       const response = await fetch("/api/tasks/skip", {
@@ -745,6 +807,10 @@ export default function HusbandryApp() {
 
   const missTask = async (task: Task) => {
     if (!window.confirm(`Mark “${task.title}” for ${task.animalName} as missed? It’ll be recorded as not done and leave the list.`)) return;
+    await recordMiss(task);
+  };
+
+  const recordMiss = async (task: Task) => {
     setBusyTask(task.id);
     try {
       const response = await fetch("/api/tasks/miss", {
@@ -971,10 +1037,18 @@ export default function HusbandryApp() {
                         <button className="complete-button" disabled={busy} onClick={() => completeGroup(tasks)}>{busy ? "Saving…" : tasks.length > 1 ? `Mark all ${tasks.length} done` : "Mark done"}<span>✓</span></button>
                         <div className="task-alt-actions">
                           {task.taskType === "feeding" && <button className="refuse-button" disabled={busy} onClick={() => completeGroup(tasks, "refused")}>Refused</button>}
-                          <button className="skip-button" disabled={busy} onClick={() => { for (const member of tasks) void skipTask(member); }}>Skip</button>
-                          {can("care.miss") && <button className="miss-button" disabled={busy} onClick={() => { for (const member of tasks) void missTask(member); }}>Missed</button>}
+                          <button className="skip-button" disabled={busy} onClick={() => void skipGroup(tasks)}>Skip</button>
+                          {can("care.miss") && <button className="miss-button" disabled={busy} onClick={() => void missGroup(tasks)}>Missed</button>}
                         </div>
+                        {tasks.length > 1 && (
+                          <button className="group-toggle" aria-expanded={openGroups.has(key)} onClick={() => toggleGroup(key)}>
+                            {openGroups.has(key) ? "Hide each animal" : "Each animal separately"}
+                          </button>
+                        )}
                       </div>
+                      {tasks.length > 1 && openGroups.has(key) && (
+                        <div className="group-members">{tasks.map(memberRow)}</div>
+                      )}
                     </article>
                     );
                   })}
@@ -1007,15 +1081,23 @@ export default function HusbandryApp() {
                       {task.taskType === "feeding" && (
                         <button className="refuse-button" disabled={busy} onClick={() => completeGroup(tasks, "refused")}>Refused</button>
                       )}
-                      <button className="skip-button" disabled={busy} onClick={() => { for (const member of tasks) void skipTask(member); }}>Skip</button>
+                      <button className="skip-button" disabled={busy} onClick={() => void skipGroup(tasks)}>Skip</button>
                       {/* Missed belongs on today's card as well as on overdue ones.
                           A keeper knows at ten at night that the animal is asleep and
                           the pellets are not happening; making them wait until
                           tomorrow leaves the task on today's list pretending it might
                           still get done, and the day never reads as settled. */}
-                      {can("care.miss") && <button className="miss-button" disabled={busy} onClick={() => { for (const member of tasks) void missTask(member); }}>Missed</button>}
+                      {can("care.miss") && <button className="miss-button" disabled={busy} onClick={() => void missGroup(tasks)}>Missed</button>}
                     </div>
+                    {tasks.length > 1 && (
+                      <button className="group-toggle" aria-expanded={openGroups.has(key)} onClick={() => toggleGroup(key)}>
+                        {openGroups.has(key) ? "Hide each animal" : "Each animal separately"}
+                      </button>
+                    )}
                   </div>
+                  {tasks.length > 1 && openGroups.has(key) && (
+                    <div className="group-members">{tasks.map(memberRow)}</div>
+                  )}
                 </article>
                 );
               })}

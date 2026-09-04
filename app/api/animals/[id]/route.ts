@@ -1,3 +1,4 @@
+import { scheduleAnimalIds } from "@/lib/care-group";
 import { ensureDatabase } from "@/db/runtime";
 import { internalErrorResponse } from "@/lib/api-errors";
 import { dateInTimeZone } from "@/lib/date";
@@ -46,7 +47,11 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       ).bind(id).all(),
       db.prepare("SELECT id, category, title, body, pinned, created_at AS createdAt, updated_at AS updatedAt, created_by_name AS createdBy FROM animal_notes WHERE animal_id = ? ORDER BY pinned DESC, updated_at DESC").bind(id).all(),
       db.prepare("SELECT q.id, q.category, q.name, q.brand, q.model, q.installed_on AS installedOn, q.active, q.notes, CASE WHEN q.animal_id = ? THEN 'animal' ELSE 'enclosure' END AS scope FROM equipment q WHERE q.animal_id = ? OR q.enclosure_id = (SELECT enclosure_id FROM animals WHERE id = ?) ORDER BY q.active DESC, q.name").bind(id, id, id).all(),
-      db.prepare("SELECT id, task_type AS taskType, title, details, frequency, interval_days AS intervalDays, weekdays_json AS weekdaysJson, day_of_month AS dayOfMonth, start_date AS startDate, end_date AS endDate, active FROM care_schedules WHERE animal_id = ? ORDER BY active DESC, title").bind(id).all(),
+      // A grouped plan names one animal in animal_id and the rest in its list, so
+      // matching only the first left an animal added by "Also covers" with no
+      // sign on its own profile of the routine it is actually on. Candidates are
+      // narrowed here and matched with the same helper the rest of the app uses.
+      db.prepare("SELECT id, animal_id AS animalId, animal_ids_json AS animalIdsJson, task_type AS taskType, title, details, frequency, interval_days AS intervalDays, weekdays_json AS weekdaysJson, day_of_month AS dayOfMonth, start_date AS startDate, end_date AS endDate, active FROM care_schedules WHERE animal_id = ? OR animal_ids_json IS NOT NULL ORDER BY active DESC, title").bind(id).all(),
       db.prepare("SELECT e.* FROM enclosures e JOIN animals a ON a.enclosure_id = e.id WHERE a.id = ?").bind(id).first(),
       db.prepare("SELECT p.id, p.enclosure_id AS enclosureId, p.name, p.species, p.source_name AS sourceName, p.source_url AS sourceUrl, p.source_version AS sourceVersion, p.planned_on AS plannedOn, p.reviewed_on AS reviewedOn, p.mounting_mode AS mountingMode, p.mesh_loss_percent AS meshLossPercent, p.basking_height AS baskingHeight, p.height_unit AS heightUnit, p.target_uvi_min AS targetUviMin, p.target_uvi_max AS targetUviMax, p.target_lux_min AS targetLuxMin, p.target_lux_max AS targetLuxMax, p.target_power_density_min AS targetPowerDensityMin, p.target_power_density_max AS targetPowerDensityMax, p.plan_sheet_name AS planSheetName, p.import_status AS importStatus, p.imported_at AS importedAt, p.notes, p.updated_at AS updatedAt FROM lighting_plans p WHERE p.active = 1 AND p.enclosure_id = (SELECT enclosure_id FROM animals WHERE id = ?) ORDER BY p.planned_on DESC").bind(id).all(),
       db.prepare("SELECT f.id, f.plan_id AS planId, f.equipment_id AS equipmentId, f.role, f.position_cm AS positionCm, f.mounting_height_cm AS mountingHeightCm, f.quantity, f.notes, q.name AS equipmentName, q.brand, q.model, q.installed_on AS installedOn, q.active FROM lighting_plan_fixtures f JOIN lighting_plans p ON p.id = f.plan_id JOIN equipment q ON q.id = f.equipment_id WHERE p.active = 1 AND p.enclosure_id = (SELECT enclosure_id FROM animals WHERE id = ?) ORDER BY f.role, q.name").bind(id).all(),
@@ -123,7 +128,14 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       equipment: equipmentWithAge,
       lighting,
       enclosure,
-      schedules: schedules.results,
+      // Keep only the plans this animal is actually on; the query above pulls
+      // every grouped plan as a candidate.
+      schedules: schedules.results.filter((row) =>
+        scheduleAnimalIds({
+          animalId: String((row as Record<string, unknown>).animalId ?? ""),
+          animalIdsJson: ((row as Record<string, unknown>).animalIdsJson ?? null) as string | null,
+        }).includes(id),
+      ),
       enclosureHistory: activeEvents.filter((event) => event.taskType === "enclosure"),
       feedingHistory: activeEvents.filter((event) => event.taskType === "feeding"),
       history,

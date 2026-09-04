@@ -85,3 +85,25 @@ test("every field the manage form offers can actually be saved", async () => {
   const missing = offered.filter((key) => !map.includes(`${key}: { column:`));
   assert.deepEqual(missing, [], `care plan fields the API would silently discard: ${missing.join(", ")}`);
 });
+
+test("a grouped line can be settled one animal at a time", async () => {
+  const app = await readFile(new URL("../app/HusbandryApp.tsx", import.meta.url), "utf8");
+  // A group is a convenience, not a claim the animals are interchangeable: one
+  // dragon brumates while its housemates eat. Without per-animal rows the only
+  // way to record that was to break the plan up again.
+  assert.match(app, /Each animal separately/);
+  assert.match(app, /const memberRow = /);
+  // And the bulk actions must ask once, not once per animal.
+  assert.match(app, /const skipGroup = /);
+  assert.match(app, /const missGroup = /);
+  assert.doesNotMatch(app, /for \(const member of tasks\) void skipTask/);
+  assert.doesNotMatch(app, /for \(const member of tasks\) void missTask/);
+});
+
+test("a care plan names every animal it covers", async () => {
+  const manage = await readFile(new URL("../app/manage.tsx", import.meta.url), "utf8");
+  // The list read as though a six-gecko plan belonged to whichever was picked
+  // first, and the animal's own profile did not show the plan at all.
+  assert.match(manage, /const coveredAnimals = /);
+  assert.match(manage, /case "schedule": return scheduleAnimalIds\(/);
+});

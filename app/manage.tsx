@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { equipmentAgeLabel } from "@/lib/equipment-age";
-import { parseAnimalIds } from "@/lib/care-group";
+import { parseAnimalIds, scheduleAnimalIds } from "@/lib/care-group";
 import { animalFacts, speciesGlyph } from "@/lib/animal-traits";
 import type { Capability } from "@/lib/capabilities";
 import { SHED_QUALITIES, SHED_QUALITY_LABELS, isPoorShed, shedIntervalDays, type ShedQuality } from "@/lib/shed-quality";
@@ -119,6 +119,19 @@ const feederStatusOptions = ["available", "consumed", "discarded"];
 
 const isFeeding = (values: Record<string, string>) => values.taskType?.toLowerCase() === "feeding";
 
+/**
+ * Every animal a care plan covers, not just the one it is filed under.
+ *
+ * A plan across six geckos read as though it belonged to whichever was picked
+ * first, so there was no way to tell from the list what it actually covers.
+ */
+const coveredAnimals = (catalog: Catalog, row: Row): string => {
+  const ids = scheduleAnimalIds({ animalId: str(row.animal_id), animalIdsJson: row.animal_ids_json as string | null });
+  const names = ids.map((id) => animalName(catalog, id));
+  if (names.length <= 3) return names.join(", ");
+  return `${names.slice(0, 2).join(", ")} +${names.length - 2} more`;
+};
+
 const animalName = (catalog: Catalog, id: unknown) =>
   str(catalog.animals.find((a) => a.id === id)?.name) || "Unassigned";
 const enclosureName = (catalog: Catalog, id: unknown) =>
@@ -212,7 +225,7 @@ const resourceDefs: ResourceDef[] = [
       { key: "maximumPercent", column: "maximum_percent", label: "Maximum %", type: "number", step: "0.001", showIf: isFeeding, help: "Decimal 0–1" },
       { key: "buyAsNeeded", column: "buy_as_needed", label: "Buy as needed (don't track inventory)", type: "boolean", showIf: isFeeding },
     ],
-    summary: (row, catalog) => ({ title: str(row.title), sub: `${animalName(catalog, row.animal_id)} · ${describeFrequency(row)}`, archived: !bool(row.active) }),
+    summary: (row, catalog) => ({ title: str(row.title), sub: `${coveredAnimals(catalog, row)} · ${describeFrequency(row)}`, archived: !bool(row.active) }),
   },
   {
     key: "note", catalog: "notes", singular: "note", plural: "Notes", action: "Delete",
@@ -1027,7 +1040,11 @@ export function ManageConsole({ onClose, onChanged, toast, initialResource = "an
     switch (key) {
       case "animal": return str(row.id) === focusAnimalId;
       case "enclosure": return Boolean(focusEnclosureId) && str(row.id) === focusEnclosureId;
-      case "schedule": case "weight": case "event": return str(row.animal_id) === focusAnimalId;
+      // A grouped plan names one animal in animal_id and the rest in its list.
+      // Matching only the first meant an animal added by "Also covers" never
+      // saw the plan it is actually on.
+      case "schedule": return scheduleAnimalIds({ animalId: str(row.animal_id), animalIdsJson: row.animal_ids_json as string | null }).includes(focusAnimalId);
+      case "weight": case "event": return str(row.animal_id) === focusAnimalId;
       // Notes and equipment attach to either the animal or the room it lives in.
       case "note": case "equipment":
         return str(row.animal_id) === focusAnimalId || (Boolean(focusEnclosureId) && str(row.enclosure_id) === focusEnclosureId);
@@ -1221,7 +1238,7 @@ export function ManageConsole({ onClose, onChanged, toast, initialResource = "an
                   <button className="danger" disabled={busyId === str(row.id) || meta.archived} onClick={() => void remove(row)}>{def.action}</button>
                   {/* Only once it is already put away, and only where permanent
                       removal makes sense: an animal, or a corrected entry. */}
-                  {meta.archived && ["animal", "event", "equipment", "lightingPlan"].includes(def.key) && (
+                  {meta.archived && ["animal", "event", "equipment", "lightingPlan", "schedule"].includes(def.key) && (
                     <button className="danger" disabled={busyId === str(row.id)} onClick={() => void purge(row)}>Delete permanently</button>
                   )}
                 </div>
