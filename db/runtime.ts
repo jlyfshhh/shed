@@ -4,6 +4,7 @@ import { careLookbackDates } from "@/lib/care-schedule";
 import { getCareStartDate } from "@/lib/care-settings";
 import { scheduleIsDue, type CareScheduleRow } from "@/lib/schedules";
 import { careTaskId, scheduleAnimalIds } from "@/lib/care-group";
+import { skipCareTask } from "@/lib/brumation";
 import { normalizeLegacyTaskDispositions } from "@/lib/task-dispositions";
 
 // Every API call used to run the whole of this: create-table statements for
@@ -72,7 +73,7 @@ export async function ensureDatabase(targetDate?: string) {
 
 async function applySchema(db: D1Database) {
   await db.batch([
-    db.prepare("CREATE TABLE IF NOT EXISTS animals (id TEXT PRIMARY KEY, name TEXT NOT NULL, species TEXT NOT NULL, group_name TEXT NOT NULL DEFAULT 'Reptile', location TEXT NOT NULL DEFAULT '', weight_grams INTEGER, weight_date TEXT, scientific_name TEXT, morph TEXT, sex TEXT, birth_date TEXT, acquired_date TEXT, source TEXT, notes TEXT, active INTEGER NOT NULL DEFAULT 1, enclosure_id TEXT, created_at TEXT, updated_at TEXT, earning_enabled INTEGER NOT NULL DEFAULT 1)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS animals (id TEXT PRIMARY KEY, name TEXT NOT NULL, species TEXT NOT NULL, group_name TEXT NOT NULL DEFAULT 'Reptile', location TEXT NOT NULL DEFAULT '', weight_grams INTEGER, weight_date TEXT, scientific_name TEXT, morph TEXT, sex TEXT, birth_date TEXT, acquired_date TEXT, source TEXT, notes TEXT, active INTEGER NOT NULL DEFAULT 1, enclosure_id TEXT, created_at TEXT, updated_at TEXT, earning_enabled INTEGER NOT NULL DEFAULT 1, brumating INTEGER NOT NULL DEFAULT 0, brumation_since TEXT, care_resume_on TEXT)"),
     db.prepare("CREATE TABLE IF NOT EXISTS enclosures (id TEXT PRIMARY KEY, name TEXT NOT NULL, enclosure_type TEXT, manufacturer TEXT, model TEXT, width REAL, depth REAL, height REAL, dimension_unit TEXT NOT NULL DEFAULT 'in', location TEXT, substrate TEXT, bioactive INTEGER NOT NULL DEFAULT 0, shared_habitat_id TEXT, notes TEXT, active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"),
     db.prepare("CREATE INDEX IF NOT EXISTS enclosures_active_name_idx ON enclosures(active, name)"),
     db.prepare("CREATE TABLE IF NOT EXISTS care_schedules (id TEXT PRIMARY KEY, animal_id TEXT NOT NULL, task_type TEXT NOT NULL, title TEXT NOT NULL, details TEXT NOT NULL DEFAULT '', frequency TEXT NOT NULL, interval_days INTEGER, weekdays_json TEXT, day_of_month INTEGER, start_date TEXT NOT NULL, end_date TEXT, active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, prey_species TEXT, prey_description TEXT, prey_size_class TEXT, target_percent REAL, minimum_percent REAL, maximum_percent REAL, buy_as_needed INTEGER NOT NULL DEFAULT 0, reward_cents INTEGER, animal_ids_json TEXT, week_interval INTEGER NOT NULL DEFAULT 1)"),
@@ -125,6 +126,12 @@ async function applySchema(db: D1Database) {
     ["acquired_date", "TEXT"], ["source", "TEXT"], ["notes", "TEXT"], ["active", "INTEGER NOT NULL DEFAULT 1"],
     ["enclosure_id", "TEXT"], ["created_at", "TEXT"], ["updated_at", "TEXT"],
     ["earning_enabled", "INTEGER NOT NULL DEFAULT 1"],
+    // Brumation pause. `brumating` hides an animal's care everywhere while it is
+    // down; `brumation_since` is the label ("paused since …"); `care_resume_on`
+    // is a per-animal lookback floor so that ending a long brumation does not
+    // let the 14-day backfill regenerate a wall of overdue tasks for days the
+    // animal was deliberately left alone.
+    ["brumating", "INTEGER NOT NULL DEFAULT 0"], ["brumation_since", "TEXT"], ["care_resume_on", "TEXT"],
   ]);
   await addMissingColumns(db, "care_tasks", [["task_type", "TEXT NOT NULL DEFAULT 'general'"], ["schedule_id", "TEXT"], ["missed_at", "TEXT"], ["missed_by_member_id", "TEXT"], ["missed_by_name", "TEXT"],
     // Skipped is a third disposition, not a flavour of missed. Missed means the
@@ -182,15 +189,26 @@ async function materializeTasks(db: D1Database, today: string) {
   // but never before the "start fresh" baseline, if one has been set.
   const careStartDate = await getCareStartDate(db);
   const dates = careLookbackDates(today, careStartDate);
+  // A brumating animal's care is paused, and an animal that just came out of a
+  // long brumation must not have the whole pause backfilled as overdue. Both
+  // are per-animal, not per-schedule: a grouped plan can cover a brumating
+  // dragon and a wide-awake one, so the skip has to happen at the animal, not
+  // drop the whole plan.
+  const pauseRows = await db.prepare(
+    "SELECT id, brumating, care_resume_on AS careResumeOn FROM animals WHERE brumating = 1 OR care_resume_on IS NOT NULL",
+  ).all<{ id: string; brumating: number; careResumeOn: string | null }>();
+  const paused = new Map(pauseRows.results.map((row) => [row.id, row]));
   // One task per animal on the plan. They collapse into a single line on Today,
   // but stay separate rows so that history, weights and feeder consumption
   // remain per-animal.
   const taskStatements = schedules.results.flatMap((schedule) =>
     dates.filter((date) => scheduleIsDue(schedule, date)).flatMap((date) =>
-      scheduleAnimalIds(schedule).map((animalId) =>
-        db.prepare("INSERT OR IGNORE INTO care_tasks (id, schedule_id, animal_id, task_type, title, details, due_date) VALUES (?, ?, ?, ?, ?, ?, ?)")
-          .bind(careTaskId(schedule.id, animalId, schedule.animalId, date), schedule.id, animalId, schedule.taskType, schedule.title, schedule.details, date),
-      ),
+      scheduleAnimalIds(schedule)
+        .filter((animalId) => !skipCareTask(paused.get(animalId), date))
+        .map((animalId) =>
+          db.prepare("INSERT OR IGNORE INTO care_tasks (id, schedule_id, animal_id, task_type, title, details, due_date) VALUES (?, ?, ?, ?, ?, ?, ?)")
+            .bind(careTaskId(schedule.id, animalId, schedule.animalId, date), schedule.id, animalId, schedule.taskType, schedule.title, schedule.details, date),
+        ),
     ),
   );
   if (taskStatements.length) await db.batch(taskStatements);

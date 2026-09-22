@@ -1525,6 +1525,7 @@ export default function HusbandryApp() {
           canWritePhoto={can("animal.photo.write")}
           canRecordWeight={can("weights.record")}
           canRecordShed={can("sheds.record")}
+          canManageCare={can("records.manage")}
           onPhotoChange={() => { void refresh().catch(() => undefined); }}
         />
       )}

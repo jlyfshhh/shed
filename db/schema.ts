@@ -27,6 +27,13 @@ export const animals = sqliteTable("animals", {
   createdAt: text("created_at"),
   updatedAt: text("updated_at"),
   earningEnabled: integer("earning_enabled", { mode: "boolean" }).notNull().default(true),
+  // Brumation pause: while `brumating`, the animal's care is hidden and no tasks
+  // are materialized; `brumationSince` labels it; `careResumeOn` is the
+  // per-animal lookback floor set on resume so the backfill cannot re-create the
+  // paused days as overdue.
+  brumating: integer("brumating", { mode: "boolean" }).notNull().default(false),
+  brumationSince: text("brumation_since"),
+  careResumeOn: text("care_resume_on"),
 });
 
 export const enclosures = sqliteTable("enclosures", {

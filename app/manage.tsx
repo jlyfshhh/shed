@@ -1318,6 +1318,7 @@ export function AnimalProfile({
   canWritePhoto = false,
   canRecordWeight = false,
   canRecordShed = false,
+  canManageCare = false,
 }: {
   animalId: string;
   onClose: () => void;
@@ -1326,6 +1327,7 @@ export function AnimalProfile({
   canWritePhoto?: boolean;
   canRecordWeight?: boolean;
   canRecordShed?: boolean;
+  canManageCare?: boolean;
 }) {
   const [data, setData] = useState<AnimalProfileData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -1341,6 +1343,8 @@ export function AnimalProfile({
   const [sNotes, setSNotes] = useState("");
   const [sBusy, setSBusy] = useState(false);
   const [sError, setSError] = useState<string | null>(null);
+  const [brumeBusy, setBrumeBusy] = useState(false);
+  const [brumeError, setBrumeError] = useState<string | null>(null);
 
   const load = async () => {
     try {
@@ -1408,6 +1412,31 @@ export function AnimalProfile({
   };
 
   const animal = data?.animal;
+  const isBrumating = animal ? bool(animal.brumating) : false;
+  const toggleBrumation = async () => {
+    if (!animal) return;
+    const next = !isBrumating;
+    if (next && !window.confirm(`Pause all care plans for ${str(animal.name)}? Feeding, misting and cleaning tasks stop until you end brumation.`)) return;
+    setBrumeBusy(true);
+    setBrumeError(null);
+    try {
+      const response = await fetch(`/api/animals/${encodeURIComponent(animalId)}/brumation`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ brumating: next }),
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error ?? "Couldn’t update brumation.");
+      }
+      await load();
+      onPhotoChange?.();
+    } catch (toggleError) {
+      setBrumeError(toggleError instanceof Error ? toggleError.message : "Couldn’t update brumation.");
+    } finally {
+      setBrumeBusy(false);
+    }
+  };
   const peakWeight = data?.weightHistory.length ? Math.max(...data.weightHistory.map((w) => w.weightGrams)) : null;
   const lastShed = data?.shedHistory?.[0] ?? null;
   const photoUrl = animal ? animalPhotoUrl(animalId, animal.photoUpdatedAt ? str(animal.photoUpdatedAt) : null) : null;
@@ -1473,6 +1502,25 @@ export function AnimalProfile({
                 </div>
               )}
             </div>
+
+            {(isBrumating || canManageCare) && (
+              <div className={isBrumating ? "brumation-banner is-paused" : "brumation-banner"}>
+                <div>
+                  <b>{isBrumating ? "Brumating — care paused" : "Brumation"}</b>
+                  <small>
+                    {isBrumating
+                      ? `All care plans paused${animal.brumationSince ? ` since ${str(animal.brumationSince)}` : ""}. No feeding, misting or cleaning tasks until you resume.`
+                      : "Pause every care plan for this animal while it brumates. Tasks resume from the day you end it — no backlog."}
+                  </small>
+                  {brumeError && <small className="form-error" role="alert">{brumeError}</small>}
+                </div>
+                {canManageCare && (
+                  <button className="brumation-toggle" onClick={() => void toggleBrumation()} disabled={brumeBusy}>
+                    {brumeBusy ? "Saving…" : isBrumating ? "End brumation" : "Start brumation"}
+                  </button>
+                )}
+              </div>
+            )}
 
             <div className="profile-facts">
               {animal.birthDate ? <div><small>Born</small><b>{str(animal.birthDate)}</b></div> : null}

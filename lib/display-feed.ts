@@ -19,6 +19,7 @@ export const TODAY_DISPLAY_TASKS_SQL = `
      AND e.due_date = t.due_date
      AND e.voided_at IS NULL
    WHERE a.active = 1
+     AND a.brumating = 0
      AND t.due_date <= ?
      AND date(t.due_date, '+' || COALESCE(s.grace_days, 0) || ' days') >= ?
    ORDER BY complete, t.due_date, a.name, t.title

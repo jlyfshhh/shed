@@ -14,7 +14,8 @@ test("room display retains every scheduled disposition but exposes only actionab
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       species TEXT NOT NULL,
-      active INTEGER NOT NULL
+      active INTEGER NOT NULL,
+      brumating INTEGER NOT NULL DEFAULT 0
     );
     CREATE TABLE care_schedules (id TEXT PRIMARY KEY, grace_days INTEGER NOT NULL DEFAULT 0);
     CREATE TABLE care_tasks (
@@ -37,8 +38,9 @@ test("room display retains every scheduled disposition but exposes only actionab
     );
 
     INSERT INTO animals VALUES
-      ('active', 'Animal', 'Species', 1),
-      ('inactive', 'Inactive animal', 'Species', 0);
+      ('active', 'Animal', 'Species', 1, 0),
+      ('inactive', 'Inactive animal', 'Species', 0, 0),
+      ('paused', 'Brumating animal', 'Species', 1, 1);
     INSERT INTO care_tasks VALUES
       ('open', NULL, 'active', 'feeding', 'Open', '', '2026-08-13', NULL, NULL),
       ('missed', NULL, 'active', 'feeding', 'Missed', '', '2026-08-13', '2026-08-13T10:00:00Z', NULL),
@@ -48,6 +50,7 @@ test("room display retains every scheduled disposition but exposes only actionab
       ('completed-skipped', NULL, 'active', 'feeding', 'Completed after skip', '', '2026-08-13', NULL, '2026-08-13T09:00:00Z'),
       ('refused', NULL, 'active', 'feeding', 'Refused', '', '2026-08-13', NULL, NULL),
       ('inactive-task', NULL, 'inactive', 'feeding', 'Inactive', '', '2026-08-13', NULL, NULL),
+      ('paused-task', NULL, 'paused', 'feeding', 'Brumating', '', '2026-08-13', NULL, NULL),
       ('other-day', NULL, 'active', 'feeding', 'Other day', '', '2026-08-12', NULL, NULL);
     INSERT INTO husbandry_events VALUES
       ('event-completed', 'completed', '2026-08-13', 'done', NULL),

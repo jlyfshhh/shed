@@ -61,6 +61,7 @@ const PROTECTED_ROUTES: RoutePolicy[] = [
   { file: "app/api/animals/[id]/photo/route.ts", method: "GET", capabilities: ["care.read"] },
   { file: "app/api/animals/[id]/photo/route.ts", method: "POST", capabilities: ["animal.photo.write"] },
   { file: "app/api/animals/[id]/photo/route.ts", method: "DELETE", capabilities: ["animal.photo.write"] },
+  { file: "app/api/animals/[id]/brumation/route.ts", method: "POST", capabilities: ["records.manage"] },
   { file: "app/api/animals/[id]/route.ts", method: "GET", capabilities: ["care.read"] },
   { file: "app/api/care/copy-routines/route.ts", method: "POST", capabilities: ["records.manage"] },
   { file: "app/api/care/start-fresh/route.ts", method: "POST", capabilities: ["care.startFresh"] },

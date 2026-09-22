@@ -47,7 +47,7 @@ export async function GET(request: Request) {
          FROM care_tasks t
          JOIN animals a ON a.id = t.animal_id
          LEFT JOIN husbandry_events e ON e.task_id = t.id AND e.due_date = t.due_date AND e.voided_at IS NULL
-        WHERE a.active = 1 AND t.due_date >= ? AND t.due_date <= ?
+        WHERE a.active = 1 AND a.brumating = 0 AND t.due_date >= ? AND t.due_date <= ?
         ORDER BY a.name, t.title`,
     ).bind(start, end).all<WeekTask & { dueDate: string }>();
 
@@ -68,7 +68,7 @@ export async function GET(request: Request) {
                 a.name AS animalName
            FROM care_schedules s
            JOIN animals a ON a.id = s.animal_id
-          WHERE s.active = 1 AND a.active = 1
+          WHERE s.active = 1 AND a.active = 1 AND a.brumating = 0
           ORDER BY a.name, s.title`,
       ).all<CareScheduleRow & { animalName: string }>();
 
