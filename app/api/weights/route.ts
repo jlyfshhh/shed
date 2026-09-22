@@ -38,9 +38,12 @@ export async function POST(request: Request) {
     const rawWeight = typeof payload.weightGrams === "number" || typeof payload.weightGrams === "string"
       ? payload.weightGrams
       : Number.NaN;
-    const weightGrams = Math.round(Number(rawWeight));
-    if (!Number.isFinite(weightGrams) || weightGrams <= 0 || weightGrams > 1_000_000) {
-      return Response.json({ error: "Enter a weight from 1 to 1,000,000 grams" }, { status: 400, headers: noStore });
+    // Round to 0.1 g: the resolution a gram scale gives, and enough for a 6 g
+    // juvenile where a whole gram is a sixth of its body mass. Rounding here
+    // also keeps float noise (6.800000000000001) out of the record.
+    const weightGrams = Math.round(Number(rawWeight) * 10) / 10;
+    if (!Number.isFinite(weightGrams) || weightGrams < 0.1 || weightGrams > 1_000_000) {
+      return Response.json({ error: "Enter a weight from 0.1 to 1,000,000 grams" }, { status: 400, headers: noStore });
     }
     if (payload.notes !== undefined && typeof payload.notes !== "string") {
       return Response.json({ error: "Notes must be text" }, { status: 400, headers: noStore });

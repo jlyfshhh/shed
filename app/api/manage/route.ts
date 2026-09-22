@@ -320,6 +320,14 @@ function normalize(resource: Resource, data: Record<string, unknown>, creating: 
   }
   if (resource === "lightingPlan") validateLightingPlan(output);
   if (resource === "lightingFixture" && Object.hasOwn(output, "quantity") && (!Number.isInteger(Number(output.quantity)) || Number(output.quantity) < 1)) throw new ApiInputError("quantity must be a whole number of at least 1");
+  // Weights carry 0.1 g resolution. A whole gram is a sixth of a 6 g juvenile,
+  // so rounding to integers would hide real growth; round here so float noise
+  // cannot reach the record either.
+  if ((resource === "weight" || resource === "feeder") && Object.hasOwn(output, "weightGrams") && output.weightGrams !== null) {
+    const grams = Math.round(Number(output.weightGrams) * 10) / 10;
+    if (!Number.isFinite(grams) || grams < 0.1 || grams > 1_000_000) throw new ApiInputError("weightGrams must be between 0.1 and 1,000,000");
+    output.weightGrams = grams;
+  }
   return output;
 }
 

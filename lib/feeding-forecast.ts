@@ -205,7 +205,7 @@ export function predictWeight(weights: ForecastWeight[], targetDate: string) {
   const maximumDailyChange = latest.weightGrams * 0.005;
   const trendGramsPerDay = Math.max(-maximumDailyChange, Math.min(maximumDailyChange, rawSlope));
   const daysAhead = Math.max(0, daysBetween(latest.recordedOn, targetDate));
-  const predictedWeightGrams = Math.max(1, Math.round(latest.weightGrams + trendGramsPerDay * daysAhead));
+  const predictedWeightGrams = Math.max(0.1, Math.round((latest.weightGrams + trendGramsPerDay * daysAhead) * 10) / 10);
   const spanDays = daysBetween(recent[0].recordedOn, latest.recordedOn);
   const confidence = recent.length >= 4 && spanDays >= 60
     ? "high" as const

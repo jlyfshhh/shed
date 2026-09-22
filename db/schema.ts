@@ -7,6 +7,12 @@ export const animals = sqliteTable("animals", {
   species: text("species").notNull(),
   groupName: text("group_name").notNull(),
   location: text("location").notNull(),
+  /**
+   * SQLite INTEGER affinity stores a non-integral value as REAL, so weights keep
+   * their 0.1 g resolution here without a column change. Do not "fix" this to
+   * real() — it would only generate a table-rebuild migration for no behaviour
+   * change, and nothing reads these columns through Drizzle at runtime.
+   */
   weightGrams: integer("weight_grams"),
   weightDate: text("weight_date"),
   scientificName: text("scientific_name"),
@@ -197,6 +203,12 @@ export const weightEvents = sqliteTable("weight_events", {
   id: text("id").primaryKey(),
   animalId: text("animal_id").notNull(),
   recordedOn: text("recorded_on").notNull(),
+  /**
+   * SQLite INTEGER affinity stores a non-integral value as REAL, so weights keep
+   * their 0.1 g resolution here without a column change. Do not "fix" this to
+   * real() — it would only generate a table-rebuild migration for no behaviour
+   * change, and nothing reads these columns through Drizzle at runtime.
+   */
   weightGrams: integer("weight_grams").notNull(),
   notes: text("notes"),
   recordedByMemberId: text("recorded_by_member_id"),
