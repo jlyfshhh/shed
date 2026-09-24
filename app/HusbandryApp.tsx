@@ -6,6 +6,7 @@ import { AnimalProfile, BulkFeederIntake, FeederForecast, GettingStartedGuide, M
 import { animalPhotoUrl } from "./animal-photo";
 import { animalFacts, speciesGlyph } from "@/lib/animal-traits";
 import { groupTasks } from "@/lib/care-group";
+import { groupToast, type MemberOutcome, type MemberResult } from "@/lib/group-actions";
 import { taskIsOverdue, taskLastDay } from "@/lib/care-window";
 import type { Capability } from "@/lib/capabilities";
 
@@ -643,20 +644,55 @@ export default function HusbandryApp() {
       setTimingTask({ task: tasks[0], tasks, outcome });
       return;
     }
-    for (const task of tasks) await recordCompletion(task, outcome);
+    await applyToGroup(tasks, (task) => completeOnce(task, outcome), {
+      verb: outcome === "refused" ? "refusal recorded" : "recorded",
+      feederAware: true,
+    });
   };
 
   /** Used by the timing dialog once the keeper has chosen a date. */
-  const recordCompletionAll = async (tasks: Task[], outcome: "done" | "refused", occurredOn?: string) => {
-    for (const task of tasks) await recordCompletion(task, outcome, occurredOn);
+  const recordCompletionAll = async (tasks: Task[], outcome: "done" | "refused", occurredOn?: string) =>
+    applyToGroup(tasks, (task) => completeOnce(task, outcome, occurredOn), {
+      verb: outcome === "refused" ? "refusal recorded" : "recorded",
+      feederAware: true,
+    });
+
+  type ActionResult = MemberResult;
+
+  /**
+   * Apply one action to every animal on a line, then report the line's real
+   * outcome. Looping the single-task calls used to swallow each member's error
+   * into its own toast, so a later success painted over an earlier failure and
+   * a group could claim it settled when part of it had not. Collecting the
+   * results makes partial failure visible, and the server is refreshed once so
+   * the list reflects exactly the writes that landed.
+   */
+  const applyToGroup = async (
+    tasks: Task[],
+    action: (task: Task) => Promise<ActionResult>,
+    { verb, feederAware = false }: { verb: string; feederAware?: boolean },
+  ) => {
+    if (!tasks.length) return;
+    setBusyTask(tasks[0].id);
+    const outcomes: MemberOutcome[] = [];
+    for (const task of tasks) outcomes.push({ animalName: task.animalName, result: await action(task) });
+    try { await refresh(); } catch { /* the toast below still reports what saved */ }
+    setBusyTask(null);
+    setTimingTask(null);
+    setTimingDate("");
+
+    const { message, ms } = groupToast(outcomes, { title: tasks[0].title, verb, viewerName: viewer?.displayName, feederAware });
+    setToast(message);
+    window.setTimeout(() => setToast(null), ms);
   };
 
-  const recordCompletion = async (
+  // One task, one request. Returns the outcome instead of showing it, so
+  // applyToGroup can judge the whole line before touching the toast.
+  const completeOnce = async (
     task: Task,
     outcome: "done" | "refused" = "done",
     occurredOn?: string,
-  ) => {
-    setBusyTask(task.id);
+  ): Promise<ActionResult> => {
     try {
       const response = await fetch("/api/tasks/complete", {
         method: "POST",
@@ -664,8 +700,7 @@ export default function HusbandryApp() {
         body: JSON.stringify({ taskId: task.id, dueDate: task.dueDate, actorRole: viewer?.role ?? "Owner", outcome, occurredOn }),
       });
       const payload = (await response.json()) as { error?: string; outcome?: "done" | "refused"; allocatedFeeder?: { sizeClass: string; preySpecies: string } | null; feederShortage?: string | null };
-      if (!response.ok) throw new Error(payload.error ?? "Unable to save");
-      await refresh();
+      if (!response.ok) return { ok: false, error: payload.error ?? "Unable to save" };
       const feeder = payload.allocatedFeeder;
       const feederNote = feeder
         ? ` · ${feeder.sizeClass} ${feeder.preySpecies} used`
@@ -673,14 +708,9 @@ export default function HusbandryApp() {
           ? " · no feeder deducted — add it in Manage → Feeders if you used stock"
           : "";
       const action = payload.outcome === "refused" ? "refusal recorded" : `${task.title} recorded`;
-      setToast(`${task.animalName}: ${action}${feederNote}${viewer ? ` by ${viewer.displayName}` : ""}`);
-      window.setTimeout(() => setToast(null), payload.feederShortage ? 5200 : 2800);
+      return { ok: true, note: `${task.animalName}: ${action}${feederNote}${viewer ? ` by ${viewer.displayName}` : ""}`, slow: Boolean(payload.feederShortage) };
     } catch (saveError) {
-      setToast(saveError instanceof Error ? saveError.message : "That update didn’t save. Please try again.");
-    } finally {
-      setBusyTask(null);
-      setTimingTask(null);
-      setTimingDate("");
+      return { ok: false, error: saveError instanceof Error ? saveError.message : "That update didn’t save. Please try again." };
     }
   };
 
@@ -758,35 +788,27 @@ export default function HusbandryApp() {
    */
   const skipGroup = async (tasks: Task[]) => {
     if (!tasks.length) return;
-    if (tasks.length === 1) return skipTask(tasks[0]);
     const reason = window.prompt(
-      `Skip “${tasks[0].title}” for all ${tasks.length} animals?\n\nThis records that it did not need doing, so it will not count against their husbandry scores. Add a reason if you like:`,
+      tasks.length === 1
+        ? `Skip “${tasks[0].title}” for ${tasks[0].animalName}?\n\nThis records that it did not need doing, so it will not count against ${tasks[0].animalName}'s husbandry score. Add a reason if you like:`
+        : `Skip “${tasks[0].title}” for all ${tasks.length} animals?\n\nThis records that it did not need doing, so it will not count against their husbandry scores. Add a reason if you like:`,
       "",
     );
     if (reason === null) return;
-    for (const task of tasks) await recordSkip(task, reason);
+    await applyToGroup(tasks, (task) => skipOnce(task, reason), { verb: "skipped" });
   };
 
   const missGroup = async (tasks: Task[]) => {
     if (!tasks.length) return;
-    if (tasks.length === 1) return missTask(tasks[0]);
-    if (!window.confirm(`Mark “${tasks[0].title}” as missed for all ${tasks.length} animals? It'll be recorded as not done and leave the list.`)) return;
-    for (const task of tasks) await recordMiss(task);
+    if (!window.confirm(tasks.length === 1
+      ? `Mark “${tasks[0].title}” for ${tasks[0].animalName} as missed? It’ll be recorded as not done and leave the list.`
+      : `Mark “${tasks[0].title}” as missed for all ${tasks.length} animals? It'll be recorded as not done and leave the list.`)) return;
+    await applyToGroup(tasks, (task) => missOnce(task), { verb: "marked missed" });
   };
 
-  const skipTask = async (task: Task) => {
-    // A reason is optional but strongly worth having: in three months "skipped"
-    // alone tells the keeper nothing, and "already damp" tells them everything.
-    const reason = window.prompt(
-      `Skip “${task.title}” for ${task.animalName}?\n\nThis records that it did not need doing, so it will not count against ${task.animalName}'s husbandry score. Add a reason if you like:`,
-      "",
-    );
-    if (reason === null) return;
-    await recordSkip(task, reason);
-  };
+  const skipTask = (task: Task) => skipGroup([task]);
 
-  const recordSkip = async (task: Task, reason: string) => {
-    setBusyTask(task.id);
+  const skipOnce = async (task: Task, reason: string): Promise<ActionResult> => {
     try {
       const response = await fetch("/api/tasks/skip", {
         method: "POST",
@@ -794,15 +816,10 @@ export default function HusbandryApp() {
         body: JSON.stringify({ taskId: task.id, dueDate: task.dueDate, reason: reason.trim() }),
       });
       const payload = (await response.json()) as { error?: string };
-      if (!response.ok) throw new Error(payload.error ?? "Unable to skip");
-      await refresh();
-      setToast(`${task.animalName}: ${task.title} skipped${reason.trim() ? ` — ${reason.trim()}` : ""}`);
-      window.setTimeout(() => setToast(null), 2800);
+      if (!response.ok) return { ok: false, error: payload.error ?? "Unable to skip" };
+      return { ok: true, note: `${task.animalName}: ${task.title} skipped${reason.trim() ? ` — ${reason.trim()}` : ""}` };
     } catch (skipError) {
-      setToast(skipError instanceof Error ? skipError.message : "Unable to skip");
-      window.setTimeout(() => setToast(null), 2800);
-    } finally {
-      setBusyTask(null);
+      return { ok: false, error: skipError instanceof Error ? skipError.message : "Unable to skip" };
     }
   };
 
@@ -837,27 +854,22 @@ export default function HusbandryApp() {
     await completeTask(task, "refused");
   };
 
-  const missTask = async (task: Task) => {
-    if (!window.confirm(`Mark “${task.title}” for ${task.animalName} as missed? It’ll be recorded as not done and leave the list.`)) return;
-    await recordMiss(task);
-  };
+  const missTask = (task: Task) => missGroup([task]);
 
-  const recordMiss = async (task: Task) => {
-    setBusyTask(task.id);
+  const missOnce = async (task: Task): Promise<ActionResult> => {
     try {
       const response = await fetch("/api/tasks/miss", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ taskId: task.id, dueDate: task.dueDate }),
       });
-      if (!response.ok) throw new Error("Unable to update");
-      await refresh();
-      setToast(`${task.animalName}: ${task.title} marked missed`);
-      window.setTimeout(() => setToast(null), 2800);
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+        return { ok: false, error: payload?.error ?? "Unable to update" };
+      }
+      return { ok: true, note: `${task.animalName}: ${task.title} marked missed` };
     } catch {
-      setToast("That didn’t save. Please try again.");
-    } finally {
-      setBusyTask(null);
+      return { ok: false, error: "That didn’t save. Please try again." };
     }
   };
 
