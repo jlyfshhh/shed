@@ -28,6 +28,11 @@ jobs:
         run: npm ci
       - name: Test and build
         run: npm test
+      - name: Production dependency audit
+        # Only what ships in the running Worker. Dev tooling (wrangler, vite,
+        # eslint) is excluded because its advisories do not reach production, so
+        # a new one there cannot block a release. High severity and above.
+        run: npm audit --omit=dev --audit-level=high
       - name: Lint
         run: npm run lint
       - name: Shell syntax
