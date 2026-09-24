@@ -175,6 +175,9 @@ export default function HusbandryApp() {
   const [guideOpen, setGuideOpen] = useState(false);
   const [weekOpen, setWeekOpen] = useState(false);
   const [profileId, setProfileId] = useState<string | null>(null);
+  const [reorderMode, setReorderMode] = useState(false);
+  const [reorderIds, setReorderIds] = useState<string[]>([]);
+  const [reorderBusy, setReorderBusy] = useState(false);
   const [forecastOpen, setForecastOpen] = useState(false);
   const [bulkFeedersOpen, setBulkFeedersOpen] = useState(false);
   const [forecast, setForecast] = useState<{ orderNeeded: boolean; warnings: number; reorderAcknowledged?: boolean } | null>(null);
@@ -282,6 +285,35 @@ export default function HusbandryApp() {
     }
     if (!response.ok) throw new Error("Dashboard data is unavailable");
     setData(await response.json());
+  };
+
+  // Animals-tab manual ordering. Reorder mode works on the full active list, so
+  // it seeds from the current dashboard order and ignores the search box.
+  const startReorder = () => {
+    setQuery("");
+    setReorderIds((data?.animals ?? []).map((animal) => animal.id));
+    setReorderMode(true);
+  };
+  const moveAnimal = async (index: number, delta: number) => {
+    const next = [...reorderIds];
+    const target = index + delta;
+    if (target < 0 || target >= next.length) return;
+    [next[index], next[target]] = [next[target], next[index]];
+    setReorderIds(next);
+    setReorderBusy(true);
+    try {
+      const response = await fetch("/api/animals/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ order: next }),
+      });
+      if (!response.ok) throw new Error("save failed");
+      await refresh();
+    } catch {
+      notify("Couldn’t save the new order — check your connection.");
+    } finally {
+      setReorderBusy(false);
+    }
   };
 
   // Lightweight forecast summary for the Today reorder nudge; the full panel refetches on open.
@@ -1184,7 +1216,37 @@ export default function HusbandryApp() {
         ) : activeTab === "animals" ? (
           <section className="page">
             <div className="eyebrow">The whole household</div>
-            <div className="page-heading"><div><h1>Animals & habitats</h1><p>{data.animals.length} individual and community records.</p></div></div>
+            <div className="page-heading">
+              <div><h1>Animals & habitats</h1><p>{data.animals.length} individual and community records.</p></div>
+              {can("records.manage") && data.animals.length > 1 && (
+                reorderMode
+                  ? <button className="profile-edit" onClick={() => { setReorderMode(false); void refresh().catch(() => undefined); }}>Done</button>
+                  : <button className="profile-edit" onClick={startReorder}>Reorder</button>
+              )}
+            </div>
+            {reorderMode ? (
+              <ol className="reorder-list" aria-label="Drag animals into your preferred order">
+                {reorderIds.map((id, index) => {
+                  const animal = data.animals.find((candidate) => candidate.id === id);
+                  if (!animal) return null;
+                  return (
+                    <li className="reorder-row" key={id}>
+                      <span className="reorder-photo" aria-hidden>
+                        {(() => { const photo = animalPhotoUrl(animal.id, animal.photoUpdatedAt);
+                          // eslint-disable-next-line @next/next/no-img-element
+                          return photo ? <img src={photo} alt="" loading="lazy" decoding="async" /> : <span className="animal-photo-glyph">{speciesGlyph(animal.species, animal.group)}</span>; })()}
+                      </span>
+                      <span className="reorder-name"><b>{animal.name}</b><small>{animal.species}</small></span>
+                      <span className="reorder-controls">
+                        <button aria-label={`Move ${animal.name} up`} disabled={index === 0 || reorderBusy} onClick={() => void moveAnimal(index, -1)}>↑</button>
+                        <button aria-label={`Move ${animal.name} down`} disabled={index === reorderIds.length - 1 || reorderBusy} onClick={() => void moveAnimal(index, 1)}>↓</button>
+                      </span>
+                    </li>
+                  );
+                })}
+              </ol>
+            ) : (
+            <>
             <label className="search-box">
               <span aria-hidden="true">⌕</span>
               <span className="sr-only">Search animals, species, or rooms</span>
@@ -1213,6 +1275,8 @@ export default function HusbandryApp() {
                 );
               })}
             </div>
+            </>
+            )}
           </section>
         ) : activeTab === "trends" ? (
           <section className="page">

@@ -73,7 +73,7 @@ export async function ensureDatabase(targetDate?: string) {
 
 async function applySchema(db: D1Database) {
   await db.batch([
-    db.prepare("CREATE TABLE IF NOT EXISTS animals (id TEXT PRIMARY KEY, name TEXT NOT NULL, species TEXT NOT NULL, group_name TEXT NOT NULL DEFAULT 'Reptile', location TEXT NOT NULL DEFAULT '', weight_grams INTEGER, weight_date TEXT, scientific_name TEXT, morph TEXT, sex TEXT, birth_date TEXT, acquired_date TEXT, source TEXT, notes TEXT, active INTEGER NOT NULL DEFAULT 1, enclosure_id TEXT, created_at TEXT, updated_at TEXT, earning_enabled INTEGER NOT NULL DEFAULT 1, brumating INTEGER NOT NULL DEFAULT 0, brumation_since TEXT, care_resume_on TEXT)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS animals (id TEXT PRIMARY KEY, name TEXT NOT NULL, species TEXT NOT NULL, group_name TEXT NOT NULL DEFAULT 'Reptile', location TEXT NOT NULL DEFAULT '', weight_grams INTEGER, weight_date TEXT, scientific_name TEXT, morph TEXT, sex TEXT, birth_date TEXT, acquired_date TEXT, source TEXT, notes TEXT, active INTEGER NOT NULL DEFAULT 1, enclosure_id TEXT, created_at TEXT, updated_at TEXT, earning_enabled INTEGER NOT NULL DEFAULT 1, brumating INTEGER NOT NULL DEFAULT 0, brumation_since TEXT, care_resume_on TEXT, sort_order INTEGER)"),
     db.prepare("CREATE TABLE IF NOT EXISTS enclosures (id TEXT PRIMARY KEY, name TEXT NOT NULL, enclosure_type TEXT, manufacturer TEXT, model TEXT, width REAL, depth REAL, height REAL, dimension_unit TEXT NOT NULL DEFAULT 'in', location TEXT, substrate TEXT, bioactive INTEGER NOT NULL DEFAULT 0, shared_habitat_id TEXT, notes TEXT, active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"),
     db.prepare("CREATE INDEX IF NOT EXISTS enclosures_active_name_idx ON enclosures(active, name)"),
     db.prepare("CREATE TABLE IF NOT EXISTS care_schedules (id TEXT PRIMARY KEY, animal_id TEXT NOT NULL, task_type TEXT NOT NULL, title TEXT NOT NULL, details TEXT NOT NULL DEFAULT '', frequency TEXT NOT NULL, interval_days INTEGER, weekdays_json TEXT, day_of_month INTEGER, start_date TEXT NOT NULL, end_date TEXT, active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, prey_species TEXT, prey_description TEXT, prey_size_class TEXT, target_percent REAL, minimum_percent REAL, maximum_percent REAL, buy_as_needed INTEGER NOT NULL DEFAULT 0, reward_cents INTEGER, animal_ids_json TEXT, week_interval INTEGER NOT NULL DEFAULT 1)"),
@@ -132,6 +132,10 @@ async function applySchema(db: D1Database) {
     // let the 14-day backfill regenerate a wall of overdue tasks for days the
     // animal was deliberately left alone.
     ["brumating", "INTEGER NOT NULL DEFAULT 0"], ["brumation_since", "TEXT"], ["care_resume_on", "TEXT"],
+    // Household-wide manual order for the Animals tab. NULL sorts after any
+    // positioned animal, so the group-then-name default holds until a keeper
+    // drags one; a reorder then numbers the whole list.
+    ["sort_order", "INTEGER"],
   ]);
   await addMissingColumns(db, "care_tasks", [["task_type", "TEXT NOT NULL DEFAULT 'general'"], ["schedule_id", "TEXT"], ["missed_at", "TEXT"], ["missed_by_member_id", "TEXT"], ["missed_by_name", "TEXT"],
     // Skipped is a third disposition, not a flavour of missed. Missed means the

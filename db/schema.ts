@@ -34,6 +34,9 @@ export const animals = sqliteTable("animals", {
   brumating: integer("brumating", { mode: "boolean" }).notNull().default(false),
   brumationSince: text("brumation_since"),
   careResumeOn: text("care_resume_on"),
+  // Household-wide manual order for the Animals tab; NULL falls back to the
+  // group-then-name default until a keeper reorders.
+  sortOrder: integer("sort_order"),
 });
 
 export const enclosures = sqliteTable("enclosures", {

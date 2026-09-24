@@ -9,7 +9,7 @@ type ResourceDefinition = {
 };
 
 export const PORTABLE_RESOURCES = {
-  animals: { table: "animals", key: "id", columns: ["id", "name", "species", "group_name", "location", "weight_grams", "weight_date", "scientific_name", "morph", "sex", "birth_date", "acquired_date", "source", "notes", "active", "enclosure_id", "created_at", "updated_at", "earning_enabled", "brumating", "brumation_since", "care_resume_on"] },
+  animals: { table: "animals", key: "id", columns: ["id", "name", "species", "group_name", "location", "weight_grams", "weight_date", "scientific_name", "morph", "sex", "birth_date", "acquired_date", "source", "notes", "active", "enclosure_id", "created_at", "updated_at", "earning_enabled", "brumating", "brumation_since", "care_resume_on", "sort_order"] },
   enclosures: { table: "enclosures", key: "id", columns: ["id", "name", "enclosure_type", "manufacturer", "model", "width", "depth", "height", "dimension_unit", "location", "substrate", "bioactive", "shared_habitat_id", "notes", "active", "created_at", "updated_at"] },
   careSchedules: { table: "care_schedules", key: "id", columns: ["id", "animal_id", "task_type", "title", "details", "frequency", "interval_days", "weekdays_json", "day_of_month", "start_date", "end_date", "active", "created_at", "updated_at", "prey_species", "prey_description", "prey_size_class", "target_percent", "minimum_percent", "maximum_percent", "buy_as_needed", "reward_cents", "grace_days", "animal_ids_json", "week_interval"] },
   careTasks: { table: "care_tasks", key: "id", columns: ["id", "schedule_id", "animal_id", "task_type", "title", "details", "due_date", "missed_at", "missed_by_member_id", "missed_by_name", "skipped_at", "skipped_by_member_id", "skipped_by_name", "skip_reason"] },
