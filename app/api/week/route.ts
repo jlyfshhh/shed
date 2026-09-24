@@ -3,6 +3,8 @@ import { internalErrorResponse } from "@/lib/api-errors";
 import { dateInTimeZone } from "@/lib/date";
 import { requireCapability } from "@/lib/household-auth";
 import { scheduleIsDue, type CareScheduleRow } from "@/lib/schedules";
+import { careTaskId, scheduleAnimalIds } from "@/lib/care-group";
+import { skipCareTask } from "@/lib/brumation";
 import { describeWeek, resolveWeekStart, shiftWeeks, weekDates, weekdayIndex, WEEKDAY_LABELS } from "@/lib/week";
 
 export const dynamic = "force-dynamic";
@@ -61,30 +63,50 @@ export async function GET(request: Request) {
     // of time would later be counted as overdue for a day nobody skipped.
     const futureDates = dates.filter((date) => date > today && !byDate.has(date));
     if (futureDates.length) {
+      // Project future days with the exact rules materializeTasks uses for real
+      // rows: the N-week anchor (week_interval), the full covered-animal set
+      // (animal_ids_json), and the per-animal brumation skip. Selecting a
+      // reduced schedule shape here is what made an every-other-week plan appear
+      // weekly and a grouped plan show only its first animal.
       const schedules = await db.prepare(
-        `SELECT s.id, s.animal_id AS animalId, s.task_type AS taskType, s.title, s.details,
-                s.frequency, s.interval_days AS intervalDays, s.weekdays_json AS weekdaysJson,
-                s.day_of_month AS dayOfMonth, s.start_date AS startDate, s.end_date AS endDate,
-                a.name AS animalName
+        `SELECT s.id, s.animal_id AS animalId, s.animal_ids_json AS animalIdsJson, s.task_type AS taskType,
+                s.title, s.details, s.frequency, s.interval_days AS intervalDays, s.weekdays_json AS weekdaysJson,
+                s.day_of_month AS dayOfMonth, s.week_interval AS weekInterval, s.start_date AS startDate, s.end_date AS endDate
            FROM care_schedules s
-           JOIN animals a ON a.id = s.animal_id
-          WHERE s.active = 1 AND a.active = 1 AND a.brumating = 0
-          ORDER BY a.name, s.title`,
-      ).all<CareScheduleRow & { animalName: string }>();
+          WHERE s.active = 1`,
+      ).all<CareScheduleRow & { animalIdsJson: string | null }>();
+
+      // Per-animal name and pause status, so grouped plans expand to one row per
+      // covered animal and archived or brumating members drop out — matching the
+      // materialized recorded rows the past/today half of the week already reads.
+      const animalRows = await db.prepare(
+        "SELECT id, name, brumating, care_resume_on AS careResumeOn FROM animals WHERE active = 1",
+      ).all<{ id: string; name: string; brumating: number; careResumeOn: string | null }>();
+      const animals = new Map(animalRows.results.map((row) => [row.id, row]));
 
       for (const date of futureDates) {
-        byDate.set(date, schedules.results.filter((schedule) => scheduleIsDue(schedule, date)).map((schedule) => ({
-          id: `${schedule.id}:${date}`,
-          animalName: schedule.animalName,
-          taskType: schedule.taskType,
-          title: schedule.title,
-          complete: 0,
-          outcome: null,
-          completedBy: null,
-          missedAt: null,
-          skippedAt: null,
-          skipReason: null,
-        })));
+        const tasks: WeekTask[] = [];
+        for (const schedule of schedules.results) {
+          if (!scheduleIsDue(schedule, date)) continue;
+          for (const animalId of scheduleAnimalIds(schedule)) {
+            const animal = animals.get(animalId);
+            if (!animal || skipCareTask(animal, date)) continue;
+            tasks.push({
+              id: careTaskId(schedule.id, animalId, schedule.animalId, date),
+              animalName: animal.name,
+              taskType: schedule.taskType,
+              title: schedule.title,
+              complete: 0,
+              outcome: null,
+              completedBy: null,
+              missedAt: null,
+              skippedAt: null,
+              skipReason: null,
+            });
+          }
+        }
+        tasks.sort((a, b) => a.animalName.localeCompare(b.animalName) || a.title.localeCompare(b.title));
+        byDate.set(date, tasks);
       }
     }
 
