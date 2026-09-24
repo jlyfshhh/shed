@@ -49,6 +49,34 @@ Supported frequencies:
 - `monthly` with `dayOfMonth`
 - `once`
 
+Recurrence modifiers, all optional:
+
+- `weekInterval` (weekly only) — weeks between occurrences; `1` is every week,
+  `2` is every other week, counted from `startDate`'s week. A weekly plan with
+  several weekdays fires on all of them in an "on" week and none in an "off"
+  week.
+- `graceDays` — days after the due date a task stays merely "to do" before it
+  reads as overdue. A weekend chore due Friday with `graceDays: 2` is not late
+  until Monday.
+- `animalIdsJson` — a JSON array of animal ids, primary first, making one plan
+  cover several animals. On Today they collapse to a single line (done/skip/miss
+  once for the group, or per animal), but each animal keeps its own task row,
+  history, weights, and feeder record. A grouped plan shows on every covered
+  animal's profile.
+
+Both the materialized daily work and the future-week projection apply these the
+same way, through one shared calculation (`scheduleIsDue`, `scheduleAnimalIds`),
+so a projected week matches the day it becomes.
+
+**Brumation.** `POST /api/animals/{id}/brumation { brumating: boolean }`
+(Head Keeper) pauses or resumes all of one animal's care. While `brumating`, the
+animal is hidden from Today, overdue, the week view, and the display feed, and no
+tasks are materialized for it — but it stays on the Animals roster with a paused
+badge. Resuming sets a per-animal `care_resume_on` floor and clears the pending
+backlog, so a long brumation does not return as a wall of overdue tasks. In a
+grouped plan the skip is per animal: a brumating member drops out while the awake
+ones keep their tasks.
+
 Optional feeder forecasting fields on feeding schedules are `preySpecies`,
 `preyDescription`, `preySizeClass`, `targetPercent`, `minimumPercent`,
 `maximumPercent`, and `buyAsNeeded`. `preySizeClass` matches a tracked inventory
@@ -63,8 +91,9 @@ target weight range and allocated feeder, or a shortage/missing-weight message;
 the saved care-plan `details` field remains unchanged.
 
 `POST /api/feeders/bulk` is Owner-only and accepts
-`{ preySpecies, sizeClass, weightsGrams, addedOn?, notes? }`. It creates one feeder
-inventory row for every individual whole-gram weight (maximum 500 per request).
+`{ preySpecies, sizeClass, count, addedOn?, notes? }`. Feeders are counted, not
+weighed: it creates `count` identical inventory rows for that species and size
+class (maximum 500 per request).
 
 Completing an inventory-tracked feeding atomically creates the husbandry event,
 links its forecast-selected feeder in `feeding_assignments`, and marks that feeder
@@ -123,7 +152,7 @@ deliberate migration if it stays unused.
 One portrait per animal, stored base64 in `animal_photos` keyed by `animal_id`.
 
 - `GET /api/animals/:id/photo` returns the image bytes with an `ETag` of the row's `updated_at` and `Cache-Control: private, max-age=31536000`; it answers `304` to a matching `If-None-Match` and `404` when there is no photo. Callers cache-bust with `?v=<photoUpdatedAt>`.
-- `POST` accepts `{ dataUrl }` — a base64 `data:` URL limited to JPEG, PNG, or WebP. SVG is refused, since it would be served back under its own mime type. The client downscales to a 1200px JPEG first; the server caps the encoded payload at 2.8 MB as a backstop.
+- `POST` accepts `{ dataUrl }` — a base64 `data:` URL limited to JPEG, PNG, or WebP. SVG is refused, since it would be served back under its own mime type. The client downscales to a 1200px JPEG first; the server caps the encoded payload at 2,000,000 base64 characters as a backstop.
 - `DELETE` removes it.
 
 Both photo writes and `POST /api/weights` are Head Keeper-only when authentication is enabled. Keepers receive the portrait and weight history from the read APIs but are not shown write controls. A deliberately auth-off install still exposes the full management surface because it has no accounts to elevate.
@@ -187,7 +216,12 @@ active plans kept by other animals of the same species, deduplicated on
 
 Copied: `taskType`, `title`, `details`, `frequency`, `intervalDays`,
 `weekdaysJson`, `dayOfMonth`, prey fields, percentage fields, `buyAsNeeded`,
-`rewardCents`. **Not** copied: `startDate` (set to today) and `endDate`.
+`rewardCents`, `graceDays`, `endDate`, and `weekInterval` — so a copied weekend
+chore keeps its grace window, a fortnightly plan stays fortnightly, and a plan
+meant to stop in January still stops. **Not** copied: `startDate` (set to today)
+and `animalIdsJson` (a copy is one animal's own plan, not a shared group). The
+copyable set is held to the schema by a test, so a new `care_schedules` column
+must be classified rather than silently dropped.
 
 **Feeding plans pick their source rather than taking any sibling's.** A feeding
 plan encodes portion and cadence for the animal it was written for, and in a real
@@ -270,9 +304,39 @@ process-local. A container or Worker restart clears it. Persisting every failed
 unauthenticated request would turn login into a database-write amplifier; the
 24-random-byte access codes remain the primary credential defense.
 
+## Permanent deletion (purge)
+
+Deleting from Manage archives (`active = 0`): the record leaves the working
+lists but is kept for history. Permanent deletion is a second, deliberate step —
+`DELETE /api/manage { resource, id, purge: true }`, Head Keeper only — and is
+refused unless the record is already archived (or, for a history entry, already
+corrected). It runs an ordered cascade so nothing is orphaned:
+
+- **animal** — its tasks, events (and their revisions), notes, photo, weights,
+  sheds, and schedules go; feeder rows it consumed and equipment stay, unlinked.
+  A grouped plan that also covered this animal keeps its other members
+  (`animalIdsWithout`).
+- **care plan**, **equipment**, **lighting plan** — their own rows and
+  dependants only.
+- **history entry** — only a corrected (voided) event may be purged.
+
+The cascades live in `lib/purge.ts` and are held to the schema by a test, so a
+new table referencing one of these cannot be silently left behind.
+
+## Recovering access
+
+- **Head Keeper** — `POST /api/auth/bootstrap` with the `X-Shed-Bootstrap-Token`
+  and `{ recover: true }` reissues the Head Keeper's access code and returns it
+  once. It shares the setup token and the same sign-in throttle, and returns a
+  "nothing to recover" signal (distinct from an error) when no Head Keeper
+  exists yet. Existing husbandry data is untouched — only the code changes.
+- **Household member** — the Head Keeper reissues a member's code with
+  `PATCH /api/household/members/{id} { reissueAccessCode: true }`; the new code
+  is shown once and stored only as a hash.
+
 ## Backups and restore
 
-- `GET /api/export?format=json` returns schema version 15 with all portable husbandry
+- `GET /api/export?format=json` returns schema version 16 with all portable husbandry
   tables, task rewards, payout history, missed-task state, and portable app settings
   (including the care baseline), lighting records, and base64-encoded plan-sheet attachments. Household access-code hashes are deliberately excluded.
 - `GET /api/export?format=csv` provides a flat open-format copy.

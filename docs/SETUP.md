@@ -138,7 +138,7 @@ This screen is for looking, not doing. Record care back on Today.
 | **Equipment** | Heating, UVB, lighting, filters, and replacement dates |
 | **Lighting plan** | A simulated enclosure lighting layout, its targets, linked installed lamps, plan sheet, and real meter readings |
 | **Weight** | Dated measurements in grams for trend tracking |
-| **Feeder** | Prey inventory, individual feeder weights, and forecasting |
+| **Feeder** | Prey inventory counted by species and size class, and forecasting |
 
 Click an animal on **Animals** to see its profile, including care plans, equipment, notes, weights, and husbandry history.
 

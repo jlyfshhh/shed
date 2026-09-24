@@ -96,7 +96,7 @@ either can still work independently and each keeps its own portable data.
 - **Photos** — add a portrait from your phone; Shed resizes it in the browser, stores it in your own database, and includes it in your backup.
 - **Lighting plans** — paste a Light My Reptile exact-setup link and Shed names every fixture for you, from a product list its developer supplied. It preserves a permanent reviewed snapshot, creates or matches installed equipment, returns to the live configuration, and tracks measured UVI/lux/temperature history.
 - **Editable care plans** — daily, weekly, every-N-day, monthly, and one-time routines per animal.
-- **Feeder tracking & forecasting** — weighed feeder inventory plus meal forecasting from growth trends.
+- **Feeder tracking & forecasting** — feeder inventory counted by species and size class, plus meal forecasting from growth trends.
 - **Weight trends** in grams.
 - **Correctable history** — fix a mistaken entry without erasing the record; corrections stay auditable.
 - **Backups you control** — JSON and CSV exports, in-app restore (merge or replace), dated SQLite snapshots, and portable lighting-plan attachments.
