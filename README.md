@@ -12,7 +12,7 @@
   <img alt="Version" src="https://img.shields.io/badge/version-1.0-2E9E5B">
   <img alt="Self-hosted" src="https://img.shields.io/badge/self--hosted-Docker-A8B7A1">
   <a href="https://animalroom.app/shed/"><img alt="Website" src="https://img.shields.io/badge/website-animalroom.app%2Fshed-E0701A"></a>
-  <a href="https://ko-fi.com/jlyfshhh"><img alt="Ko-fi" src="https://img.shields.io/badge/Ko--fi-buy%20crickets-FF5E5B?logo=ko-fi&logoColor=white"></a>
+  <a href="https://ko-fi.com/jlyfshhh"><img alt="Support Animal Room on Ko-fi" src="https://img.shields.io/badge/Ko--fi-support%20Animal%20Room-FF5E5B?logo=ko-fi&logoColor=white"></a>
 </p>
 
 ---
@@ -92,6 +92,7 @@ either can still work independently and each keeps its own portable data.
 - **Shared daily care list** across everyone's phones, with a one-day carryover so nothing slips.
 - **Household accounts** — a Head Keeper who manages everything, and completion-only Keepers who view Shed and mark scheduled care done from their own phones. Every completed task is credited to the person who did it, with a per-member contribution report.
 - **Full record management** — add and edit animals (with morph, sex, scientific name, enclosure, source, and notes), enclosures, care plans, husbandry notes, equipment, weights, and feeder inventory, all from the app.
+- **Private-by-default sharing** — the Head Keeper can make a 1080×1350 PNG of today’s care for Instagram or messages. Animal names are opt-in; keeper identities, codes, rewards, notes, network addresses, IDs, and history are never included.
 - **Animal profiles** — a per-animal card with a photo, weight history, care plans, equipment, notes, and full auditable event history.
 - **Photos** — add a portrait from your phone; Shed resizes it in the browser, stores it in your own database, and includes it in your backup.
 - **Lighting plans** — paste a Light My Reptile exact-setup link and Shed names every fixture for you, from a product list its developer supplied. It preserves a permanent reviewed snapshot, creates or matches installed equipment, returns to the live configuration, and tracks measured UVI/lux/temperature history.
@@ -159,6 +160,8 @@ MIT — see [LICENSE](LICENSE).
 
 ---
 
-Built by **[jlyfshhh](https://github.com/jlyfshhh)**. I keep a room full of reptiles and amphibians — follow along on Instagram **[@thebioactivekeeper](https://instagram.com/thebioactivekeeper)** for the animals and bioactive builds behind these projects. 🦎 If Shed helps your household, you can [buy the animals some crickets](https://ko-fi.com/jlyfshhh).
+Built by **[jlyfshhh](https://github.com/jlyfshhh)**. I keep a room full of reptiles and amphibians — follow along on Instagram **[@thebioactivekeeper](https://instagram.com/thebioactivekeeper)** for the real animal room and bioactive builds behind these projects.
+
+Shed is free, open-source, and local-first. If it helps your household, you can **[support Animal Room on Ko-fi](https://ko-fi.com/jlyfshhh)**. Tips help cover test sensors, Raspberry Pi hardware, the domain, and compatibility work.
 
 > Built with the help of AI assistants (OpenAI Codex and Anthropic's Claude). Reviewed, tested, and deployed by a human (me).

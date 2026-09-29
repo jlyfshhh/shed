@@ -172,6 +172,12 @@ installation](BROWSER-SECURITY.md) for the exact HTTP/HTTPS limitations.
 
 Every completed scheduled task is credited to the signed-in keeper. Keeper accounts are deliberately completion-only: they can view Shed and mark scheduled care done, but they cannot mark tasks missed, change photos or weights, correct history, or manage any records. The Head Keeper can review totals under **More → Contributions**, issue a new code, disable an account, or re-enable it later.
 
+### Share a private care update
+
+The Head Keeper can open **More → Share today’s care** to make a 1080×1350 PNG for Instagram, messages, or a household update. The card starts with animal names hidden. You may explicitly include animal names for that one image, but Shed never puts keeper names, access codes, task rewards, notes, local network addresses, record IDs, or detailed history into the card.
+
+Use **Share PNG** on a phone to open the system share sheet, or **Download PNG** anywhere to save the image. Image generation happens in your browser; Shed does not upload the card or add telemetry.
+
 ## 6. Back up and restore
 
 Your live data is stored in SQLite on your own server. For an easy portable copy, use **More → Your data, always portable** to download JSON or CSV.

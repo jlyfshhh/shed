@@ -722,6 +722,41 @@ button.primary:disabled { opacity: .6; cursor: wait; }
 .about-credit a { color: var(--moss); font-weight: 700; }
 .about-fine { max-width: 470px; margin: 11px auto 0; color: var(--muted); font-size: 11.5px; line-height: 1.55; opacity: .82; }
 
+/* ── Privacy-safe social care card ─────────────────────────────────── */
+.share-card-sheet { width: min(680px, 100%); }
+.share-card-sheet .sheet-head small { display: block; color: var(--muted); font-size: 11.5px; margin-top: 3px; }
+.share-card-body { overflow-y: auto; padding: 20px 22px 26px; }
+.share-card-preview { width: min(370px, 100%); aspect-ratio: 4 / 5; margin: 0 auto 18px; padding: 25px; display: flex; flex-direction: column; border: 1px solid #e4e1d8; border-radius: 22px; overflow: hidden; background: radial-gradient(circle at 100% 0, #fff1ca 0, transparent 44%), #fffdf8; color: #22262e; box-shadow: 0 14px 36px rgba(34,38,46,.08); }
+.share-preview-brand { display: grid; gap: 3px; }
+.share-preview-brand span { color: #e0701a; font-size: 10px; font-weight: 900; letter-spacing: .11em; text-transform: uppercase; }
+.share-preview-brand small { color: #687079; font-size: 9px; }
+.share-card-preview h3 { margin: 24px 0 15px; max-width: 95%; font-size: clamp(24px, 5vw, 35px); line-height: 1.03; letter-spacing: -.04em; }
+.share-preview-progress { height: 7px; overflow: hidden; border-radius: 99px; background: #ebe8df; }
+.share-preview-progress span { display: block; height: 100%; min-width: 0; border-radius: inherit; background: #e0701a; }
+.share-preview-stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 7px; margin: 19px 0 0; }
+.share-preview-stats p { margin: 0; padding: 11px 9px; border: 1px solid #e4e1d8; border-radius: 12px; background: #fff; }
+.share-preview-stats b, .share-preview-stats small { display: block; }
+.share-preview-stats b { font-size: 23px; line-height: 1; }
+.share-preview-stats small { margin-top: 5px; color: #687079; font-size: 7px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
+.share-preview-names { margin: 17px 0 0; color: #22262e; font-size: 12px; font-weight: 800; line-height: 1.45; }
+.share-preview-names small { display: block; margin-bottom: 4px; color: #e0701a; font-size: 7px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
+.share-card-preview footer { display: flex; justify-content: space-between; gap: 10px; margin-top: auto; align-items: end; font-size: 9px; }
+.share-card-preview footer span { color: #687079; font-weight: 800; }
+.share-name-toggle { display: flex; align-items: start; gap: 11px; padding: 14px 15px; border: 1px solid var(--line); border-radius: 14px; background: var(--paper); cursor: pointer; }
+.share-name-toggle input { width: 19px; height: 19px; margin: 1px 0 0; flex: 0 0 auto; accent-color: var(--moss); }
+.share-name-toggle span { display: grid; gap: 3px; }
+.share-name-toggle b { font-size: 13px; }
+.share-name-toggle small { color: var(--muted); font-size: 11.5px; line-height: 1.45; }
+.share-privacy-note { margin: 11px 1px 18px; color: var(--muted); font-size: 11.5px; line-height: 1.55; }
+.share-privacy-note b { color: var(--ink); }
+.share-card-actions { flex-wrap: wrap; }
+.support-card .export-actions { flex-wrap: wrap; }
+
+@media (max-width: 520px) {
+  .share-card-preview { padding: 21px; }
+  .share-card-actions button { flex: 1; white-space: nowrap; }
+}
+
 /* Keep the floating dock, the toast, and the header clear of the iPhone
    home indicator and display cutout. With viewport-fit=cover the page now
    extends into those areas, so every fixed edge needs the inset added. */

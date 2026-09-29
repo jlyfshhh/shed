@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import WeekView from "./week-view";
+import ShareStatusCard from "./share-status-card";
 import { AnimalProfile, BulkFeederIntake, FeederForecast, GettingStartedGuide, ManageConsole, RecoverAccessGate, RestorePanel, SetupGate, type FeederForecastData, type ResourceKey, type SetupSummary } from "./manage";
 import { animalPhotoUrl } from "./animal-photo";
 import { animalFacts, speciesGlyph } from "@/lib/animal-traits";
@@ -187,6 +188,7 @@ export default function HusbandryApp() {
   const [reorderBusy, setReorderBusy] = useState(false);
   const [forecastOpen, setForecastOpen] = useState(false);
   const [bulkFeedersOpen, setBulkFeedersOpen] = useState(false);
+  const [shareCardOpen, setShareCardOpen] = useState(false);
   const [forecast, setForecast] = useState<{ orderNeeded: boolean; warnings: number; reorderAcknowledged?: boolean } | null>(null);
   const [orderBusy, setOrderBusy] = useState(false);
 
@@ -1369,6 +1371,12 @@ export default function HusbandryApp() {
               {can("records.export") && (
                 <article className="settings-card"><span className="settings-icon">↥</span><h2>Your data, always portable</h2><p>Download a complete open-format copy any time — stable identifiers, ISO dates, numeric gram values.</p><div className="export-actions"><a href="/api/export?format=json">Download JSON</a><a href="/api/export?format=csv">Download CSV</a></div></article>
               )}
+              {can("records.manage") && (
+                <article className="settings-card"><span className="settings-icon">↗</span><h2>Share today’s care</h2><p>Create an Instagram-ready PNG of today’s progress. Animal names are hidden unless you explicitly include them; household details never leave the app.</p><button onClick={() => setShareCardOpen(true)}>Create share card</button></article>
+              )}
+              {can("records.manage") && (
+                <article className="settings-card support-card"><span className="settings-icon">♥</span><h2>Support Animal Room</h2><p>Shed stays free, open-source, and local-first. Tips help cover test sensors, Raspberry Pi hardware, the domain, and compatibility work.</p><div className="export-actions"><a href="https://ko-fi.com/jlyfshhh" target="_blank" rel="noreferrer">Support on Ko-fi</a><a href="https://instagram.com/thebioactivekeeper" target="_blank" rel="noreferrer">See the real animal room</a></div></article>
+              )}
             </div>
 
             {can("records.manage") && (
@@ -1540,7 +1548,8 @@ export default function HusbandryApp() {
               <nav className="about-links" aria-label="Project links">
                 <a href="https://animalroom.app/shed/" target="_blank" rel="noreferrer">Project page</a>
                 <a href="https://github.com/jlyfshhh/shed" target="_blank" rel="noreferrer">GitHub</a>
-                <a href="https://ko-fi.com/jlyfshhh" target="_blank" rel="noreferrer">🦗 Buy the animals crickets</a>
+                <a href="https://instagram.com/thebioactivekeeper" target="_blank" rel="noreferrer">Real animal room</a>
+                <a href="https://ko-fi.com/jlyfshhh" target="_blank" rel="noreferrer">Support Animal Room</a>
               </nav>
               <p className="about-credit">
                 Lighting plans import from{" "}
@@ -1624,6 +1633,18 @@ export default function HusbandryApp() {
       {weekOpen && <WeekView onClose={() => setWeekOpen(false)} />}
       {forecastOpen && <FeederForecast onClose={() => { setForecastOpen(false); void loadForecast().catch(() => undefined); }} />}
       {bulkFeedersOpen && can("feeders.manage") && <BulkFeederIntake onClose={() => setBulkFeedersOpen(false)} onSaved={(message) => { setBulkFeedersOpen(false); notify(message); void refresh().catch(() => undefined); void loadForecast().catch(() => undefined); }} />}
+      {shareCardOpen && data && can("records.manage") && (
+        <ShareStatusCard
+          data={{
+            date: data.date,
+            animalCount: data.animals.length,
+            tasks: data.tasks.map(({ animalName, complete, skippedAt, missedAt }) => ({ animalName, complete, skippedAt, missedAt })),
+            overdue: data.overdue.map(({ animalName }) => ({ animalName })),
+          }}
+          onClose={() => setShareCardOpen(false)}
+          onNotice={notify}
+        />
+      )}
       {timingTask && data && (
         <div className="sheet-backdrop attribution-backdrop" role="dialog" aria-modal="true" aria-labelledby="timing-title" onClick={() => setTimingTask(null)}>
           <div className="sheet attribution-sheet" onClick={(event) => event.stopPropagation()}>
