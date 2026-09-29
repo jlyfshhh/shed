@@ -165,6 +165,12 @@ export default function HusbandryApp() {
   const [session, setSession] = useState<Session | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("today");
   const [busyTask, setBusyTask] = useState<string | null>(null);
+  // Every task id in flight for a grouped action, so all of a line's controls
+  // — the group buttons and each expanded per-animal row — stay disabled until
+  // the whole sequence and its refresh settle. busyTask alone named only the
+  // first member, leaving the rest clickable and racing the final refresh.
+  const [groupBusyIds, setGroupBusyIds] = useState<readonly string[]>([]);
+  const taskIsBusy = (id: string) => busyTask === id || groupBusyIds.includes(id);
   const [toast, setToast] = useState<string | null>(null);
   const [query, setQuery] = useState("");
 
@@ -612,14 +618,14 @@ export default function HusbandryApp() {
     <div className="group-member" key={member.id}>
       <b>{member.animalName}</b>
       <div className="group-member-actions">
-        <button className="complete-button" disabled={busyTask === member.id} onClick={() => void completeGroup([member])}>
-          {busyTask === member.id ? "Saving…" : "Done"}<span>✓</span>
+        <button className="complete-button" disabled={taskIsBusy(member.id)} onClick={() => void completeGroup([member])}>
+          {taskIsBusy(member.id) ? "Saving…" : "Done"}<span>✓</span>
         </button>
         {member.taskType === "feeding" && (
-          <button className="refuse-button" disabled={busyTask === member.id} onClick={() => void completeGroup([member], "refused")}>Refused</button>
+          <button className="refuse-button" disabled={taskIsBusy(member.id)} onClick={() => void completeGroup([member], "refused")}>Refused</button>
         )}
-        <button className="skip-button" disabled={busyTask === member.id} onClick={() => void skipTask(member)}>Skip</button>
-        {can("care.miss") && <button className="miss-button" disabled={busyTask === member.id} onClick={() => void missTask(member)}>Missed</button>}
+        <button className="skip-button" disabled={taskIsBusy(member.id)} onClick={() => void skipTask(member)}>Skip</button>
+        {can("care.miss") && <button className="miss-button" disabled={taskIsBusy(member.id)} onClick={() => void missTask(member)}>Missed</button>}
       </div>
     </div>
   );
@@ -673,11 +679,13 @@ export default function HusbandryApp() {
     { verb, feederAware = false }: { verb: string; feederAware?: boolean },
   ) => {
     if (!tasks.length) return;
+    setGroupBusyIds(tasks.map((task) => task.id));
     setBusyTask(tasks[0].id);
     const outcomes: MemberOutcome[] = [];
     for (const task of tasks) outcomes.push({ animalName: task.animalName, result: await action(task) });
     try { await refresh(); } catch { /* the toast below still reports what saved */ }
     setBusyTask(null);
+    setGroupBusyIds([]);
     setTimingTask(null);
     setTimingDate("");
 
@@ -708,7 +716,15 @@ export default function HusbandryApp() {
           ? " · no feeder deducted — add it in Manage → Feeders if you used stock"
           : "";
       const action = payload.outcome === "refused" ? "refusal recorded" : `${task.title} recorded`;
-      return { ok: true, note: `${task.animalName}: ${action}${feederNote}${viewer ? ` by ${viewer.displayName}` : ""}`, slow: Boolean(payload.feederShortage) };
+      return {
+        ok: true,
+        note: `${task.animalName}: ${action}${feederNote}${viewer ? ` by ${viewer.displayName}` : ""}`,
+        slow: Boolean(payload.feederShortage),
+        // Structured so a grouped feeding can aggregate feeders and name the
+        // animals with a shortage, instead of collapsing to a generic line.
+        feeder: feeder ?? null,
+        shortage: Boolean(payload.feederShortage),
+      };
     } catch (saveError) {
       return { ok: false, error: saveError instanceof Error ? saveError.message : "That update didn’t save. Please try again." };
     }
@@ -1070,7 +1086,7 @@ export default function HusbandryApp() {
                 <div className="task-list">
                   {groupTasks(overdue).map(({ key, tasks }) => {
                     const task = tasks[0];
-                    const busy = tasks.some((member) => busyTask === member.id);
+                    const busy = tasks.some((member) => taskIsBusy(member.id));
                     return (
                     <article className="task-card overdue" key={key}>
                       <div className="animal-badge" aria-hidden="true">{tasks.length > 1 ? tasks.length : task.animalName.slice(0, 1)}</div>
@@ -1104,7 +1120,7 @@ export default function HusbandryApp() {
             <div className="task-list">
               {groupTasks(pending).map(({ key, tasks }) => {
                 const task = tasks[0];
-                const busy = tasks.some((member) => busyTask === member.id);
+                const busy = tasks.some((member) => taskIsBusy(member.id));
                 return (
                 <article className="task-card" key={key}>
                   <div className="animal-badge" aria-hidden="true">{tasks.length > 1 ? tasks.length : task.animalName.slice(0, 1)}</div>
@@ -1158,12 +1174,12 @@ export default function HusbandryApp() {
                   {can("care.correct") && (
                     <span className="completion-correction-actions">
                       {authRequired && (
-                        <button disabled={busyTask === task.id} onClick={() => openAttributionCorrection(task)}>
+                        <button disabled={taskIsBusy(task.id)} onClick={() => openAttributionCorrection(task)}>
                           Change keeper
                         </button>
                       )}
-                      <button className="mark-not-done" disabled={busyTask === task.id} onClick={() => void undoTask(task)}>
-                        {busyTask === task.id ? "Saving…" : "Mark not done"}
+                      <button className="mark-not-done" disabled={taskIsBusy(task.id)} onClick={() => void undoTask(task)}>
+                        {taskIsBusy(task.id) ? "Saving…" : "Mark not done"}
                       </button>
                     </span>
                   )}
@@ -1184,8 +1200,8 @@ export default function HusbandryApp() {
                       <b>{task.animalName}</b>
                       <p>{task.title}{task.missedBy ? ` · ${task.missedBy}` : ""}</p>
                       <span className="completion-correction-actions">
-                        <button disabled={busyTask === task.id} onClick={() => void completeTask(task)}>
-                          {busyTask === task.id ? "Saving…" : "Actually done"}
+                        <button disabled={taskIsBusy(task.id)} onClick={() => void completeTask(task)}>
+                          {taskIsBusy(task.id) ? "Saving…" : "Actually done"}
                         </button>
                       </span>
                     </div>
@@ -1207,8 +1223,8 @@ export default function HusbandryApp() {
                       <p>{task.title}{task.skipReason ? ` · ${task.skipReason}` : ""}</p>
                       {can("care.complete") && (
                         <span className="completion-correction-actions">
-                          <button disabled={busyTask === task.id} onClick={() => void unskipTask(task)}>
-                            {busyTask === task.id ? "Saving…" : "Put back"}
+                          <button disabled={taskIsBusy(task.id)} onClick={() => void unskipTask(task)}>
+                            {taskIsBusy(task.id) ? "Saving…" : "Put back"}
                           </button>
                         </span>
                       )}
