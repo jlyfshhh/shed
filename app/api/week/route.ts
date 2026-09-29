@@ -2,9 +2,8 @@ import { ensureDatabase } from "@/db/runtime";
 import { internalErrorResponse } from "@/lib/api-errors";
 import { dateInTimeZone } from "@/lib/date";
 import { requireCapability } from "@/lib/household-auth";
-import { scheduleIsDue, type CareScheduleRow } from "@/lib/schedules";
-import { careTaskId, scheduleAnimalIds } from "@/lib/care-group";
-import { skipCareTask } from "@/lib/brumation";
+import { type CareScheduleRow } from "@/lib/schedules";
+import { projectFutureDay } from "@/lib/week-projection";
 import { describeWeek, resolveWeekStart, shiftWeeks, weekDates, weekdayIndex, WEEKDAY_LABELS } from "@/lib/week";
 
 export const dynamic = "force-dynamic";
@@ -85,28 +84,18 @@ export async function GET(request: Request) {
       const animals = new Map(animalRows.results.map((row) => [row.id, row]));
 
       for (const date of futureDates) {
-        const tasks: WeekTask[] = [];
-        for (const schedule of schedules.results) {
-          if (!scheduleIsDue(schedule, date)) continue;
-          for (const animalId of scheduleAnimalIds(schedule)) {
-            const animal = animals.get(animalId);
-            if (!animal || skipCareTask(animal, date)) continue;
-            tasks.push({
-              id: careTaskId(schedule.id, animalId, schedule.animalId, date),
-              animalName: animal.name,
-              taskType: schedule.taskType,
-              title: schedule.title,
-              complete: 0,
-              outcome: null,
-              completedBy: null,
-              missedAt: null,
-              skippedAt: null,
-              skipReason: null,
-            });
-          }
-        }
-        tasks.sort((a, b) => a.animalName.localeCompare(b.animalName) || a.title.localeCompare(b.title));
-        byDate.set(date, tasks);
+        byDate.set(date, projectFutureDay(schedules.results, animals, date).map((task) => ({
+          id: task.id,
+          animalName: task.animalName,
+          taskType: task.taskType,
+          title: task.title,
+          complete: 0,
+          outcome: null,
+          completedBy: null,
+          missedAt: null,
+          skippedAt: null,
+          skipReason: null,
+        })));
       }
     }
 
