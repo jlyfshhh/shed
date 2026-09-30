@@ -17,6 +17,8 @@ export type ShareStatusCardInput = {
   animalCount: number;
   tasks: readonly ShareCareTask[];
   overdue: ReadonlyArray<Pick<ShareCareTask, "animalName">>;
+  /** Consecutive days of complete care, if known. A count only — never private. */
+  streakDays?: number;
 };
 
 export type ShareStatusCardOptions = {
@@ -36,6 +38,7 @@ export type ShareStatusCardModel = {
   completionPercent: number;
   status: string;
   animalNames: string[];
+  streakDays: number;
 };
 
 function safeCount(value: number): number {
@@ -110,5 +113,6 @@ export function buildShareStatusCardModel(
     completionPercent,
     status,
     animalNames,
+    streakDays: safeCount(input.streakDays ?? 0),
   };
 }

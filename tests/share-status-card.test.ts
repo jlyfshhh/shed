@@ -23,8 +23,10 @@ test("the default public card is a whitelist and redacts every identity", () => 
 
   assert.deepEqual(Object.keys(model), [
     "date", "animalCount", "scheduled", "completed", "remaining", "missed", "skipped",
-    "overdue", "completionPercent", "status", "animalNames",
+    "overdue", "completionPercent", "status", "animalNames", "streakDays",
   ]);
+  // The streak is a bare count and carries no identity.
+  assert.equal(model.streakDays, 0);
   assert.deepEqual(model.animalNames, []);
   const publicPayload = JSON.stringify(model);
   for (const privateValue of ["Mort", "Turtle", "Private Keeper", "Another Keeper", "shed-secret-code", "Private household note", "192.168.1.50", "private-record-id", "rewardCents"]) {

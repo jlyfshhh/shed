@@ -189,6 +189,20 @@ export default function HusbandryApp() {
   const [forecastOpen, setForecastOpen] = useState(false);
   const [bulkFeedersOpen, setBulkFeedersOpen] = useState(false);
   const [shareCardOpen, setShareCardOpen] = useState(false);
+  const [shareStreak, setShareStreak] = useState<number | null>(null);
+  // The streak is a bonus on the card; fetch it as the card opens and let the
+  // card render without it if the request fails.
+  const openShareCard = async () => {
+    setShareStreak(null);
+    setShareCardOpen(true);
+    try {
+      const response = await fetch("/api/care/streak", { cache: "no-store" });
+      if (response.ok) {
+        const payload = (await response.json()) as { current?: number };
+        if (typeof payload.current === "number") setShareStreak(payload.current);
+      }
+    } catch { /* streak is optional */ }
+  };
   const [forecast, setForecast] = useState<{ orderNeeded: boolean; warnings: number; reorderAcknowledged?: boolean } | null>(null);
   const [orderBusy, setOrderBusy] = useState(false);
 
@@ -1372,7 +1386,7 @@ export default function HusbandryApp() {
                 <article className="settings-card"><span className="settings-icon">↥</span><h2>Your data, always portable</h2><p>Download a complete open-format copy any time — stable identifiers, ISO dates, numeric gram values.</p><div className="export-actions"><a href="/api/export?format=json">Download JSON</a><a href="/api/export?format=csv">Download CSV</a></div></article>
               )}
               {can("records.manage") && (
-                <article className="settings-card"><span className="settings-icon">↗</span><h2>Share today’s care</h2><p>Create an Instagram-ready PNG of today’s progress. Animal names are hidden unless you explicitly include them; household details never leave the app.</p><button onClick={() => setShareCardOpen(true)}>Create share card</button></article>
+                <article className="settings-card"><span className="settings-icon">↗</span><h2>Share today’s care</h2><p>Create an Instagram-ready PNG of today’s progress. Animal names are hidden unless you explicitly include them; household details never leave the app.</p><button onClick={() => void openShareCard()}>Create share card</button></article>
               )}
               {can("records.manage") && (
                 <article className="settings-card support-card"><span className="settings-icon">♥</span><h2>Support Animal Room</h2><p>Shed stays free, open-source, and local-first. Tips help cover test sensors, Raspberry Pi hardware, the domain, and compatibility work.</p><div className="export-actions"><a href="https://ko-fi.com/jlyfshhh" target="_blank" rel="noreferrer">Support on Ko-fi</a><a href="https://instagram.com/thebioactivekeeper" target="_blank" rel="noreferrer">See the real animal room</a></div></article>
@@ -1640,6 +1654,7 @@ export default function HusbandryApp() {
             animalCount: data.animals.length,
             tasks: data.tasks.map(({ animalName, complete, skippedAt, missedAt }) => ({ animalName, complete, skippedAt, missedAt })),
             overdue: data.overdue.map(({ animalName }) => ({ animalName })),
+            streakDays: shareStreak ?? undefined,
           }}
           onClose={() => setShareCardOpen(false)}
           onNotice={notify}

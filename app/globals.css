@@ -730,6 +730,7 @@ button.primary:disabled { opacity: .6; cursor: wait; }
 .share-preview-brand { display: grid; gap: 3px; }
 .share-preview-brand span { color: #e0701a; font-size: 10px; font-weight: 900; letter-spacing: .11em; text-transform: uppercase; }
 .share-preview-brand small { color: #687079; font-size: 9px; }
+.share-preview-streak { justify-self: start; background: #e0701a; color: #fff; font-size: 9px; font-weight: 900; letter-spacing: .04em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; }
 .share-card-preview h3 { margin: 24px 0 15px; max-width: 95%; font-size: clamp(24px, 5vw, 35px); line-height: 1.03; letter-spacing: -.04em; }
 .share-preview-progress { height: 7px; overflow: hidden; border-radius: 99px; background: #ebe8df; }
 .share-preview-progress span { display: block; height: 100%; min-width: 0; border-radius: inherit; background: #e0701a; }

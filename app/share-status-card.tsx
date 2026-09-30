@@ -95,6 +95,31 @@ function drawShareCard(model: ShareStatusCardModel): HTMLCanvasElement {
   context.fillText("SHED · TODAY’S CARE", 76, 104);
   context.letterSpacing = "0px";
 
+  // A care streak, when there is one, as a pill on the right of the header. It
+  // is a plain count — the motivating number this card exists to let a keeper
+  // share — and carries nothing private.
+  if (model.streakDays > 0) {
+    const label = `${model.streakDays}-DAY CARE STREAK`;
+    context.font = "800 24px system-ui, -apple-system, sans-serif";
+    context.letterSpacing = "2px";
+    const pillW = context.measureText(label).width + 30 + 56;
+    const pillX = 1004 - pillW;
+    const pillY = 66;
+    roundedRect(context, pillX, pillY, pillW, 50, 25);
+    context.fillStyle = orange;
+    context.fill();
+    context.fillStyle = "#ffffff";
+    // A small flame drawn as a teardrop, so the pill reads without relying on
+    // an emoji font that may not exist on the renderer.
+    context.beginPath();
+    context.moveTo(pillX + 30, pillY + 15);
+    context.quadraticCurveTo(pillX + 44, pillY + 27, pillX + 38, pillY + 38);
+    context.quadraticCurveTo(pillX + 22, pillY + 38, pillX + 30, pillY + 15);
+    context.fill();
+    context.fillText(label, pillX + 54, pillY + 34);
+    context.letterSpacing = "0px";
+  }
+
   context.fillStyle = ink;
   context.font = "800 76px system-ui, -apple-system, sans-serif";
   const statusLines = wrapLines(context, model.status, 900).slice(0, 3);
@@ -277,7 +302,7 @@ export default function ShareStatusCard({ data, onClose, onNotice }: Props) {
             role="img"
             aria-label={`${model.status} ${model.completed} complete, ${model.remaining} remaining, ${model.overdue} overdue.${model.animalNames.length ? ` Animals shown: ${model.animalNames.join(", ")}.` : " Animal names are hidden."}`}
           >
-            <div className="share-preview-brand"><span>Shed · Today’s care</span><small>{displayDate(model.date)}</small></div>
+            <div className="share-preview-brand"><span>Shed · Today’s care</span>{model.streakDays > 0 ? <b className="share-preview-streak">{model.streakDays}-day care streak</b> : <small>{displayDate(model.date)}</small>}</div>
             <h3>{model.status}</h3>
             <div className="share-preview-progress"><span style={{ width: `${model.completionPercent}%` }} /></div>
             <div className="share-preview-stats">
