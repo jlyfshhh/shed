@@ -3,6 +3,8 @@
 import { FormEvent, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import WeekView from "./week-view";
 import ShareStatusCard from "./share-status-card";
+import { AnimalQuickLog } from "./quick-log";
+import { EnclosureQrSheet } from "./qr-sheet";
 import { AnimalProfile, BulkFeederIntake, FeederForecast, GettingStartedGuide, ManageConsole, RecoverAccessGate, RestorePanel, SetupGate, type FeederForecastData, type ResourceKey, type SetupSummary } from "./manage";
 import { animalPhotoUrl } from "./animal-photo";
 import { animalFacts, speciesGlyph } from "@/lib/animal-traits";
@@ -183,6 +185,12 @@ export default function HusbandryApp() {
   const [guideOpen, setGuideOpen] = useState(false);
   const [weekOpen, setWeekOpen] = useState(false);
   const [profileId, setProfileId] = useState<string | null>(null);
+  const [quickLogId, setQuickLogId] = useState<string | null>(null);
+  const [qrSheetOpen, setQrSheetOpen] = useState(false);
+  // A scanned enclosure QR code lands here as `?animal=<id>`. Read once, then
+  // open that animal's quick-log as soon as the collection has loaded (after the
+  // login gate, if any). `undefined` = not yet read; `null` = read, nothing to do.
+  const pendingAnimalRef = useRef<string | null | undefined>(undefined);
   const [reorderMode, setReorderMode] = useState(false);
   const [reorderIds, setReorderIds] = useState<string[]>([]);
   const [reorderBusy, setReorderBusy] = useState(false);
@@ -371,6 +379,28 @@ export default function HusbandryApp() {
     // Mount-only: loadSession/refresh are stable for the component's lifetime.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Deep-link from a scanned enclosure QR code (`?animal=<id>`). Opens the
+  // animal's profile once the collection is loaded, then clears the param so a
+  // refresh or bookmark doesn't reopen it and the id doesn't linger in the bar.
+  useEffect(() => {
+    if (pendingAnimalRef.current === undefined) {
+      pendingAnimalRef.current =
+        typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("animal");
+    }
+    const target = pendingAnimalRef.current;
+    if (!target || !data) return;
+    pendingAnimalRef.current = null; // consume once
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("animal");
+      window.history.replaceState({}, "", url.pathname + url.search + url.hash);
+    } catch { /* history unavailable — harmless */ }
+    if (!(data.animals ?? []).some((animal) => animal.id === target)) return;
+    // Defer the state set out of the effect body (as the mount effect does).
+    const open = window.setTimeout(() => setQuickLogId(target), 0);
+    return () => window.clearTimeout(open);
+  }, [data]);
 
   const loadMembers = async () => {
     setMembersError(null);
@@ -1380,6 +1410,7 @@ export default function HusbandryApp() {
             <div className="settings-grid">
               {can("records.manage") && <article className="settings-card"><span className="settings-icon">?</span><h2>Getting started</h2><p>Follow the setup checklist and learn where recurring care, one-time history, notes, equipment, and weights belong.</p><button onClick={() => setGuideOpen(true)}>Open guide</button></article>}
               {can("records.manage") && <article className="settings-card"><span className="settings-icon">☷</span><h2>Manage records</h2><p>Add and edit animals, enclosures, care plans, notes, equipment, weights, feeders, and history.</p><button onClick={() => openManager()}>Open manager</button></article>}
+              {can("records.manage") && <article className="settings-card"><span className="settings-icon">▦</span><h2>Enclosure QR codes</h2><p>Printable codes to tape on each enclosure. Scanning one opens that animal’s quick-log — check off care and log a weight or shed in one pass.</p><button onClick={() => setQrSheetOpen(true)}>Open QR sheet</button></article>}
               <article className="settings-card"><span className="settings-icon">◷</span><h2>Feeding forecast</h2><p>Upcoming feeds by animal, which feeder in stock covers each, shortage dates, and when to reorder.</p><button onClick={() => setForecastOpen(true)}>Open forecast</button></article>
               {can("feeders.manage") && <article className="settings-card"><span className="settings-icon">＋</span><h2>Bulk add feeders</h2><p>Add a whole shipment to inventory at once, counted by size class.</p><button onClick={() => setBulkFeedersOpen(true)}>Add feeders</button></article>}
               {can("records.export") && (
@@ -1642,6 +1673,34 @@ export default function HusbandryApp() {
           canRecordShed={can("sheds.record")}
           canManageCare={can("records.manage")}
           onPhotoChange={() => { void refresh().catch(() => undefined); }}
+        />
+      )}
+      {quickLogId && data && (() => {
+        const animal = data.animals.find((candidate) => candidate.id === quickLogId);
+        if (!animal) return null;
+        const byId = new Map<string, { id: string; title: string; dueDate: string }>();
+        for (const task of [...data.tasks, ...data.overdue]) {
+          if (task.animalId === quickLogId && !task.complete && !byId.has(task.id)) {
+            byId.set(task.id, { id: task.id, title: task.title, dueDate: task.dueDate });
+          }
+        }
+        return (
+          <AnimalQuickLog
+            animal={{ id: animal.id, name: animal.name, enclosureName: animal.enclosureName }}
+            tasks={[...byId.values()]}
+            canComplete={can("care.complete")}
+            canRecordWeight={can("weights.record")}
+            canRecordShed={can("sheds.record")}
+            actorRole={viewer?.role ?? "Owner"}
+            onClose={() => setQuickLogId(null)}
+            onSaved={() => { void refresh().catch(() => undefined); }}
+          />
+        );
+      })()}
+      {qrSheetOpen && data && (
+        <EnclosureQrSheet
+          animals={data.animals.map((animal) => ({ id: animal.id, name: animal.name, species: animal.species, enclosureName: animal.enclosureName }))}
+          onClose={() => setQrSheetOpen(false)}
         />
       )}
       {weekOpen && <WeekView onClose={() => setWeekOpen(false)} />}

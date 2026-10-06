@@ -455,6 +455,50 @@ button.primary:disabled { opacity: .6; cursor: wait; }
 .sheet-actions button.ghost { background: transparent; color: var(--muted); border: 1px solid var(--line); }
 .sheet-actions button:disabled { opacity: .6; cursor: wait; }
 
+/* Enclosure QR quick-log sheet (scan -> complete due tasks + log weight/shed). */
+.quicklog .sheet-body { display: block; }
+.quicklog-section + .quicklog-section { margin-top: 20px; }
+.quicklog-section h3 { margin: 0 0 10px; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.quicklog-muted { color: var(--muted); font-size: 14px; margin: 0; }
+.quicklog-tasks { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.quicklog-check { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; cursor: pointer; font-weight: 600; color: var(--ink); background: var(--surface-sunken); }
+.quicklog-check input { width: 20px; height: 20px; accent-color: var(--moss); flex: 0 0 auto; }
+.quicklog-check:has(input:checked) { border-color: var(--moss); background: var(--accent-wash); }
+.quicklog-add { border: 1px dashed var(--accent-line); background: var(--accent-soft); color: var(--accent-ink); border-radius: 999px; padding: 9px 16px; font-weight: 800; font-size: 13px; cursor: pointer; margin: 0 8px 8px 0; }
+.quicklog-entry { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 14px; margin-bottom: 10px; background: var(--surface-sunken); }
+.quicklog-field { display: grid; gap: 4px; font-size: 12px; font-weight: 800; color: var(--muted); }
+.quicklog-field input, .quicklog-field select { font: inherit; font-weight: 500; color: var(--ink); padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--cream); width: 100%; }
+.quicklog-remove { justify-self: start; border: 0; background: transparent; color: var(--danger-ink); font-weight: 800; font-size: 12px; cursor: pointer; padding: 2px 0; }
+.quicklog-error { color: var(--danger-ink); background: var(--danger-soft); border: 1px solid var(--danger-line); border-radius: 12px; padding: 10px 12px; font-size: 13px; margin: 14px 0 0; }
+
+/* Enclosure QR codes sheet (printable, laminate one per enclosure). */
+.qr-sheet { width: min(900px, 100%); }
+.qr-sheet-head small { display: block; color: var(--muted); font-size: 12px; margin-top: 3px; max-width: 52ch; }
+.qr-sheet-actions { display: flex; align-items: center; gap: 10px; }
+.qr-print { border: 0; background: var(--moss); color: var(--paper); border-radius: 999px; padding: 10px 18px; font-weight: 800; font-size: 13px; cursor: pointer; }
+.qr-sheet-body { display: block; }
+.qr-sheet-note { background: var(--accent-soft); border: 1px solid var(--accent-line); color: var(--accent-ink); border-radius: 12px; padding: 10px 12px; font-size: 12.5px; line-height: 1.4; margin: 0 0 16px; }
+.qr-sheet-note code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; }
+.qr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 10px; }
+.qr-card { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 1px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); }
+.qr-card-code { display: block; width: 100%; height: auto; border-radius: 4px; }
+.qr-card-name { margin: 6px 0 0; font-size: 15px; font-weight: 800; color: var(--ink); letter-spacing: -.01em; line-height: 1.1; }
+.qr-card-scan { margin: 1px 0 0; font-size: 9px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+
+@media print {
+  @page { margin: 10mm; }
+  body > *:not(.qr-sheet-backdrop) { display: none !important; }
+  .qr-sheet-backdrop { position: static !important; display: block !important; inset: auto !important; background: #fff !important; padding: 0 !important; }
+  .qr-sheet { position: static !important; width: 100% !important; max-width: none !important; max-height: none !important; box-shadow: none !important; border-radius: 0 !important; background: #fff !important; animation: none !important; color: #000 !important; }
+  .qr-sheet-head, .qr-sheet-actions, .qr-sheet .sheet-close, .qr-sheet-note { display: none !important; }
+  .qr-sheet-body { overflow: visible !important; padding: 0 !important; display: block !important; }
+  .qr-grid { grid-template-columns: repeat(4, 1fr) !important; gap: 4mm !important; }
+  .qr-card { break-inside: avoid !important; page-break-inside: avoid !important; border: 1px solid #000 !important; border-radius: 6px !important; background: #fff !important; color: #000 !important; padding: 3mm !important; gap: 0 !important; }
+  .qr-card-code { width: 100% !important; height: auto !important; }
+  .qr-card-name { color: #000 !important; font-size: 11pt !important; margin-top: 1.5mm !important; }
+  .qr-card-scan { color: #000 !important; font-size: 6.5pt !important; margin-top: 0.5mm !important; }
+}
+
 /* ── Animal profile ── */
 .profile-hero { display: flex; gap: 18px; align-items: center; margin-bottom: 20px; }
 .husbandry-badge { margin-left: auto; flex: 0 0 auto; text-align: center; border-radius: 18px; padding: 12px 16px; border: 1px solid var(--line); background: var(--paper); min-width: 92px; }
