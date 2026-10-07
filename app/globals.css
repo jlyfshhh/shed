@@ -492,11 +492,14 @@ button.primary:disabled { opacity: .6; cursor: wait; }
   .qr-sheet { position: static !important; width: 100% !important; max-width: none !important; max-height: none !important; box-shadow: none !important; border-radius: 0 !important; background: #fff !important; animation: none !important; color: #000 !important; }
   .qr-sheet-head, .qr-sheet-actions, .qr-sheet .sheet-close, .qr-sheet-note { display: none !important; }
   .qr-sheet-body { overflow: visible !important; padding: 0 !important; display: block !important; }
-  .qr-grid { grid-template-columns: repeat(4, 1fr) !important; gap: 4mm !important; }
-  .qr-card { break-inside: avoid !important; page-break-inside: avoid !important; border: 1px solid #000 !important; border-radius: 6px !important; background: #fff !important; color: #000 !important; padding: 3mm !important; gap: 0 !important; }
-  .qr-card-code { width: 100% !important; height: auto !important; }
-  .qr-card-name { color: #000 !important; font-size: 11pt !important; margin-top: 1.5mm !important; }
-  .qr-card-scan { color: #000 !important; font-size: 6.5pt !important; margin-top: 0.5mm !important; }
+  /* Inline-block flow, not grid: grid items don't honour break-inside across
+     page boundaries (Safari especially), so cards were being split. In normal
+     flow each card stays whole and page breaks fall between cards. */
+  .qr-grid { display: block !important; font-size: 0 !important; }
+  .qr-card { display: inline-block !important; width: 23% !important; box-sizing: border-box !important; margin: 0 1% 4mm 0 !important; vertical-align: top !important; text-align: center !important; break-inside: avoid !important; page-break-inside: avoid !important; border: 1px solid #000 !important; border-radius: 6px !important; background: #fff !important; color: #000 !important; padding: 3mm !important; }
+  .qr-card-code { display: block !important; width: 100% !important; height: auto !important; }
+  .qr-card-name { color: #000 !important; font-size: 11pt !important; margin: 1.5mm 0 0 !important; }
+  .qr-card-scan { color: #000 !important; font-size: 6.5pt !important; margin: 0.5mm 0 0 !important; }
 }
 
 /* ── Animal profile ── */
