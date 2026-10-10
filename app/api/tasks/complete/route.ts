@@ -101,7 +101,14 @@ export async function POST(request: Request) {
     let feederShortage: string | null = null;
     if (task.preySpecies && !task.buyAsNeeded && task.scheduleId && !allocatedFeeder) {
       const forecast = await loadFeederForecast(db, payload.dueDate, 1);
-      const feeding = forecast.events.find((event) => event.scheduleId === task.scheduleId && event.feedingDate === payload.dueDate);
+      // Match the animal, not just the schedule. A grouped feeding forecasts one
+      // meal per covered animal, so a schedule-only match could consume (or
+      // retire) a cage-mate's feeder and let this animal's care record without
+      // deducting suitable stock — or hand it a cage-mate's size recommendation.
+      const feeding = forecast.events.find((event) =>
+        event.scheduleId === task.scheduleId
+        && event.animalId === task.animalId
+        && event.feedingDate === payload.dueDate);
       if (feeding?.allocatedFeeder) {
         allocatedFeeder = feeding.allocatedFeeder;
       } else {

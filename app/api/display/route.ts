@@ -62,8 +62,9 @@ export async function GET(request: Request) {
     ))
       ? await loadFeederForecast(db, today, 1)
       : null;
+    // Key by animal too, since grouped plans emit one forecast event per animal.
     const guidanceByTask = new Map(
-      (forecast?.events ?? []).map((event) => [`${event.scheduleId}:${event.feedingDate}`, feederGuidance(event)]),
+      (forecast?.events ?? []).map((event) => [`${event.scheduleId}:${event.animalId}:${event.feedingDate}`, feederGuidance(event)]),
     );
     const tasks = todayRows.filter(isActionableTodayDisplayTask).map((task) => ({
       animalName: task.animalName,
@@ -71,7 +72,7 @@ export async function GET(request: Request) {
       taskType: task.taskType,
       title: task.title,
       details: task.scheduleId
-        ? guidanceByTask.get(`${task.scheduleId}:${task.dueDate}`) ?? task.details
+        ? guidanceByTask.get(`${task.scheduleId}:${task.animalId}:${task.dueDate}`) ?? task.details
         : task.details,
       dueDate: task.dueDate,
     }));

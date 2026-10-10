@@ -75,13 +75,16 @@ export async function GET(request: Request) {
     const forecast = todayTasks.some((task) => task.taskType === "feeding" && task.scheduleId)
       ? await loadFeederForecast(db, today, 1)
       : null;
+    // Key by animal too: grouped plans now emit one forecast event per covered
+    // animal, so a plain scheduleId:date key would collapse cage-mates onto one
+    // animal's feeder label.
     const guidanceByTask = new Map(
-      (forecast?.events ?? []).map((event) => [`${event.scheduleId}:${event.feedingDate}`, feederGuidance(event)]),
+      (forecast?.events ?? []).map((event) => [`${event.scheduleId}:${event.animalId}:${event.feedingDate}`, feederGuidance(event)]),
     );
     const enrichTask = (task: DashboardTask) => ({
       ...task,
       feedingGuidance: task.scheduleId
-        ? guidanceByTask.get(`${task.scheduleId}:${task.dueDate}`) ?? null
+        ? guidanceByTask.get(`${task.scheduleId}:${task.animalId}:${task.dueDate}`) ?? null
         : null,
     });
 

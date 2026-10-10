@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState, useSyncExternalStore }
 import WeekView from "./week-view";
 import ShareStatusCard from "./share-status-card";
 import { AnimalQuickLog } from "./quick-log";
+import { collectQuickLogTasks } from "@/lib/quick-log";
 import { EnclosureQrSheet } from "./qr-sheet";
 import { AnimalProfile, BulkFeederIntake, FeederForecast, GettingStartedGuide, ManageConsole, RecoverAccessGate, RestorePanel, SetupGate, type FeederForecastData, type ResourceKey, type SetupSummary } from "./manage";
 import { animalPhotoUrl } from "./animal-photo";
@@ -909,13 +910,6 @@ export default function HusbandryApp() {
     }
   };
 
-  const refuseMeal = async (task: Task) => {
-    if (!window.confirm(
-      `Record that ${task.animalName} refused this meal?\n\nThe feeder is still used up, and the care counts as done — you offered it. The refusal is kept in ${task.animalName}'s feeding history, and the next meal stays on its normal date.`,
-    )) return;
-    await completeTask(task, "refused");
-  };
-
   const missTask = (task: Task) => missGroup([task]);
 
   const missOnce = async (task: Task): Promise<ActionResult> => {
@@ -1678,22 +1672,37 @@ export default function HusbandryApp() {
       {quickLogId && data && (() => {
         const animal = data.animals.find((candidate) => candidate.id === quickLogId);
         if (!animal) return null;
-        const byId = new Map<string, { id: string; title: string; dueDate: string }>();
-        for (const task of [...data.tasks, ...data.overdue]) {
-          if (task.animalId === quickLogId && !task.complete && !byId.has(task.id)) {
-            byId.set(task.id, { id: task.id, title: task.title, dueDate: task.dueDate });
-          }
-        }
+        // One source for both the rows and the completion handler, so the task a
+        // keeper checks off is the exact occurrence that gets recorded. Settled
+        // skips/misses are filtered out (see collectQuickLogTasks) rather than
+        // shown as indistinguishable unchecked rows.
+        const source = [...data.tasks, ...data.overdue];
+        const byId = new Map(source.map((task) => [task.id, task] as const));
         return (
           <AnimalQuickLog
             animal={{ id: animal.id, name: animal.name, enclosureName: animal.enclosureName }}
-            tasks={[...byId.values()]}
+            tasks={collectQuickLogTasks(source, quickLogId, data.date)}
+            today={data.date}
             canComplete={can("care.complete")}
             canRecordWeight={can("weights.record")}
             canRecordShed={can("sheds.record")}
-            actorRole={viewer?.role ?? "Owner"}
+            // Reuse the Today completion path so a feeding reports its feeder or
+            // shortage, and an overdue log carries the keeper's chosen care date.
+            completeTask={(taskId, occurredOn) => {
+              const task = byId.get(taskId);
+              return task
+                ? completeOnce(task, "done", occurredOn)
+                : Promise.resolve({ ok: false, error: "That task is no longer due." });
+            }}
             onClose={() => setQuickLogId(null)}
-            onSaved={() => { void refresh().catch(() => undefined); }}
+            onSaved={(message, opts) => {
+              if (message) {
+                setToast(message);
+                window.setTimeout(() => setToast(null), opts?.slow ? 5200 : 2800);
+              }
+              void refresh().catch(() => undefined);
+              void loadForecast().catch(() => undefined);
+            }}
           />
         );
       })()}

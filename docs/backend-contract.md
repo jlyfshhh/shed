@@ -261,6 +261,39 @@ completion event. Both set `missed_at` plus the member id and name, and both
 skip tasks that already have an event, so marking missed can never overwrite
 recorded care.
 
+## Care streak
+
+`GET /api/care/streak` (requires `care.read`) returns `{ current, longest,
+todayInProgress, windowDays }` over a trailing window. The metric is deliberately:
+
+- **Date-aware.** A day's accountability comes from the care-task rows that
+  existed for that day, not from an animal's *current* flags. Pausing (brumation),
+  archiving, or deleting an animal today never rewrites whether earlier days were
+  clean or broken — past misses stand.
+- **Grace-aware.** A task still inside its schedule's `grace_days` window is
+  "held": it neither breaks the streak nor extends it until its settlement
+  deadline (the same `care-window.ts` overdue rule used everywhere else). Only a
+  task past its deadline (or explicitly `missed_at`) breaks the run.
+- **Skip-neutral.** An intentionally skipped occurrence is not required care and
+  does not break the streak.
+
+So a "streak" is consecutive days with nothing missed and nothing still owed past
+its grace deadline. Don't describe it as "every scheduled task done" — in-grace
+and skipped tasks don't count against it.
+
+## Enclosure QR codes and scan-to-log
+
+Printable per-animal QR codes (Manage → Enclosure QR codes) encode
+`<origin>/?animal=<id>`. Opening that URL deep-links into a per-animal **quick-log**
+once the collection has loaded (after the login gate, if any), then strips the
+param. The quick-log only lists that animal's *unsettled* due/overdue care (settled
+skips/misses are excluded), shows the due date where the title alone is ambiguous,
+and completes through the **same** `/api/tasks/complete` path as the Today view —
+so feeder deduction / shortage feedback and the overdue late-completion date choice
+(bounded `[dueDate, today]`) are preserved, not bypassed. Ad-hoc weight and shed
+entries post to `/api/weights` and `/api/sheds`. Codes resolve only on whatever
+origin they were printed from (print from the LAN address keepers actually use).
+
 ## Feeder reorder acknowledgement
 
 `POST /api/feeders/order` (Owner) writes `feeder_order_placed_at` to

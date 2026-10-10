@@ -81,7 +81,13 @@ export function buildFeederForecast(options: {
     const animal = animalById.get(profile.animalId);
     if (!animal) return [];
     return feedingDates(profile, options.today, horizonDays)
-      .filter((feedingDate) => !excludedFeedings.has(`${profile.schedule.id}:${feedingDate}`))
+      // A grouped plan produces one profile per covered animal sharing a schedule
+      // id, so an exclusion has to name the animal too: `scheduleId:animalId:date`
+      // retires only the animal whose occurrence was settled or paused. The bare
+      // `scheduleId:date` form is still honoured for single-animal callers.
+      .filter((feedingDate) =>
+        !excludedFeedings.has(`${profile.schedule.id}:${profile.animalId}:${feedingDate}`)
+        && !excludedFeedings.has(`${profile.schedule.id}:${feedingDate}`))
       .map((feedingDate) =>
       forecastEvent(profile, animal, feedingDate, weightsByAnimal.get(profile.animalId) ?? []),
     );

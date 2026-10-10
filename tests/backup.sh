@@ -195,6 +195,60 @@ external_archive="$(
 [ -f "$external_archive" ] || { echo "An explicitly allowed external backup failed." >&2; exit 1; }
 echo "  external mounts require an explicit opt-in"
 
+# A rejection must be unmistakable to a caller (the scheduled off-device job):
+# non-zero, the opt-in named on stderr, nothing on stdout that could be taken
+# for an archive path, and nothing written to the destination.
+rm -f "$external_backups"/shed-*.sqlite
+rejected_stdout="$work/rejected.stdout"
+rejected_stderr="$work/rejected.stderr"
+if SHED_INSTALL_DIR="$external_root" SHED_DATA_PATH="$external_data" SHED_BACKUP_PATH="$external_backups" \
+    bash "$backup" >"$rejected_stdout" 2>"$rejected_stderr"; then
+  echo "A rejected external backup exited zero." >&2
+  exit 1
+fi
+[ ! -s "$rejected_stdout" ] || { echo "A rejected backup printed something on stdout." >&2; exit 1; }
+grep -q 'SHED_ALLOW_EXTERNAL_PATHS=true' "$rejected_stderr" \
+  || { echo "The rejection did not name the explicit opt-in." >&2; exit 1; }
+[ -z "$(find "$external_backups" -type f 2>/dev/null)" ] \
+  || { echo "A rejected external backup still wrote into the destination." >&2; exit 1; }
+echo "  a rejected external destination fails loudly and writes nothing"
+
+# The deployed shape: .env keeps the safe default (false) for everything else,
+# and only the off-device backup job opts in through its own environment. The
+# environment must win over .env — and without it, .env must still refuse.
+printf 'SHED_ALLOW_EXTERNAL_PATHS=false\n' >"$external_root/.env"
+if SHED_INSTALL_DIR="$external_root" SHED_DATA_PATH="$external_data" SHED_BACKUP_PATH="$external_backups" \
+    bash "$backup" >/dev/null 2>&1; then
+  echo ".env SHED_ALLOW_EXTERNAL_PATHS=false was overridden without an opt-in." >&2
+  exit 1
+fi
+optin_archive="$(
+  SHED_INSTALL_DIR="$external_root" SHED_DATA_PATH="$external_data" SHED_BACKUP_PATH="$external_backups" \
+  SHED_ALLOW_EXTERNAL_PATHS=true bash "$backup"
+)"
+[ -f "$optin_archive" ] || { echo "The job-level opt-in did not produce an archive." >&2; exit 1; }
+[ "$(sqlite3 "$optin_archive" 'PRAGMA integrity_check;')" = ok ] \
+  || { echo "The opt-in archive failed its integrity check." >&2; exit 1; }
+rm -f "$external_root/.env"
+echo "  the job's environment opt-in overrides .env, which stays false"
+
+# A copy that SQLite itself cannot make is a failure, never a promoted archive.
+broken="$work/broken-install"
+broken_d1="$broken/data/v3/d1/miniflare-D1DatabaseObject"
+mkdir -p "$broken_d1"
+printf 'this is not a database, it only has a database-shaped name\n' \
+  >"$broken_d1/faaf2b0445ab934c3aac48ddf0cdfade8f9bac050be98993748742cdd2cb05fb.sqlite"
+broken_stdout="$work/broken.stdout"
+if SHED_INSTALL_DIR="$broken" SHED_DATA_PATH=./data SHED_BACKUP_PATH=./backups \
+    bash "$backup" >"$broken_stdout" 2>/dev/null; then
+  echo "A live file SQLite could not copy was reported as a backup." >&2
+  exit 1
+fi
+[ ! -s "$broken_stdout" ] || { echo "A failed backup printed an archive path." >&2; exit 1; }
+[ -z "$(find "$broken/backups" -type f 2>/dev/null)" ] \
+  || { echo "A failed copy left a file in the backup directory." >&2; exit 1; }
+echo "  a failed SQLite copy exits non-zero and promotes nothing"
+
 if SHED_INSTALL_DIR="$work" SHED_DATA_PATH=-danger SHED_BACKUP_PATH=./backups bash "$backup" >/dev/null 2>&1; then
   echo "A leading-dash storage path was accepted." >&2
   exit 1

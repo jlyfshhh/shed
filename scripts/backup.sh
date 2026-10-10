@@ -97,11 +97,19 @@ elif ! create_internal_directory "$destination"; then
 fi
 destination="$(cd -- "$destination" && pwd -P)"
 
+# Paths outside the install directory are refused unless the caller opts in
+# explicitly. This guard is deliberate and stays on: a typo in .env must not
+# send data or backups somewhere unintended. A job that really does back up to
+# a dedicated, pre-created mount (the scheduled off-device backup does) opts in
+# for that one invocation with SHED_ALLOW_EXTERNAL_PATHS=true in its own
+# environment — the environment wins over .env, so .env can stay false for
+# everything else. A rejection exits non-zero having printed nothing on stdout
+# and written nothing, so a caller can never mistake it for a backup.
 case "$data" in
   "$root"/*) ;;
   *)
     [ "$allow_external" = true ] || {
-      echo "SHED_DATA_PATH resolves outside $root. Set SHED_ALLOW_EXTERNAL_PATHS=true only for a dedicated, pre-created mount." >&2
+      echo "SHED_DATA_PATH resolves outside $root ($data). Set SHED_ALLOW_EXTERNAL_PATHS=true (in this job's environment or in .env) only for a dedicated, pre-created mount." >&2
       exit 1
     }
     ;;
@@ -110,7 +118,7 @@ case "$destination" in
   "$root"/*) ;;
   *)
     [ "$allow_external" = true ] || {
-      echo "SHED_BACKUP_PATH resolves outside $root. Set SHED_ALLOW_EXTERNAL_PATHS=true only for a dedicated, pre-created mount." >&2
+      echo "SHED_BACKUP_PATH resolves outside $root ($destination). Set SHED_ALLOW_EXTERNAL_PATHS=true (in this job's environment or in .env) only for a dedicated, pre-created mount." >&2
       exit 1
     }
     ;;
@@ -202,7 +210,17 @@ trap 'rm -f "$partial"' EXIT
 # apostrophes in a legitimate directory name must not truncate the destination.
 sqlite_destination="${partial//\\/\\\\}"
 sqlite_destination="${sqlite_destination//\"/\\\"}"
-sqlite3 "$live" ".timeout 15000" ".backup \"$sqlite_destination\""
+# Check the copy's status explicitly rather than leaning on errexit: a failed
+# copy must stop here with a message, and must never fall through to promote
+# whatever (possibly nothing) was left at the partial path.
+if ! sqlite3 "$live" ".timeout 15000" ".backup \"$sqlite_destination\""; then
+  echo "SQLite could not copy the live database; nothing was written." >&2
+  exit 1
+fi
+[ -s "$partial" ] || {
+  echo "SQLite reported success but wrote no copy; nothing was written." >&2
+  exit 1
+}
 
 integrity="$(sqlite3 "$partial" 'PRAGMA integrity_check;' 2>/dev/null || echo failed)"
 [ "$integrity" = "ok" ] || {
@@ -220,8 +238,12 @@ for table in animals care_schedules husbandry_events; do
   }
 done
 
-chmod 600 "$partial"
-mv -f "$partial" "$final"   # atomic within one filesystem
+chmod 600 "$partial" || { echo "Could not restrict the copy's permissions; nothing was written." >&2; exit 1; }
+mv -f "$partial" "$final" || {   # atomic within one filesystem
+  echo "Could not move the verified copy into place; nothing was written." >&2
+  exit 1
+}
+[ -s "$final" ] || { echo "The archive $final is missing or empty after the move." >&2; exit 1; }
 trap - EXIT
 
 # Retention runs after a good archive exists, never before, and always leaves

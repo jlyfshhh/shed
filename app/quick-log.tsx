@@ -2,21 +2,34 @@
 
 import { useState } from "react";
 import { SHED_QUALITIES, SHED_QUALITY_LABELS, type ShedQuality } from "@/lib/shed-quality";
+import type { MemberResult } from "@/lib/group-actions";
+import {
+  quickLogCareDateValid,
+  summariseQuickLogSave,
+  type QuickLogEntryResult,
+  type QuickLogTask,
+} from "@/lib/quick-log";
 
 // A scan-and-log screen for one animal, reached from a printed enclosure QR
 // code (`?animal=<id>`). It gathers several entries — completing due care tasks
 // and logging a weight and/or a shed — and commits them in one Save, so a keeper
 // standing at the enclosure with a phone records everything in a single pass.
-// Dates default to today on the server, so there is no date picker to slow it
-// down.
+//
+// Care completion is handed back to the host's normal completion path
+// (`completeTask`), so a tracked feeding reports the feeder it used or the
+// shortage it hit exactly as the Today view does, instead of any HTTP 200
+// closing the sheet as full success. A current task is logged as of today; an
+// overdue one carries the keeper's answer to "when was this done?", bounded the
+// same way the Today timing dialog bounds it, so a late log is never silently
+// dated today.
 
-export type QuickLogTask = {
-  id: string;
-  title: string;
-  dueDate: string;
-};
+export type { QuickLogTask };
 
-type Op = { key: string; kind: "task" | "weight" | "shed"; label: string; run: () => Promise<OpResult> };
+const shortDate = (date: string) =>
+  new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric" }).format(
+    new Date(`${date}T12:00:00`),
+  );
+
 type OpResult = { ok: boolean; error?: string };
 
 async function postJson(url: string, body: Record<string, unknown>): Promise<OpResult> {
@@ -36,23 +49,31 @@ async function postJson(url: string, body: Record<string, unknown>): Promise<OpR
 export function AnimalQuickLog({
   animal,
   tasks,
+  today,
   canComplete,
   canRecordWeight,
   canRecordShed,
-  actorRole,
+  completeTask,
   onClose,
   onSaved,
 }: {
   animal: { id: string; name: string; enclosureName: string | null };
   tasks: QuickLogTask[];
+  today: string;
   canComplete: boolean;
   canRecordWeight: boolean;
   canRecordShed: boolean;
-  actorRole: string;
+  // Reuses the host's normal completion request, so feeder deduction / shortage
+  // detail comes back in the result rather than being thrown away here.
+  completeTask: (taskId: string, occurredOn?: string) => Promise<MemberResult>;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (message?: string, opts?: { slow?: boolean }) => void;
 }) {
   const [checked, setChecked] = useState<Set<string>>(new Set());
+  // Per overdue task, the keeper's answer to "when was this done?" (defaults to
+  // the due date — care logged late is attributed to when it was actually due
+  // unless the keeper says otherwise).
+  const [careDates, setCareDates] = useState<Record<string, string>>({});
   const [weightOn, setWeightOn] = useState(false);
   const [grams, setGrams] = useState("");
   const [shedOn, setShedOn] = useState(false);
@@ -69,6 +90,9 @@ export function AnimalQuickLog({
       return next;
     });
 
+  const careDateFor = (task: QuickLogTask) => careDates[task.id] ?? task.dueDate;
+  const setCareDate = (id: string, value: string) => setCareDates((prev) => ({ ...prev, [id]: value }));
+
   const gramsValue = Number(grams);
   const weightValid = !weightOn || (Number.isFinite(gramsValue) && gramsValue > 0);
   const entryCount = checked.size + (weightOn ? 1 : 0) + (shedOn ? 1 : 0);
@@ -82,65 +106,83 @@ export function AnimalQuickLog({
       setError("Enter a weight in grams, or remove the weight entry.");
       return;
     }
+    const checkedTasks = tasks.filter((task) => checked.has(task.id));
+    const badTiming = checkedTasks.find((task) => !quickLogCareDateValid(task, careDateFor(task), today));
+    if (badTiming) {
+      setError(`Pick when ${badTiming.title} was done — between its due date and today.`);
+      return;
+    }
     setBusy(true);
     setError(null);
 
-    const ops: Op[] = [];
-    for (const id of checked) {
-      const task = tasks.find((candidate) => candidate.id === id);
-      if (!task) continue;
-      ops.push({
-        key: `task:${task.id}`,
-        kind: "task",
-        label: task.title,
-        run: () => postJson("/api/tasks/complete", { taskId: task.id, dueDate: task.dueDate, actorRole, outcome: "done" }),
-      });
+    type Settled = { kind: "task" | "weight" | "shed"; id?: string; result: QuickLogEntryResult };
+    const jobs: Array<Promise<Settled>> = [];
+
+    for (const task of checkedTasks) {
+      const occurredOn = task.overdue ? careDateFor(task) : undefined;
+      jobs.push(
+        completeTask(task.id, occurredOn).then((result): Settled => ({
+          kind: "task",
+          id: task.id,
+          result: result.ok
+            ? { ok: true, note: result.note, shortage: result.shortage, slow: result.slow }
+            : { ok: false, label: task.title, error: result.error },
+        })),
+      );
     }
     if (weightOn) {
-      ops.push({
-        key: "weight",
-        kind: "weight",
-        label: `Weight ${gramsValue} g`,
-        run: () => postJson("/api/weights", { animalId: animal.id, weightGrams: gramsValue }),
-      });
+      jobs.push(
+        postJson("/api/weights", { animalId: animal.id, weightGrams: gramsValue }).then((r): Settled => ({
+          kind: "weight",
+          result: r.ok ? { ok: true, note: `Weight ${gramsValue} g logged` } : { ok: false, label: "Weight", error: r.error ?? "Couldn’t save" },
+        })),
+      );
     }
     if (shedOn) {
-      ops.push({
-        key: "shed",
-        kind: "shed",
-        label: "Shed",
-        run: () => postJson("/api/sheds", { animalId: animal.id, quality, notes: shedNotes.trim() || undefined }),
-      });
+      jobs.push(
+        postJson("/api/sheds", { animalId: animal.id, quality, notes: shedNotes.trim() || undefined }).then((r): Settled => ({
+          kind: "shed",
+          result: r.ok ? { ok: true, note: "Shed logged" } : { ok: false, label: "Shed", error: r.error ?? "Couldn’t save" },
+        })),
+      );
     }
 
-    const settled = await Promise.all(ops.map(async (op) => ({ op, result: await op.run() })));
+    const settled = await Promise.all(jobs);
     setBusy(false);
+    const summary = summariseQuickLogSave(settled.map((entry) => entry.result));
 
-    const failed = settled.filter((entry) => !entry.result.ok);
-    if (failed.length === 0) {
-      onSaved();
+    if (summary.allSaved) {
+      // The host shows the summary (feeder/shortage detail included) and
+      // refreshes both the dashboard and the feeder forecast.
+      onSaved(summary.message, { slow: summary.slow });
       onClose();
       return;
     }
 
     // Partial failure: drop what landed so a retry can't double-record it, then
-    // refresh so completed tasks disappear, and keep the sheet open on the rest.
-    const okTaskIds = new Set(settled.filter((e) => e.op.kind === "task" && e.result.ok).map((e) => e.op.key.slice(5)));
-    if (okTaskIds.size) setChecked((prev) => new Set([...prev].filter((id) => !okTaskIds.has(id))));
-    if (settled.some((e) => e.op.kind === "weight" && e.result.ok)) {
+    // refresh so completed care disappears, and keep the sheet open on the rest.
+    const okTaskIds = new Set(
+      settled.filter((entry) => entry.kind === "task" && entry.result.ok).map((entry) => entry.id as string),
+    );
+    if (okTaskIds.size) {
+      setChecked((prev) => new Set([...prev].filter((id) => !okTaskIds.has(id))));
+      setCareDates((prev) => {
+        const next = { ...prev };
+        for (const id of okTaskIds) delete next[id];
+        return next;
+      });
+    }
+    if (settled.some((entry) => entry.kind === "weight" && entry.result.ok)) {
       setWeightOn(false);
       setGrams("");
     }
-    if (settled.some((e) => e.op.kind === "shed" && e.result.ok)) {
+    if (settled.some((entry) => entry.kind === "shed" && entry.result.ok)) {
       setShedOn(false);
       setShedNotes("");
       setQuality("complete");
     }
     onSaved();
-    const savedCount = settled.length - failed.length;
-    setError(
-      `${savedCount ? `Saved ${savedCount}. ` : ""}Couldn’t save: ${failed.map((entry) => entry.op.label).join(", ")}. Try again.`,
-    );
+    setError(summary.message);
   };
 
   const hasLogOptions = canRecordWeight || canRecordShed;
@@ -177,8 +219,30 @@ export function AnimalQuickLog({
                     <li key={task.id}>
                       <label className="quicklog-check">
                         <input type="checkbox" checked={checked.has(task.id)} onChange={() => toggleTask(task.id)} />
-                        <span>{task.title}</span>
+                        <span>
+                          {task.title}
+                          {task.showDueDate && (
+                            <small className="quicklog-due"> · due {shortDate(task.dueDate)}</small>
+                          )}
+                        </span>
                       </label>
+                      {task.overdue && checked.has(task.id) && (
+                        <div className="quicklog-when">
+                          <label className="quicklog-field">
+                            <span>When was this done?</span>
+                            <input
+                              type="date"
+                              min={task.dueDate}
+                              max={today}
+                              value={careDateFor(task)}
+                              onChange={(event) => setCareDate(task.id, event.target.value)}
+                            />
+                          </label>
+                          <small className="quicklog-muted">
+                            This was due {shortDate(task.dueDate)}. Any day through today is fine.
+                          </small>
+                        </div>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -197,7 +261,6 @@ export function AnimalQuickLog({
                   <div className="quicklog-entry">
                     <label className="quicklog-field">
                       <span>Weight (g)</span>
-                      {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
                       <input
                         type="number"
                         inputMode="decimal"
