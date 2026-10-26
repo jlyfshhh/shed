@@ -170,6 +170,26 @@ test("matching ignores case and surrounding whitespace", async () => {
   assert.deepEqual(changes, [1, 1], "case/space differences do not block a real match");
 });
 
+test("matching ignores internal whitespace, mirroring the forecast (F07 parity)", async () => {
+  // The exact parity defect: a plan entered with a double space must still claim
+  // single-spaced stock, the same way the forecast's normalizeLabel counts it —
+  // otherwise the dashboard says "ready" while completion claims no stock.
+  const a = fixture();
+  addFeeder(a, "pinky-1", "pinky mouse", "large pinky", "2026-10-01");
+  const changes = await claim(a, "alpha", "evt-a", {
+    species: "pinky  mouse", // two internal spaces in the plan
+    size: "large  pinky",    // two internal spaces in the plan
+  });
+  assert.deepEqual(changes, [1, 1], "internal double-spacing must not block a real match");
+  assert.equal(consumerOf(a, "pinky-1").a, "alpha");
+
+  // And the reverse: double-spaced stock is still claimed by a single-spaced plan.
+  const b = fixture();
+  addFeeder(b, "pinky-2", "pinky  mouse", "large  pinky", "2026-10-01");
+  const rev = await claim(b, "alpha", "evt-a", { species: "pinky mouse", size: "large pinky" });
+  assert.deepEqual(rev, [1, 1], "double-spaced stock is still claimed by a single-spaced plan");
+});
+
 test("undo returns the feeder to stock so it can be claimed again", async () => {
   const a = fixture();
   addFeeder(a, "rat-1", "rat", "small", "2026-10-01");

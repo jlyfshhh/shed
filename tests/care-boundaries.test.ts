@@ -166,6 +166,47 @@ test("the old unbounded resume delete destroyed the pre-pause miss (regression g
   assert.deepEqual(taskDates(b, "dragon"), ["2026-10-19"], "the fix preserves it");
 });
 
+test("pausing clears unsettled care from the boundary so a paused day is not scored missed", async () => {
+  // C: the streak reader scores from task rows, not the live flag, so a pause
+  // that keeps pending rows lets the paused days score pending-then-missed.
+  const a = fixture();
+  addAnimal(a, "dragon");
+  addDailyPlan(a, "feed", "dragon", "2026-10-24");
+  await materializeTasks(asD1(a), "2026-10-25");
+  assert.ok(taskId(a, "dragon", "2026-10-25"), "today's task exists before pausing");
+
+  // Pause on Oct 25 exactly as the route does: set the flag (preserving any
+  // existing start) and clear unsettled tasks from the pause boundary forward.
+  a.sqlite.prepare("UPDATE animals SET brumating = 1, brumation_since = COALESCE(brumation_since, '2026-10-25'), care_resume_on = NULL WHERE id = 'dragon'").run();
+  clearPendingTasksFromStatement(asD1(a), "dragon", "2026-10-25").run();
+  assert.equal(taskId(a, "dragon", "2026-10-25"), null, "the paused day's pending task is cleared");
+
+  // Day rolls to Oct 26 while still paused; re-materialize (the brumating animal
+  // is skipped). The paused day must not score as a miss.
+  await materializeTasks(asD1(a), "2026-10-26");
+  const days = await streakDays(asD1(a), "2026-10-26", WINDOW);
+  const paused = days.find((day) => day.date === "2026-10-25");
+  assert.ok(!paused || paused.missed === 0, "the paused day is not scored as a miss");
+
+  // Negative control: the old pause kept the pending row, which is exactly what
+  // scores the paused day missed on the day-roll.
+  addRawTask(a, "feed", "dragon", "2026-10-25");
+  const withPhantom = await streakDays(asD1(a), "2026-10-26", WINDOW);
+  const phantom = withPhantom.find((day) => day.date === "2026-10-25");
+  assert.ok(phantom && phantom.missed === 1, "a retained pending row would wrongly score the paused day missed");
+});
+
+test("a repeated pause preserves the original brumation_since", () => {
+  // C: a later same-brumation re-pause must not overwrite the start, or the
+  // resume cleanup window shrinks and earlier paused days leak back.
+  const a = fixture();
+  addAnimal(a, "dragon");
+  a.sqlite.prepare("UPDATE animals SET brumating = 1, brumation_since = COALESCE(brumation_since, '2026-10-21') WHERE id = 'dragon'").run();
+  a.sqlite.prepare("UPDATE animals SET brumating = 1, brumation_since = COALESCE(brumation_since, '2026-10-25') WHERE id = 'dragon'").run();
+  const since = (a.sqlite.prepare("SELECT brumation_since AS s FROM animals WHERE id = 'dragon'").get() as { s: string }).s;
+  assert.equal(since, "2026-10-21", "the original pause start survives a repeated pause");
+});
+
 test("a reactivated animal resumes care without backfilling the archived gap", async () => {
   // care_resume_on is the lookback floor set on un-archive; the materializer must
   // not regenerate tasks for the days the animal was archived.

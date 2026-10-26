@@ -1,15 +1,18 @@
 // Brumation pause — a whole-animal toggle from the profile. A reptile that is
 // brumating should not nag the keeper with feeding, misting or cleaning tasks
 // for weeks, and should resume cleanly without a wall of "overdue" for the days
-// it was deliberately left alone. The suppression itself lives in the task
-// queries and the materializer (both keyed on animals.brumating); this route
-// only flips the flag and, on resume, clears the pending backlog so the lookback
-// window cannot re-create it.
-import { ensureDatabase } from "@/db/runtime";
+// it was deliberately left alone. Task queries and the materializer suppress new
+// work while brumating, but the streak reader scores history from the task rows
+// that exist (not the live flag), so this route also clears unsettled tasks from
+// the pause boundary forward on PAUSE — otherwise those rows score as
+// pending-then-missed during the pause — and clears the paused window on resume.
+// Both paths invalidate the per-isolate materialization cache so a same-day
+// toggle takes effect immediately rather than after the date rolls over.
+import { ensureDatabase, invalidateMaterializedTasks } from "@/db/runtime";
 import { internalErrorResponse } from "@/lib/api-errors";
 import { dateInTimeZone } from "@/lib/date";
 import { requireCapability } from "@/lib/household-auth";
-import { clearPendingTasksInWindowStatement } from "@/lib/care-boundaries";
+import { clearPendingTasksFromStatement, clearPendingTasksInWindowStatement } from "@/lib/care-boundaries";
 
 const noStore = { "Cache-Control": "no-store" };
 
@@ -30,27 +33,34 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
     const today = dateInTimeZone();
     const now = new Date().toISOString();
+    // The pause boundary: the first day the animal was paused. On a repeated
+    // pause this is the ORIGINAL date (preserved below), not today, so the resume
+    // cleanup window and the streak suppression both stay anchored to when
+    // brumation actually began.
+    const pauseStart = animal.brumationSince ?? today;
 
     if (payload.brumating) {
-      // Pause: the task queries hide everything from here; nothing to delete,
-      // and keeping the rows means a same-day un-pause has them back intact.
-      await db.prepare(
-        "UPDATE animals SET brumating = 1, brumation_since = ?, care_resume_on = NULL, updated_at = ? WHERE id = ?",
-      ).bind(today, now, id).run();
+      // Pause. COALESCE preserves an existing brumation_since so a later same-
+      // brumation re-pause cannot overwrite the original start. Clearing unsettled
+      // tasks from the pause boundary forward keeps the streak reader (which
+      // scores from task rows, not the live flag) from counting the suppressed
+      // days as pending-then-missed. Tasks dated before the boundary are
+      // pre-pause history — an implicit overdue miss there survives — and
+      // completed/skipped/explicitly-missed rows are settled and untouched.
+      await db.batch([
+        db.prepare(
+          "UPDATE animals SET brumating = 1, brumation_since = COALESCE(brumation_since, ?), care_resume_on = NULL, updated_at = ? WHERE id = ?",
+        ).bind(today, now, id),
+        clearPendingTasksFromStatement(db, id, pauseStart),
+      ]);
     } else {
       // Resume from today. care_resume_on stops the 14-day backfill from
-      // regenerating the pause, and the delete clears pending rows for the
-      // paused days only.
-      //
-      // The delete is bounded to the pause window [brumation_since, today): a
-      // task that fell due *before* the pause started is pre-boundary history,
-      // not a paused day, so an implicit overdue miss dated before brumation
-      // must survive resume (the earlier code deleted every uncompleted past
-      // task and wrongly healed those misses, F08). Completed, skipped and
-      // explicitly-missed rows are settled history and stay untouched regardless.
-      // If brumation_since is somehow absent, the window is empty and nothing is
-      // deleted — never more.
-      const pauseStart = animal.brumationSince ?? today;
+      // regenerating the pause, and the delete clears any pending rows for the
+      // paused days only [brumation_since, today) — a task that fell due *before*
+      // the pause is pre-boundary history and must survive resume (the earlier
+      // code deleted every uncompleted past task and wrongly healed those misses,
+      // F08). Settled rows stay untouched; an absent brumation_since means an
+      // empty window and nothing is deleted.
       await db.batch([
         db.prepare(
           "UPDATE animals SET brumating = 0, brumation_since = NULL, care_resume_on = ?, updated_at = ? WHERE id = ?",
@@ -59,7 +69,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       ]);
     }
 
-    return Response.json({ brumating: payload.brumating, brumationSince: payload.brumating ? today : null }, { status: 200, headers: noStore });
+    // The flag and the task rows just changed, so this isolate's materialization
+    // for `today` is stale. Invalidate it, or a same-day resume would leave
+    // today's care missing until the date rolled over or the process restarted.
+    invalidateMaterializedTasks();
+
+    return Response.json({ brumating: payload.brumating, brumationSince: payload.brumating ? pauseStart : null }, { status: 200, headers: noStore });
   } catch (error) {
     return internalErrorResponse(error, { context: "Brumation toggle failed", message: "Unable to update brumation", headers: noStore });
   }

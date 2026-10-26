@@ -81,3 +81,17 @@ test("the resume cleanup is date-bounded and never deletes settled history", () 
   assert.match(route, /brumation_since AS brumationSince/, "the pause start is read before it is cleared");
   assert.match(route, /clearPendingTasksInWindowStatement\(db, id, pauseStart, today\)/, "resume bounds the delete by the pause start");
 });
+
+test("the pause path bounds care at the boundary, preserves the start, and refreshes materialization (C)", () => {
+  const route = readFileSync(new URL("../app/api/animals/[id]/brumation/route.ts", import.meta.url), "utf8");
+  // Pause clears unsettled care from the boundary forward, so the streak reader
+  // cannot score the suppressed days as pending-then-missed during the pause.
+  assert.match(route, /clearPendingTasksFromStatement\(db, id, pauseStart\)/, "pause clears unsettled tasks from the boundary forward");
+  // A repeated pause must not overwrite the original start.
+  assert.match(route, /brumation_since = COALESCE\(brumation_since, \?\)/, "a repeated pause preserves the original brumation_since");
+  // Both toggles invalidate the per-isolate materialization cache so a same-day
+  // resume re-materializes today's care immediately rather than after a day-roll.
+  // (The cache itself imports cloudflare:workers and can't load under the node
+  // test runner, so this wiring is asserted structurally.)
+  assert.match(route, /invalidateMaterializedTasks\(\)/, "the toggle invalidates the materialization cache");
+});

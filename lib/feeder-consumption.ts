@@ -18,6 +18,22 @@ export type FeederClaimInput = {
 };
 
 /**
+ * SQL that mirrors normalizeLabel() from the forecast: lower-case, trim, and
+ * collapse any run of whitespace to a single space. SQLite/D1 has no regex, so
+ * every ASCII whitespace character is turned into a space and runs are flattened
+ * with repeated replace() (five passes flatten runs up to 32 characters, far
+ * beyond any real prey label). Applied to BOTH the stored column and the bound
+ * value so the actual claim matches exactly what the forecast counts as covered —
+ * e.g. a plan entered as "large  pinky" still claims "large pinky" stock.
+ */
+function normalizedLabelSql(expr: string): string {
+  let s = expr;
+  for (const code of [9, 10, 11, 12, 13]) s = `replace(${s}, char(${code}), ' ')`;
+  for (let i = 0; i < 5; i++) s = `replace(${s}, '  ', ' ')`;
+  return `lower(trim(${s}))`;
+}
+
+/**
  * Claim one ACTUAL available feeder matching a feeding's requirement, atomically
  * and independent of any forecast reservation (F07).
  *
@@ -31,12 +47,15 @@ export type FeederClaimInput = {
  * both win — the loser's SELECT finds nothing still available and records care
  * with no deduction, so one feeder is never consumed twice and available stock
  * is never ignored because of another animal's forecast. Species and size class
- * are compared case- and surrounding-space-insensitively, mirroring the forecast.
+ * are compared through normalizedLabelSql — case-, surrounding- AND internal-
+ * whitespace-insensitive — so the claim matches exactly what the forecast counts.
  */
 export function claimMatchingFeederStatements(db: D1Database, input: FeederClaimInput) {
   const assignmentId = input.assignmentId ?? crypto.randomUUID();
   const hasSize = input.preySizeClass != null && input.preySizeClass.trim() !== "";
-  const sizeFilter = hasSize ? " AND lower(trim(f.size_class)) = lower(trim(?))" : "";
+  const sizeFilter = hasSize
+    ? ` AND ${normalizedLabelSql("f.size_class")} = ${normalizedLabelSql("?")}`
+    : "";
   const insertArgs: unknown[] = [
     assignmentId,
     input.animalId,
@@ -53,7 +72,7 @@ export function claimMatchingFeederStatements(db: D1Database, input: FeederClaim
        SELECT ?, ?, f.id, ?, 'consumed', ?, ?, ?
          FROM feeder_inventory f
         WHERE f.status = 'available'
-          AND lower(trim(f.prey_species)) = lower(trim(?))${sizeFilter}
+          AND ${normalizedLabelSql("f.prey_species")} = ${normalizedLabelSql("?")}${sizeFilter}
         ORDER BY f.added_on, f.id
         LIMIT 1`,
     ).bind(...insertArgs),
