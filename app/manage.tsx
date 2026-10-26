@@ -219,10 +219,7 @@ const resourceDefs: ResourceDef[] = [
       { key: "rewardCents", column: "reward_cents", label: "Reward per task (cents)", type: "number", help: "Blank = household default. e.g. 25 = 25¢, 50 = 50¢" },
       { key: "preySpecies", column: "prey_species", label: "Prey species", type: "text", showIf: isFeeding, help: "e.g. rat, mouse" },
       { key: "preyDescription", column: "prey_description", label: "Prey description", type: "text", showIf: isFeeding },
-      { key: "preySizeClass", column: "prey_size_class", label: "Tracked prey size", type: "text", showIf: isFeeding, help: "Exact inventory size class, e.g. hopper or large pinky. Leave blank when sizing by body-weight percentage." },
-      { key: "targetPercent", column: "target_percent", label: "Target % of body weight", type: "number", step: "0.001", showIf: isFeeding, help: "Decimal: 5% = 0.05" },
-      { key: "minimumPercent", column: "minimum_percent", label: "Minimum %", type: "number", step: "0.001", showIf: isFeeding, help: "Decimal 0–1" },
-      { key: "maximumPercent", column: "maximum_percent", label: "Maximum %", type: "number", step: "0.001", showIf: isFeeding, help: "Decimal 0–1" },
+      { key: "preySizeClass", column: "prey_size_class", label: "Tracked prey size", type: "text", showIf: isFeeding, help: "Exact inventory size class, e.g. hopper or large pinky. A plan with a size class draws only that size from stock; blank matches any size of that species." },
       { key: "buyAsNeeded", column: "buy_as_needed", label: "Buy as needed (don't track inventory)", type: "boolean", showIf: isFeeding },
     ],
     summary: (row, catalog) => ({ title: str(row.title), sub: `${coveredAnimals(catalog, row)} · ${describeFrequency(row)}`, archived: !bool(row.active) }),
@@ -2186,12 +2183,12 @@ export function CareRoutineSuggestions({ animalId, catalog, onClose, onCreated, 
             {feeding && (
               <p className="suggest-warn">
                 {unweighed
-                  ? <>No weight is recorded for {name} yet, so the feeding plan was matched on age instead
-                      and its portions cannot be calculated until you weigh {name}. Log a weight from the
-                      animal’s profile before the first feed.</>
+                  ? <>No weight is recorded for {name} yet, so the feeding plan was matched on age instead.
+                      Log a weight from the animal’s profile, then confirm the prey size on the plan before
+                      the first feed.</>
                   : <>The feeding plan was matched to the {str(animal.species).toLowerCase()} closest to {name} in
-                      size, and its portions are a percentage of body weight, so they follow {name}’s own
-                      weight. Confirm the amount before the first feed.</>}
+                      size. Check its prey size class suits {name} and confirm the amount before the first
+                      feed.</>}
               </p>
             )}
             {error && <p className="form-error" role="alert">{error}</p>}

@@ -102,26 +102,35 @@ export type QuickLogSaveSummary = {
  * A feeder shortage is a successful save that carries a warning, not a failure,
  * so recorded care is never reported as lost; its "no feeder deducted — add it
  * in Manage → Feeders" wording already lives in each entry's note. Only a real
- * `ok: false` counts against the save, and when some entries landed and others
- * did not, the message says both so a retry targets only what's left.
+ * `ok: false` counts against the save.
+ *
+ * A partial save must not hide anything. It keeps BOTH the saved entries' own
+ * notes — which carry any allocation or shortage warning — and each failed
+ * entry's actual reason (not just its label), so a saved-with-a-shortage feeding
+ * is never collapsed into a bare "Couldn't save: Weight", and the keeper knows
+ * what to reconcile and why the rest failed. The caller removes the successes
+ * from the retry set, so the message is the only place that record survives.
  */
 export function summariseQuickLogSave(results: readonly QuickLogEntryResult[]): QuickLogSaveSummary {
   const saved = results.filter((result): result is Extract<QuickLogEntryResult, { ok: true }> => result.ok);
   const failed = results.filter((result): result is Extract<QuickLogEntryResult, { ok: false }> => !result.ok);
   const slow = saved.some((result) => Boolean(result.slow) || Boolean(result.shortage));
+  const savedNotes = saved.map((result) => result.note).filter((note) => note.length > 0);
 
   if (failed.length === 0) {
-    const message = saved.map((result) => result.note).join(" · ") || "Nothing to save.";
+    const message = savedNotes.join(" · ") || "Nothing to save.";
     return { allSaved: true, savedCount: saved.length, failedCount: 0, message, slow };
   }
 
-  const names = failed.map((result) => result.label).join(", ");
-  const prefix = saved.length ? `Saved ${saved.length}. ` : "";
+  const failures = failed
+    .map((result) => (result.error ? `${result.label} (${result.error})` : result.label))
+    .join(", ");
+  const savedPrefix = saved.length ? `Saved ${saved.length}: ${savedNotes.join(" · ")}. ` : "";
   return {
     allSaved: false,
     savedCount: saved.length,
     failedCount: failed.length,
-    message: `${prefix}Couldn’t save: ${names}. Try again.`,
+    message: `${savedPrefix}Couldn’t save: ${failures}. Try again.`,
     slow,
   };
 }

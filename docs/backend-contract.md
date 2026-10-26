@@ -77,18 +77,22 @@ backlog, so a long brumation does not return as a wall of overdue tasks. In a
 grouped plan the skip is per animal: a brumating member drops out while the awake
 ones keep their tasks.
 
-Optional feeder forecasting fields on feeding schedules are `preySpecies`,
-`preyDescription`, `preySizeClass`, `targetPercent`, `minimumPercent`,
-`maximumPercent`, and `buyAsNeeded`. `preySizeClass` matches a tracked inventory
-size such as `hopper` or `large pinky`; leave it blank for percentage-based sizing.
-Percent values are decimals: 5% is `0.05`.
+Feeder forecasting fields on feeding schedules are `preySpecies`,
+`preyDescription`, `preySizeClass`, and `buyAsNeeded`. `preySizeClass` matches a
+tracked inventory size such as `hopper` or `large pinky`; left blank, the plan
+matches any size of that species in stock (a species-only match, surfaced as
+such rather than as a verified size). The `targetPercent`, `minimumPercent`, and
+`maximumPercent` columns are retained for stored data and portable backups but
+are inactive: there is no body-weight-percentage sizing, and the setup UI no
+longer collects them.
 
 `GET /api/feeders/forecast` includes feedings due today as well as upcoming dates.
 Each event includes `scheduleId`, allowing the dashboard to match a forecast to the
 exact materialized care task. Feeding tasks returned by `GET /api/dashboard` gain a
 nullable `feedingGuidance` field. It contains glanceable live guidance such as the
-target weight range and allocated feeder, or a shortage/missing-weight message;
-the saved care-plan `details` field remains unchanged.
+required prey species/size class and the allocated feeder, or a shortage message
+(and, for a blank-size plan, that the match was by species alone); the saved
+care-plan `details` field remains unchanged.
 
 `POST /api/feeders/bulk` is Owner-only and accepts
 `{ preySpecies, sizeClass, count, addedOn?, notes? }`. Feeders are counted, not
@@ -237,9 +241,9 @@ ours about the species — if you rewrite what a ball python eats, the matching
 follows automatically. Non-feeding plans are the same job on any animal and take
 the first match.
 
-Portions stay percentage-based, so they track the animal's own weight from then
-on. An animal with no weight recorded gets an explicit warning that portions
-cannot be calculated until one is logged.
+A copied feeding plan carries its prey species and size class. The keeper
+confirms the amount before feeding; Shed matches feeders by species and size
+class and does not compute portions from body weight.
 
 ## Care baseline
 

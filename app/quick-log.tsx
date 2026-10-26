@@ -181,7 +181,10 @@ export function AnimalQuickLog({
       setShedNotes("");
       setQuality("complete");
     }
-    onSaved();
+    // Hand the host the same summary a full save gets, so a saved-with-a-shortage
+    // feeding still surfaces its warning (the row that carried it has just been
+    // removed from the retry set), and keep the sheet open showing what failed.
+    onSaved(summary.message, { slow: summary.slow });
     setError(summary.message);
   };
 

@@ -42,6 +42,14 @@ export type FeederForecastEvent = {
   weightTrendGramsPerDay: number | null;
   weightTrendConfidence: "none" | "low" | "medium" | "high";
   allocatedFeeder: AvailableFeeder | null;
+  /**
+   * True only when the plan named a prey size class AND the allocated feeder
+   * matched it. A plan with no size class draws whatever size is oldest in
+   * stock, so a covered feeding with `sizeClassMatched === false` is a
+   * species-only match — surfaced plainly rather than presented as a size the
+   * app verified or computed (there is no body-weight-percentage sizing).
+   */
+  sizeClassMatched: boolean;
   status: "covered" | "shortage" | "buy-as-needed";
 };
 
@@ -114,6 +122,11 @@ export function buildFeederForecast(options: {
     if (!selected) continue;
     event.allocatedFeeder = selected.feeder;
     event.status = "covered";
+    // A plan that named a size class only matched a feeder of that size (see
+    // feederMatchesEvent), so this allocation is size-verified. A blank-size
+    // plan matched on species alone — recorded here so it is not mistaken for a
+    // sized match downstream.
+    event.sizeClassMatched = Boolean(event.preySizeClass);
     remaining.splice(selected.index, 1);
   }
 
@@ -164,6 +177,7 @@ function forecastEvent(
     weightTrendGramsPerDay: null,
     weightTrendConfidence: "none" as const,
     allocatedFeeder: null,
+    sizeClassMatched: false,
   };
   // Buy-as-needed prey is bought fresh for the feeding, so it is never drawn
   // from stock and never counts as a shortage.

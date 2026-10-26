@@ -172,6 +172,59 @@ test("guidance names the size class and never a weight", () => {
   assert.doesNotMatch(text, /\bg\b|gram/);
 });
 
+// ── F10: size-class inventory, not body-weight-percentage sizing ──
+
+test("a sized plan's allocation is marked size-matched and names the size", () => {
+  const forecast = buildFeederForecast({
+    today: "2026-08-02",
+    horizonDays: 1,
+    animals,
+    weights,
+    availableFeeders: [feeder("small-1", "small", "2026-08-01")],
+    profiles: [plan("ach", "achilles", 14, "2026-08-02", "rat", "small")],
+  });
+  const event = forecast.events[0];
+  assert.equal(event.status, "covered");
+  assert.equal(event.sizeClassMatched, true, "a specified size class was matched");
+  const text = feederGuidance(event);
+  assert.match(text, /small rat/);
+  assert.doesNotMatch(text, /any size/);
+});
+
+test("a blank-size plan matches any same-species feeder but is marked species-only, not sized", () => {
+  const forecast = buildFeederForecast({
+    today: "2026-08-02",
+    horizonDays: 1,
+    animals,
+    weights,
+    // A size the plan never named. Following the old UI ("leave blank for
+    // body-weight percentage") this would be presented as an appropriate size;
+    // it must instead be surfaced as a species-only match.
+    availableFeeders: [feeder("whatever", "jumbo", "2026-08-01")],
+    profiles: [plan("tele", "telemachus", 14, "2026-08-02", "rat", null)],
+  });
+  const event = forecast.events[0];
+  assert.equal(event.status, "covered", "a blank-size plan still draws same-species stock");
+  assert.equal(event.allocatedFeeder?.id, "whatever");
+  assert.equal(event.sizeClassMatched, false, "no size class was named, so the match is species-only");
+  const text = feederGuidance(event);
+  assert.match(text, /any size/, "guidance marks it instead of presenting it as an appropriate size");
+  assert.match(text, /jumbo rat/, "and shows the actual size drawn from stock");
+});
+
+test("a blank-size plan still requires the species to match", () => {
+  const forecast = buildFeederForecast({
+    today: "2026-08-02",
+    horizonDays: 1,
+    animals,
+    weights,
+    availableFeeders: [feeder("mouse-1", "adult", "2026-08-01", "mouse")],
+    profiles: [plan("tele", "telemachus", 14, "2026-08-02", "rat", null)],
+  });
+  assert.equal(forecast.events[0].status, "shortage", "a mouse never covers a rat plan, even with no size class");
+  assert.equal(forecast.events[0].sizeClassMatched, false);
+});
+
 test("completed dates are excluded so their consumed feeders are not allocated again", () => {
   const forecast = buildFeederForecast({
     today: "2026-08-02",

@@ -1,10 +1,6 @@
 import { env } from "cloudflare:workers";
 import { dateInTimeZone, DEFAULT_TIME_ZONE } from "@/lib/date";
-import { careLookbackDates } from "@/lib/care-schedule";
-import { getCareStartDate } from "@/lib/care-settings";
-import { scheduleIsDue, type CareScheduleRow } from "@/lib/schedules";
-import { careTaskId, scheduleAnimalIds } from "@/lib/care-group";
-import { skipCareTask } from "@/lib/brumation";
+import { materializeTasks } from "@/lib/materialize-tasks";
 import { normalizeLegacyTaskDispositions } from "@/lib/task-dispositions";
 
 // Every API call used to run the whole of this: create-table statements for
@@ -182,40 +178,6 @@ async function applySchema(db: D1Database) {
   await db.prepare("CREATE INDEX IF NOT EXISTS animals_active_name_idx ON animals(active, name)").run();
 
   return;
-}
-
-async function materializeTasks(db: D1Database, today: string) {
-  const schedules = await db.prepare(
-    "SELECT id, animal_id AS animalId, animal_ids_json AS animalIdsJson, task_type AS taskType, title, details, frequency, interval_days AS intervalDays, weekdays_json AS weekdaysJson, day_of_month AS dayOfMonth, week_interval AS weekInterval, start_date AS startDate, end_date AS endDate FROM care_schedules WHERE active = 1",
-  ).all<CareScheduleRow & { animalIdsJson: string | null }>();
-  // Materialize tasks for a lookback window (not just yesterday+today) so that
-  // care missed a few days ago still shows up as an actionable overdue task —
-  // but never before the "start fresh" baseline, if one has been set.
-  const careStartDate = await getCareStartDate(db);
-  const dates = careLookbackDates(today, careStartDate);
-  // A brumating animal's care is paused, and an animal that just came out of a
-  // long brumation must not have the whole pause backfilled as overdue. Both
-  // are per-animal, not per-schedule: a grouped plan can cover a brumating
-  // dragon and a wide-awake one, so the skip has to happen at the animal, not
-  // drop the whole plan.
-  const pauseRows = await db.prepare(
-    "SELECT id, brumating, care_resume_on AS careResumeOn FROM animals WHERE brumating = 1 OR care_resume_on IS NOT NULL",
-  ).all<{ id: string; brumating: number; careResumeOn: string | null }>();
-  const paused = new Map(pauseRows.results.map((row) => [row.id, row]));
-  // One task per animal on the plan. They collapse into a single line on Today,
-  // but stay separate rows so that history, weights and feeder consumption
-  // remain per-animal.
-  const taskStatements = schedules.results.flatMap((schedule) =>
-    dates.filter((date) => scheduleIsDue(schedule, date)).flatMap((date) =>
-      scheduleAnimalIds(schedule)
-        .filter((animalId) => !skipCareTask(paused.get(animalId), date))
-        .map((animalId) =>
-          db.prepare("INSERT OR IGNORE INTO care_tasks (id, schedule_id, animal_id, task_type, title, details, due_date) VALUES (?, ?, ?, ?, ?, ?, ?)")
-            .bind(careTaskId(schedule.id, animalId, schedule.animalId, date), schedule.id, animalId, schedule.taskType, schedule.title, schedule.details, date),
-        ),
-    ),
-  );
-  if (taskStatements.length) await db.batch(taskStatements);
 }
 
 /**

@@ -4,9 +4,7 @@ import { internalErrorResponse } from "@/lib/api-errors";
 import { CompletionTimingError, resolveOccurredAt } from "@/lib/completion-timing";
 import { attributedTo, requireCapability } from "@/lib/household-auth";
 import { getDefaultRewardCents, memberBalance, rewardForCompletion } from "@/lib/rewards";
-import { loadFeederForecast } from "@/lib/feeder-forecast-data";
-import { feederGuidance } from "@/lib/feeder-guidance";
-import { feederConsumptionStatements } from "@/lib/feeder-consumption";
+import { claimMatchingFeederStatements } from "@/lib/feeder-consumption";
 import {
   CompletionCorrectionError,
   correctCompletionAttribution,
@@ -71,8 +69,8 @@ export async function POST(request: Request) {
     const member = auth.member;
 
     const task = await db.prepare(
-      "SELECT t.id, t.schedule_id AS scheduleId, t.animal_id AS animalId, t.task_type AS taskType, t.title, t.details, s.reward_cents AS scheduleReward, s.prey_species AS preySpecies, COALESCE(s.buy_as_needed, 0) AS buyAsNeeded, COALESCE(a.earning_enabled, 1) AS animalEarningEnabled FROM care_tasks t LEFT JOIN care_schedules s ON s.id = t.schedule_id LEFT JOIN animals a ON a.id = t.animal_id WHERE t.id=? AND t.due_date=?",
-    ).bind(payload.taskId, payload.dueDate).first<{ id: string; scheduleId: string | null; animalId: string; taskType: string; title: string; details: string; scheduleReward: number | null; preySpecies: string | null; buyAsNeeded: number; animalEarningEnabled: number }>();
+      "SELECT t.id, t.schedule_id AS scheduleId, t.animal_id AS animalId, t.task_type AS taskType, t.title, t.details, s.reward_cents AS scheduleReward, s.prey_species AS preySpecies, s.prey_size_class AS preySizeClass, COALESCE(s.prey_description, s.prey_species) AS preyDescription, COALESCE(s.buy_as_needed, 0) AS buyAsNeeded, COALESCE(a.earning_enabled, 1) AS animalEarningEnabled FROM care_tasks t LEFT JOIN care_schedules s ON s.id = t.schedule_id LEFT JOIN animals a ON a.id = t.animal_id WHERE t.id=? AND t.due_date=?",
+    ).bind(payload.taskId, payload.dueDate).first<{ id: string; scheduleId: string | null; animalId: string; taskType: string; title: string; details: string; scheduleReward: number | null; preySpecies: string | null; preySizeClass: string | null; preyDescription: string | null; buyAsNeeded: number; animalEarningEnabled: number }>();
     if (!task) return Response.json({ error: "Task not found" }, { status: 404, headers: noStore });
 
     const existing = await db.prepare(
@@ -84,37 +82,22 @@ export async function POST(request: Request) {
     }
 
     const eventId = existing?.id ?? crypto.randomUUID();
+    // Re-completing a previously voided feeding keeps the feeder it already
+    // consumed, if that assignment is still on the row — nothing new is claimed.
     const retainedAssignment = existing ? await db.prepare(
-      "SELECT fa.feeder_id AS feederId, f.prey_species AS preySpecies, f.size_class AS sizeClass FROM feeding_assignments fa JOIN feeder_inventory f ON f.id = fa.feeder_id WHERE fa.husbandry_event_id = ? AND fa.status = 'consumed' LIMIT 1",
-    ).bind(existing.id).first<{ feederId: string; preySpecies: string; sizeClass: string }>() : null;
-    let allocatedFeeder: { id: string; preySpecies: string; sizeClass: string } | null =
-      retainedAssignment ? {
-        id: retainedAssignment.feederId,
-        preySpecies: retainedAssignment.preySpecies,
-        sizeClass: retainedAssignment.sizeClass,
-      } : null;
+      "SELECT fa.feeder_id AS feederId FROM feeding_assignments fa JOIN feeder_inventory f ON f.id = fa.feeder_id WHERE fa.husbandry_event_id = ? AND fa.status = 'consumed' LIMIT 1",
+    ).bind(existing.id).first<{ feederId: string }>() : null;
     // Feeder inventory is best-effort bookkeeping, never a gate. The animal was
     // actually fed, so the husbandry record has to be recordable even when the
     // freezer does not match the plan — store-bought prey, an untracked feeder,
-    // or a shortage. Deduct stock when something matches; otherwise record the
-    // care and report that nothing was deducted so the keeper can reconcile.
+    // or a shortage. When a tracked feeding has no retained feeder, we claim one
+    // matching feeder from ACTUAL available stock for this animal (see
+    // claimMatchingFeederStatements) rather than trusting the cross-animal
+    // forecast allocation: the forecast reserves one feeder per covered animal,
+    // so a cage-mate's reservation used to hide suitable stock from the animal
+    // being completed and let its care record without a deduction (F07).
     let feederShortage: string | null = null;
-    if (task.preySpecies && !task.buyAsNeeded && task.scheduleId && !allocatedFeeder) {
-      const forecast = await loadFeederForecast(db, payload.dueDate, 1);
-      // Match the animal, not just the schedule. A grouped feeding forecasts one
-      // meal per covered animal, so a schedule-only match could consume (or
-      // retire) a cage-mate's feeder and let this animal's care record without
-      // deducting suitable stock — or hand it a cage-mate's size recommendation.
-      const feeding = forecast.events.find((event) =>
-        event.scheduleId === task.scheduleId
-        && event.animalId === task.animalId
-        && event.feedingDate === payload.dueDate);
-      if (feeding?.allocatedFeeder) {
-        allocatedFeeder = feeding.allocatedFeeder;
-      } else {
-        feederShortage = feeding ? feederGuidance(feeding) : "no matching feeder in stock";
-      }
-    }
+    const claimFeeder = Boolean(task.preySpecies && !task.buyAsNeeded && task.scheduleId && !retainedAssignment);
 
     // Earnings: capture the reward as a snapshot on the completion event, so later
     // changes to the plan/default never rewrite past earnings. Earns only when the
@@ -166,11 +149,12 @@ export async function POST(request: Request) {
     // be done after all, and it cannot be two of those at once.
     statements.push(db.prepare("UPDATE care_tasks SET missed_at = NULL, missed_by_member_id = NULL, missed_by_name = NULL, skipped_at = NULL, skipped_by_member_id = NULL, skipped_by_name = NULL, skip_reason = NULL WHERE id = ? AND due_date = ?")
       .bind(task.id, payload.dueDate));
-    if (allocatedFeeder && !retainedAssignment) {
+    if (claimFeeder) {
       statements.push(
-        ...feederConsumptionStatements(db, {
+        ...claimMatchingFeederStatements(db, {
           animalId: task.animalId,
-          feederId: allocatedFeeder.id,
+          preySpecies: task.preySpecies as string,
+          preySizeClass: task.preySizeClass,
           plannedFor: payload.dueDate,
           occurredAt,
           husbandryEventId: eventId,
@@ -187,7 +171,7 @@ export async function POST(request: Request) {
       // requested refusal is never silently presented as saved.
       const winner = await completionForTask(db, task.id, payload.dueDate);
       if (winner) {
-        const racedFeeder = allocatedFeeder && !winner.feederId
+        const racedFeeder = claimFeeder && !winner.feederId
           ? "no feeder deducted — another update used the matching inventory"
           : null;
         return completionResponse(winner, outcome, null, racedFeeder);
@@ -196,8 +180,13 @@ export async function POST(request: Request) {
     }
 
     const completion = await completionForTask(db, task.id, payload.dueDate);
-    if (allocatedFeeder && !retainedAssignment && completion && !completion.feederId) {
-      feederShortage = "no feeder deducted — another update used the matching inventory";
+    if (claimFeeder && completion && !completion.feederId) {
+      // No suitable stock was available to claim (or another update took the last
+      // one). The care is recorded; tell the keeper nothing was deducted.
+      const target = task.preySizeClass
+        ? `${task.preySizeClass} ${task.preySpecies}`
+        : (task.preyDescription ?? task.preySpecies ?? "feeder");
+      feederShortage = `${target} · none left in stock`;
     }
     const balanceCents = member?.id && earningEnabled ? (await memberBalance(db, member.id)).balanceCents : null;
     const response = completionResponse(completion, outcome, balanceCents, feederShortage);

@@ -135,19 +135,38 @@ test("a feeder shortage saves the care, flags it, and never reads as a failure",
   assert.doesNotMatch(summary.message, /Couldn’t save/);
 });
 
-test("a partial failure reports what saved and what to retry", () => {
+test("a partial failure reports the saved note and the failure's actual reason", () => {
   const summary = summariseQuickLogSave([okTask("Noodle: Feed recorded"), failed("Weight", "Network error")]);
   assert.equal(summary.allSaved, false);
   assert.equal(summary.savedCount, 1);
   assert.equal(summary.failedCount, 1);
-  assert.match(summary.message, /^Saved 1\. /);
-  assert.match(summary.message, /Couldn’t save: Weight/);
+  assert.match(summary.message, /^Saved 1: /);
+  assert.match(summary.message, /Noodle: Feed recorded/, "the saved entry's own note survives");
+  assert.match(summary.message, /Couldn’t save: Weight \(Network error\)/, "the failure keeps its reason, not just its label");
 });
 
-test("when nothing saved the message does not pretend otherwise", () => {
-  const summary = summariseQuickLogSave([failed("Feed"), failed("Shed")]);
+test("a partial failure keeps a saved feeding's shortage warning instead of hiding it", () => {
+  // The exact collapse the finding describes: a saved "no feeder deducted"
+  // feeding plus a failed weight must still surface the shortage warning and the
+  // weight's reason — not just "Saved 1. Couldn't save: Weight."
+  const summary = summariseQuickLogSave([
+    okTask("Noodle: Feed recorded · no feeder deducted — add it in Manage → Feeders if you used stock", {
+      shortage: true,
+      slow: true,
+    }),
+    failed("Weight", "Network error"),
+  ]);
+  assert.equal(summary.allSaved, false);
+  assert.equal(summary.slow, true, "a shortage still earns the longer toast even amid a failure");
+  assert.match(summary.message, /no feeder deducted/, "the allocation/shortage warning is not dropped");
+  assert.match(summary.message, /Network error/, "the failure reason is preserved");
+});
+
+test("when nothing saved the message gives each failure's reason and claims no save", () => {
+  const summary = summariseQuickLogSave([failed("Feed", "Task is no longer due"), failed("Shed", "Network error")]);
   assert.equal(summary.allSaved, false);
   assert.equal(summary.savedCount, 0);
   assert.doesNotMatch(summary.message, /Saved/);
-  assert.match(summary.message, /Feed, Shed/);
+  assert.match(summary.message, /Feed \(Task is no longer due\)/);
+  assert.match(summary.message, /Shed \(Network error\)/);
 });

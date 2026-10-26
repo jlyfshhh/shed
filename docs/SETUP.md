@@ -66,7 +66,7 @@ After saving a new animal, Shed offers the routines your other animals of the sa
 
 **Feeding plans are matched to the new animal, not copied blindly.** Shed picks the plan from whichever animal of that species is closest in weight — or closest in age, if you haven't weighed the new one yet — because portion size and feeding interval depend on the animal. A yearling gets the yearling schedule, not an adult's. The row tells you which animal it matched and why.
 
-Portions are a percentage of body weight, so they follow the animal's own weight from then on. If you haven't recorded a weight, Shed says so and the portions can't be calculated until you log one from the animal's profile.
+A copied feeding plan brings its prey species and size class with it. Check that the size class suits the new animal and confirm the amount before the first feed — Shed matches feeders by species and size class and does not compute portions for you.
 
 Already added an animal without routines? Open it, tap **Edit → Care plans**, and use **Copy routines from another…**.
 

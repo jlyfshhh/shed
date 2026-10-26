@@ -6,6 +6,8 @@ import { ANIMAL_PURGE_STEPS, EQUIPMENT_PURGE_STEPS, EVENT_PURGE_STEPS, LIGHTING_
 import { dateInTimeZone, isIsoDate } from "@/lib/date";
 import { attributedTo, requireCapability } from "@/lib/household-auth";
 import { normalizedEmptyValue } from "@/lib/manage-values";
+import { refreshCachedWeight, refreshCachedWeights, weightCacheTargets } from "@/lib/weight-cache";
+import { clearPendingTasksFromStatement } from "@/lib/care-boundaries";
 
 type Resource = "animal" | "enclosure" | "schedule" | "note" | "equipment" | "weight" | "event" | "feeder" | "lightingPlan" | "lightingFixture" | "lightingMeasurement";
 type Payload = { resource?: Resource; id?: string; data?: Record<string, unknown>; reason?: string; purge?: boolean };
@@ -118,7 +120,7 @@ export async function POST(request: Request) {
     await db.prepare(`INSERT INTO ${configs[resource].table} (${columns.join(", ")}) VALUES (${columns.map(() => "?").join(", ")})`).bind(...values).run();
     // A new care plan must produce its tasks on the next request, not tomorrow.
     if (resource === "schedule") invalidateMaterializedTasks();
-    if (resource === "weight") await refreshAnimalWeight(db, String(normalized.animalId));
+    if (resource === "weight") await refreshCachedWeight(db, String(normalized.animalId));
     if (resource === "lightingPlan") await queueLightingVerification(db, String(normalized.enclosureId), String(normalized.name));
     if (resource === "lightingFixture") await touchAndQueueLightingVerificationForPlan(db, String(normalized.planId), now);
     if (resource === "equipment" && isLightingEquipment(String(normalized.category ?? ""))) await touchLightingPlansForEquipment(db, normalized, now);
@@ -156,7 +158,13 @@ export async function PATCH(request: Request) {
       // The task window must be rebuilt on the next request, not tomorrow.
       invalidateMaterializedTasks();
     }
-    if (resource === "weight") await refreshAnimalWeight(db, String(normalized.animalId ?? existing.animal_id));
+    // A weight can be reassigned to a different animal. That touches two animals
+    // — the destination gains the weight, the source loses it — so both cached
+    // latest weights are rebuilt. Refreshing only the destination left the
+    // source advertising a weight that now belongs elsewhere (F11).
+    if (resource === "weight") {
+      await refreshCachedWeights(db, weightCacheTargets(String(existing.animal_id), String(normalized.animalId ?? existing.animal_id)));
+    }
     if (resource === "lightingPlan") await queueLightingVerification(db, String(normalized.enclosureId ?? existing.enclosure_id), String(normalized.name ?? existing.name));
     if (resource === "lightingFixture") await touchAndQueueLightingVerificationForPlan(db, String(normalized.planId ?? existing.plan_id), now);
     if (resource === "equipment" && equipmentLightingFieldsChanged(normalized) && isLightingEquipment(String(normalized.category ?? existing.category ?? ""))) await touchLightingPlansForEquipment(db, { ...existing, ...normalized }, now);
@@ -165,6 +173,13 @@ export async function PATCH(request: Request) {
         db.prepare("UPDATE feeder_inventory SET consumed_at = NULL, animal_id = NULL, husbandry_event_id = NULL WHERE id = ?").bind(id),
         db.prepare("UPDATE feeding_assignments SET status = 'released' WHERE feeder_id = ? AND status = 'consumed'").bind(id),
       ]);
+    }
+    // Archiving or un-archiving an animal through an edit must bound its care the
+    // same way the archive action does (F08): a 1→0 transition clears pending
+    // today/future tasks, a 0→1 transition sets a resume floor so the backfill
+    // does not regenerate the archived gap as overdue.
+    if (resource === "animal" && Object.hasOwn(normalized, "active")) {
+      await applyAnimalActiveTransition(db, id, Number(existing.active) !== 0, Number(normalized.active) !== 0);
     }
     return Response.json({ saved: true, id }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) { return failure(error); }
@@ -239,10 +254,12 @@ export async function DELETE(request: Request) {
       // The task window must be rebuilt on the next request, not tomorrow.
       invalidateMaterializedTasks();
     }
+      // Archiving an animal ends its care from today forward (F08).
+      if (resource === "animal") await applyAnimalActiveTransition(db, id, true, false);
     } else {
       const existing = await db.prepare(`SELECT * FROM ${configs[resource].table} WHERE id = ?`).bind(id).first<Record<string, unknown>>();
       await db.prepare(`DELETE FROM ${configs[resource].table} WHERE id = ?`).bind(id).run();
-      if (resource === "weight" && existing) await refreshAnimalWeight(db, String(existing.animal_id));
+      if (resource === "weight" && existing) await refreshCachedWeight(db, String(existing.animal_id));
       if (resource === "lightingFixture" && existing) await touchAndQueueLightingVerificationForPlan(db, String(existing.plan_id), new Date().toISOString());
     }
     return Response.json({ saved: true, id }, { headers: { "Cache-Control": "no-store" } });
@@ -363,9 +380,27 @@ function validateLightingPlan(data: Record<string, string | number | null>) {
   }
 }
 
-async function refreshAnimalWeight(db: D1Database, animalId: string) {
-  const latest = await db.prepare("SELECT weight_grams AS weightGrams, recorded_on AS recordedOn FROM weight_events WHERE animal_id = ? ORDER BY recorded_on DESC, rowid DESC LIMIT 1").bind(animalId).first<{ weightGrams: number; recordedOn: string }>();
-  await db.prepare("UPDATE animals SET weight_grams = ?, weight_date = ?, updated_at = ? WHERE id = ?").bind(latest?.weightGrams ?? null, latest?.recordedOn ?? null, new Date().toISOString(), animalId).run();
+/**
+ * Keep an animal's care accountable across archive/un-archive, date-bounded so
+ * history is never rewritten (F08).
+ *
+ * Archiving (active 1→0) clears the animal's pending today/future tasks so the
+ * streak stops scoring phantom pending/missed care for an animal no longer kept,
+ * while leaving settled rows and pre-archive implicit misses (dated before
+ * today) untouched — and the materializer refuses to re-create them because it
+ * skips inactive animals. Un-archiving (0→1) sets `care_resume_on` to today so
+ * the lookback backfill does not regenerate the archived gap as a wall of
+ * overdue tasks, exactly as ending a brumation does.
+ */
+async function applyAnimalActiveTransition(db: D1Database, animalId: string, wasActive: boolean, nowActive: boolean) {
+  if (wasActive === nowActive) return;
+  const today = dateInTimeZone();
+  if (!nowActive) {
+    await clearPendingTasksFromStatement(db, animalId, today).run();
+  } else {
+    await db.prepare("UPDATE animals SET care_resume_on = ? WHERE id = ?").bind(today, animalId).run();
+  }
+  invalidateMaterializedTasks();
 }
 
 const lightingCategories = /(^|\b)(uvb|light|lighting|led|heat|basking|lamp|fixture)(\b|$)/i;

@@ -9,6 +9,7 @@ import { ensureDatabase } from "@/db/runtime";
 import { internalErrorResponse } from "@/lib/api-errors";
 import { dateInTimeZone } from "@/lib/date";
 import { requireCapability } from "@/lib/household-auth";
+import { clearPendingTasksInWindowStatement } from "@/lib/care-boundaries";
 
 const noStore = { "Cache-Control": "no-store" };
 
@@ -24,7 +25,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       return Response.json({ error: "Send { brumating: true | false }" }, { status: 400, headers: noStore });
     }
 
-    const animal = await db.prepare("SELECT id, name FROM animals WHERE id = ? AND active = 1").bind(id).first<{ id: string; name: string }>();
+    const animal = await db.prepare("SELECT id, name, brumation_since AS brumationSince FROM animals WHERE id = ? AND active = 1").bind(id).first<{ id: string; name: string; brumationSince: string | null }>();
     if (!animal) return Response.json({ error: "Animal not found" }, { status: 404, headers: noStore });
 
     const today = dateInTimeZone();
@@ -38,16 +39,23 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       ).bind(today, now, id).run();
     } else {
       // Resume from today. care_resume_on stops the 14-day backfill from
-      // regenerating the pause, and the delete clears any pending rows that
-      // already exist for the paused days — completed, skipped and missed rows
-      // are history and stay untouched.
+      // regenerating the pause, and the delete clears pending rows for the
+      // paused days only.
+      //
+      // The delete is bounded to the pause window [brumation_since, today): a
+      // task that fell due *before* the pause started is pre-boundary history,
+      // not a paused day, so an implicit overdue miss dated before brumation
+      // must survive resume (the earlier code deleted every uncompleted past
+      // task and wrongly healed those misses, F08). Completed, skipped and
+      // explicitly-missed rows are settled history and stay untouched regardless.
+      // If brumation_since is somehow absent, the window is empty and nothing is
+      // deleted — never more.
+      const pauseStart = animal.brumationSince ?? today;
       await db.batch([
         db.prepare(
           "UPDATE animals SET brumating = 0, brumation_since = NULL, care_resume_on = ?, updated_at = ? WHERE id = ?",
         ).bind(today, now, id),
-        db.prepare(
-          "DELETE FROM care_tasks WHERE animal_id = ? AND due_date < ? AND skipped_at IS NULL AND missed_at IS NULL AND NOT EXISTS (SELECT 1 FROM husbandry_events e WHERE e.task_id = care_tasks.id AND e.voided_at IS NULL)",
-        ).bind(id, today),
+        clearPendingTasksInWindowStatement(db, id, pauseStart, today),
       ]);
     }
 

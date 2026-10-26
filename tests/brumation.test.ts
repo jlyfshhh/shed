@@ -66,10 +66,18 @@ test("every care-task listing filters out brumating animals", () => {
   assert.ok(checked >= 5, `expected to check several task queries, checked ${checked}`);
 });
 
-test("the resume path clears the pending backlog but never history", () => {
+test("the resume cleanup is date-bounded and never deletes settled history", () => {
+  // The delete now lives in the shared, tested lib/care-boundaries helper.
+  const lib = readFileSync(new URL("../lib/care-boundaries.ts", import.meta.url), "utf8");
+  const windowDel = lib.slice(lib.indexOf("clearPendingTasksInWindowStatement")).slice(0, 400);
+  assert.match(windowDel, /due_date >= \? AND due_date < \?/, "bounded to the pause window, not every past task (F08)");
+  assert.match(lib, /skipped_at IS NULL/, "must not delete skipped history");
+  assert.match(lib, /missed_at IS NULL/, "must not delete missed history");
+  assert.match(lib, /NOT EXISTS[^)]*husbandry_events/, "must not delete completed tasks");
+
+  // The resume route must read the pause start and feed it as the window's lower
+  // bound, so an implicit miss dated before the pause is preserved.
   const route = readFileSync(new URL("../app/api/animals/[id]/brumation/route.ts", import.meta.url), "utf8");
-  const del = route.slice(route.indexOf("DELETE FROM care_tasks"));
-  assert.match(del.slice(0, 260), /skipped_at IS NULL/, "must not delete skipped history");
-  assert.match(del.slice(0, 260), /missed_at IS NULL/, "must not delete missed history");
-  assert.match(del.slice(0, 260), /NOT EXISTS[^)]*husbandry_events/, "must not delete completed tasks");
+  assert.match(route, /brumation_since AS brumationSince/, "the pause start is read before it is cleared");
+  assert.match(route, /clearPendingTasksInWindowStatement\(db, id, pauseStart, today\)/, "resume bounds the delete by the pause start");
 });
