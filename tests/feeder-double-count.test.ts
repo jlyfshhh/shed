@@ -190,6 +190,34 @@ test("matching ignores internal whitespace, mirroring the forecast (F07 parity)"
   assert.deepEqual(rev, [1, 1], "double-spaced stock is still claimed by a single-spaced plan");
 });
 
+test("matching ignores a non-breaking space and extreme whitespace runs (F07 P3)", async () => {
+  // A copied NBSP (U+00A0) and a long space run are what the previous SQL
+  // normalizer could miss while the forecast's \s+ matched — the dashboard would
+  // say ready while the claim found nothing. Both must now claim single-spaced stock.
+  const a = fixture();
+  addFeeder(a, "pinky-1", "pinky mouse", "large pinky", "2026-10-01");
+  const nbsp = await claim(a, "alpha", "evt-a", {
+    species: "pinky mouse", // non-breaking space
+    size: "large pinky",
+  });
+  assert.deepEqual(nbsp, [1, 1], "a non-breaking space must not block a real match");
+  assert.equal(consumerOf(a, "pinky-1").a, "alpha");
+
+  const b = fixture();
+  addFeeder(b, "pinky-2", "pinky mouse", "large pinky", "2026-10-01");
+  const longrun = await claim(b, "alpha", "evt-a", {
+    species: "pinky mouse",
+    size: "large" + " ".repeat(33) + "pinky", // a 33-space run, past the old 5-pass limit
+  });
+  assert.deepEqual(longrun, [1, 1], "an extreme whitespace run must not block a real match");
+
+  // And the reverse: stock itself carrying the NBSP is still claimed by a clean plan.
+  const c = fixture();
+  addFeeder(c, "pinky-3", "pinky mouse", "large pinky", "2026-10-01");
+  const rev = await claim(c, "alpha", "evt-a", { species: "pinky mouse", size: "large pinky" });
+  assert.deepEqual(rev, [1, 1], "NBSP in stored stock is still claimed by a clean plan");
+});
+
 test("undo returns the feeder to stock so it can be claimed again", async () => {
   const a = fixture();
   addFeeder(a, "rat-1", "rat", "small", "2026-10-01");

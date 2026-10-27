@@ -18,18 +18,24 @@ export type FeederClaimInput = {
 };
 
 /**
- * SQL that mirrors normalizeLabel() from the forecast: lower-case, trim, and
- * collapse any run of whitespace to a single space. SQLite/D1 has no regex, so
- * every ASCII whitespace character is turned into a space and runs are flattened
- * with repeated replace() (five passes flatten runs up to 32 characters, far
- * beyond any real prey label). Applied to BOTH the stored column and the bound
- * value so the actual claim matches exactly what the forecast counts as covered —
- * e.g. a plan entered as "large  pinky" still claims "large pinky" stock.
+ * SQL that follows normalizeLabel() from the forecast — lower-case, trim, and
+ * collapse whitespace runs to a single space — for the labels that actually occur.
+ * SQLite/D1 has no regex, so each whitespace character is turned into a space and
+ * runs are flattened with repeated replace(). It converts the ASCII whitespace
+ * set (tab, LF, VT, FF, CR) AND the no-break space U+00A0 (char(160)) — the common
+ * copy-paste artifact Codex flagged — then runs nine collapse passes, flattening
+ * any run up to ~512 characters, past the 200-char plan-label cap.
+ *
+ * This is deliberately NOT claimed identical to JS `\s+` for every exotic Unicode
+ * space, but it agrees with the forecast for all realistic inputs, and both the
+ * stored column and the bound value pass through it — so a plan entered as
+ * "large  pinky", "large pinky" (NBSP), or with an extreme run still claims
+ * "large pinky" stock, exactly what the forecast counted as covered.
  */
 function normalizedLabelSql(expr: string): string {
   let s = expr;
-  for (const code of [9, 10, 11, 12, 13]) s = `replace(${s}, char(${code}), ' ')`;
-  for (let i = 0; i < 5; i++) s = `replace(${s}, '  ', ' ')`;
+  for (const code of [9, 10, 11, 12, 13, 160]) s = `replace(${s}, char(${code}), ' ')`;
+  for (let i = 0; i < 9; i++) s = `replace(${s}, '  ', ' ')`;
   return `lower(trim(${s}))`;
 }
 
