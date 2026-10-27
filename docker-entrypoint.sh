@@ -41,6 +41,14 @@ rm -f "$probe"
 } > "$runtime_env"
 chmod 0600 "$runtime_env"
 
+# Disable miniflare's LOCAL observability collector (it defaults on). Under this
+# long-running `wrangler dev --local` it wrote a logs+spans trace per request to a
+# persisted, unretained store (/data) that grew unbounded and fed the runtime heap
+# (F14). The Worker-level observability.enabled:false in wrangler.json covers the
+# deployed worker; this process-env flag is what the local dev runtime actually
+# reads (wrangler getBooleanEnvironmentVariableFactory, defaultValue: true).
+export X_LOCAL_OBSERVABILITY=false
+
 exec ./node_modules/.bin/wrangler dev \
   --config dist/server/wrangler.json \
   --local \
