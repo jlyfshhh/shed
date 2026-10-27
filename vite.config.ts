@@ -14,6 +14,12 @@ const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
 const localBindingConfig = {
   main: "./worker/index.ts",
   compatibility_flags: ["nodejs_compat"],
+  // Workers Observability defaults on and writes a logs+spans trace per request
+  // to an on-disk store with no retention. Self-hosted for one household under a
+  // long-running `wrangler dev --local`, that store grew unbounded (~2.4 GB in
+  // three weeks) and fed the runtime's heap (F14). We don't use request tracing
+  // here, so disable it explicitly instead of inheriting the default.
+  observability: { enabled: false },
   d1_databases: d1
     ? [
         {
