@@ -3,6 +3,7 @@ import { getCareStartDate } from "./care-settings.ts";
 import { scheduleIsDue, type CareScheduleRow } from "./schedules.ts";
 import { careTaskId, scheduleAnimalIds } from "./care-group.ts";
 import { skipCareTask } from "./brumation.ts";
+import { autoMissSupersededTasks } from "./task-dispositions.ts";
 
 /**
  * Create the care_tasks rows that should exist across the lookback window ending
@@ -55,4 +56,10 @@ export async function materializeTasks(db: D1Database, today: string) {
     ),
   );
   if (taskStatements.length) await db.batch(taskStatements);
+
+  // Now that this run has created every occurrence due on or before today, close
+  // any earlier occurrence that a newly-due one has overtaken: its make-up window
+  // ended when the plan came due again, so it is recorded missed rather than
+  // lingering as actionable-overdue forever.
+  await autoMissSupersededTasks(db, today);
 }

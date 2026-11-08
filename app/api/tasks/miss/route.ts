@@ -63,7 +63,7 @@ export async function DELETE(request: Request) {
     const auth = await requireCapability(request, db, "care.miss");
     if (auth.response) return auth.response;
 
-    await unmissScheduledTask(db, payload.taskId, payload.dueDate);
+    await unmissScheduledTask(db, payload.taskId, payload.dueDate, dateInTimeZone());
     return Response.json({ saved: true }, { headers: noStore });
   } catch (error) {
     if (error instanceof TaskDispositionError) {

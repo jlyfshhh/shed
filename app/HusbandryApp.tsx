@@ -66,6 +66,9 @@ type Task = {
   skipReason: string | null;
   missedAt: string | null;
   missedBy: string | null;
+  /** Missed list only: a later occurrence of the plan is already due, so this
+      can be completed late but not put back. */
+  superseded?: boolean;
 };
 type Animal = {
   id: string;
@@ -1301,12 +1304,15 @@ export default function HusbandryApp() {
                     <div key={task.id}>
                       <span>!</span>
                       <b>{task.animalName}</b>
-                      <p>{task.title}{task.dueDate !== data?.date ? ` · ${task.dueDate}` : ""}{task.missedBy ? ` · ${task.missedBy}` : ""}</p>
+                      <p>{task.title}{task.dueDate !== data?.date ? ` · ${task.dueDate}` : ""}{task.missedBy ? ` · ${task.missedBy}` : ""}{task.superseded ? " · superseded" : ""}</p>
                       <span className="completion-correction-actions">
                         <button disabled={taskIsBusy(task.id)} onClick={() => void completeTask(task)}>
                           {taskIsBusy(task.id) ? "Saving…" : "Actually done"}
                         </button>
-                        {can("care.miss") && (
+                        {/* "Put back" only while the make-up window is open. Once a
+                            later occurrence is due the miss is settled: completing it
+                            is a late "Actually done", not a restoration. */}
+                        {can("care.miss") && !task.superseded && (
                           <button className="mark-not-done" disabled={taskIsBusy(task.id)} onClick={() => void unmissTask(task)}>
                             Put back
                           </button>

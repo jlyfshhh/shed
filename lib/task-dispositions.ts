@@ -134,9 +134,37 @@ export async function unskipScheduledTask(db: D1Database, taskId: string, dueDat
   return { skipped: false as const };
 }
 
-/** Un-miss: the keeper changed their mind, or marked the wrong one missed. It
- * returns to the active list exactly as un-skip does. */
-export async function unmissScheduledTask(db: D1Database, taskId: string, dueDate: string) {
+/**
+ * Un-miss: the keeper changed their mind, or marked the wrong one missed. It
+ * returns to the active list exactly as un-skip does — but only while the
+ * make-up window is still open. Once the plan has come due again (a later
+ * occurrence of the same plan and animal is due on or before `today`), the
+ * occurrence was genuinely superseded, and `autoMissSupersededTasks` would
+ * re-miss it on the next materialization anyway; restoring it would silently
+ * reverse on the next date rollover or worker restart. So restoring a
+ * superseded occurrence is refused, consistent with auto-miss: the care now
+ * counts toward the current occurrence, and a late make-up is a completion
+ * ("Actually done"), not a restoration.
+ */
+export async function unmissScheduledTask(db: D1Database, taskId: string, dueDate: string, today: string) {
+  const superseded = await db.prepare(
+    `SELECT 1 AS yes
+       FROM care_tasks self
+       JOIN care_tasks later
+         ON later.schedule_id = self.schedule_id
+        AND later.animal_id = self.animal_id
+        AND later.due_date > self.due_date
+        AND later.due_date <= ?
+      WHERE self.id = ? AND self.due_date = ? AND self.schedule_id IS NOT NULL
+      LIMIT 1`,
+  ).bind(today, taskId, dueDate).first<{ yes: number }>();
+  if (superseded) {
+    throw new TaskDispositionError(
+      "This was superseded when its plan came due again, so it can't be put back — mark it done if it actually happened.",
+      409,
+    );
+  }
+
   const result = await db.prepare(
     `UPDATE care_tasks
         SET missed_at = NULL, missed_by_member_id = NULL, missed_by_name = NULL
@@ -202,5 +230,50 @@ export async function missAllOverdueTasks(
     input.actor.name,
     input.beforeDate,
   ).run();
+  return result.meta.changes ?? 0;
+}
+
+/**
+ * Close the books on superseded occurrences.
+ *
+ * A keeper can make up an overdue task only until its plan comes due again:
+ * once the next occurrence is due, doing the care now counts toward that new
+ * occurrence, and the earlier one was simply missed. So any still-open
+ * occurrence that a later occurrence of the same plan and animal has already
+ * overtaken — its due date reached (<= today) — is recorded missed. No keeper
+ * is attributed: this is the system closing an expired make-up window, not a
+ * person's judgement, so missed_by is left null.
+ *
+ * Completed, skipped and already-missed occurrences are untouched, and an
+ * ad-hoc task (no schedule) is never superseded because it has no next time.
+ * Idempotent: a second pass finds nothing new, since the rows it would act on
+ * are now missed.
+ */
+export async function autoMissSupersededTasks(
+  db: D1Database,
+  today: string,
+  occurredAt?: string,
+): Promise<number> {
+  // Only missed_at is set: the WHERE requires missed_at IS NULL, and missed_by_*
+  // are only ever written alongside missed_at, so they are already null here —
+  // no keeper is attributed to an automatic miss.
+  const result = await db.prepare(
+    `UPDATE care_tasks
+        SET missed_at = ?
+      WHERE missed_at IS NULL AND skipped_at IS NULL AND schedule_id IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM husbandry_events e
+           WHERE e.task_id = care_tasks.id
+             AND e.due_date = care_tasks.due_date
+             AND e.voided_at IS NULL
+        )
+        AND EXISTS (
+          SELECT 1 FROM care_tasks later
+           WHERE later.schedule_id = care_tasks.schedule_id
+             AND later.animal_id = care_tasks.animal_id
+             AND later.due_date > care_tasks.due_date
+             AND later.due_date <= ?
+        )`,
+  ).bind(occurredAt ?? new Date().toISOString(), today).run();
   return result.meta.changes ?? 0;
 }
