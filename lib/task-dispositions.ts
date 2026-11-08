@@ -134,6 +134,21 @@ export async function unskipScheduledTask(db: D1Database, taskId: string, dueDat
   return { skipped: false as const };
 }
 
+/** Un-miss: the keeper changed their mind, or marked the wrong one missed. It
+ * returns to the active list exactly as un-skip does. */
+export async function unmissScheduledTask(db: D1Database, taskId: string, dueDate: string) {
+  const result = await db.prepare(
+    `UPDATE care_tasks
+        SET missed_at = NULL, missed_by_member_id = NULL, missed_by_name = NULL
+      WHERE id = ? AND due_date = ? AND missed_at IS NOT NULL`,
+  ).bind(taskId, dueDate).run();
+  if (result.meta.changes) return { missed: false as const };
+
+  const state = await dispositionState(db, taskId, dueDate);
+  if (!state) throw new TaskDispositionError("That task could not be found.", 404);
+  return { missed: false as const };
+}
+
 /** A miss and a skip are mutually exclusive judgements about the same work. */
 export async function missScheduledTask(
   db: D1Database,

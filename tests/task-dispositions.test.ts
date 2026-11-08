@@ -7,6 +7,7 @@ import {
   normalizeLegacyTaskDispositions,
   skipScheduledTask,
   TaskDispositionError,
+  unmissScheduledTask,
   unskipScheduledTask,
 } from "../lib/task-dispositions.ts";
 
@@ -183,6 +184,42 @@ test("put back is idempotent and makes a task eligible for a later miss", async 
     occurredAt: "2026-08-10T13:00:00.000Z",
   });
   assert.equal(task(adapter, "skipped").missed_at, "2026-08-10T13:00:00.000Z");
+});
+
+test("un-miss returns a missed task to the list, is idempotent, and allows a later miss", async () => {
+  const adapter = fixture();
+  await missScheduledTask(adapter as unknown as D1Database, {
+    taskId: "open",
+    dueDate: "2026-08-09",
+    actor: owner,
+    occurredAt: "2026-08-10T12:00:00.000Z",
+  });
+  assert.equal(task(adapter, "open").missed_at, "2026-08-10T12:00:00.000Z");
+
+  assert.deepEqual(
+    await unmissScheduledTask(adapter as unknown as D1Database, "open", "2026-08-09"),
+    { missed: false },
+  );
+  assert.deepEqual(task(adapter, "open"), {
+    missed_at: null,
+    missed_by_name: null,
+    skipped_at: null,
+    skipped_by_name: null,
+    skip_reason: null,
+  });
+  // Idempotent: undoing an already-open task is a no-op, not an error.
+  assert.deepEqual(
+    await unmissScheduledTask(adapter as unknown as D1Database, "open", "2026-08-09"),
+    { missed: false },
+  );
+  // And the task can be missed again afterwards.
+  await missScheduledTask(adapter as unknown as D1Database, {
+    taskId: "open",
+    dueDate: "2026-08-09",
+    actor: owner,
+    occurredAt: "2026-08-11T12:00:00.000Z",
+  });
+  assert.equal(task(adapter, "open").missed_at, "2026-08-11T12:00:00.000Z");
 });
 
 test("legacy impossible dispositions are normalized without inventing care", async () => {

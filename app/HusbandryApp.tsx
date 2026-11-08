@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState, useSyncExternalStore }
 import WeekView from "./week-view";
 import ShareStatusCard from "./share-status-card";
 import { AnimalQuickLog } from "./quick-log";
-import { collectQuickLogTasks } from "@/lib/quick-log";
+import { collectOtherCare, collectQuickLogTasks, type CareMenuItem } from "@/lib/quick-log";
 import { EnclosureQrSheet } from "./qr-sheet";
 import { AnimalProfile, BulkFeederIntake, FeederForecast, GettingStartedGuide, ManageConsole, RecoverAccessGate, RestorePanel, SetupGate, type FeederForecastData, type ResourceKey, type SetupSummary } from "./manage";
 import { animalPhotoUrl } from "./animal-photo";
@@ -104,6 +104,8 @@ type DashboardData = {
   viewer: Viewer | null;
   tasks: Task[];
   overdue: Task[];
+  missed: Task[];
+  careMenu: CareMenuItem[];
   animals: Animal[];
   recentEvents: RecentEvent[];
   weightTrends: WeightTrend[];
@@ -777,6 +779,43 @@ export default function HusbandryApp() {
     }
   };
 
+  // Log a care type the animal has but that is not due today — the quick-log's
+  // "other care", done early or out of cycle. The server materializes today's
+  // occurrence from the schedule and completes it through the same path, so a
+  // feeding deducts a feeder and earns exactly as a due one does.
+  const logScheduleOnce = async (
+    scheduleId: string,
+    animalId: string,
+    title: string,
+    animalName: string,
+    today: string,
+  ): Promise<ActionResult> => {
+    try {
+      const response = await fetch("/api/tasks/complete", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ scheduleId, animalId, dueDate: today, actorRole: viewer?.role ?? "Owner" }),
+      });
+      const payload = (await response.json()) as { error?: string; allocatedFeeder?: { sizeClass: string; preySpecies: string } | null; feederShortage?: string | null };
+      if (!response.ok) return { ok: false, error: payload.error ?? "Unable to save" };
+      const feeder = payload.allocatedFeeder;
+      const feederNote = feeder
+        ? ` · ${feeder.sizeClass} ${feeder.preySpecies} used`
+        : payload.feederShortage
+          ? " · no feeder deducted — add it in Manage → Feeders if you used stock"
+          : "";
+      return {
+        ok: true,
+        note: `${animalName}: ${title} recorded${feederNote}${viewer ? ` by ${viewer.displayName}` : ""}`,
+        slow: Boolean(payload.feederShortage),
+        feeder: feeder ?? null,
+        shortage: Boolean(payload.feederShortage),
+      };
+    } catch (saveError) {
+      return { ok: false, error: saveError instanceof Error ? saveError.message : "That update didn’t save. Please try again." };
+    }
+  };
+
   const undoTask = async (task: Task) => {
     if (!window.confirm(
       `Mark “${task.title}” for ${task.animalName} as NOT DONE?\n\nUse this only when the care itself did not happen. It returns the task to today’s list, removes the allowance credit from ${task.completedBy ?? "the recorded keeper"}, and keeps an audited correction in history.${task.taskType === "feeding" ? " The feeder deducted for this feeding will be returned to available inventory." : ""}\n\nTo fix only who received credit, cancel and choose “Change keeper” instead.`,
@@ -910,6 +949,27 @@ export default function HusbandryApp() {
     }
   };
 
+  const unmissTask = async (task: Task) => {
+    setBusyTask(task.id);
+    try {
+      const response = await fetch("/api/tasks/miss", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ taskId: task.id, dueDate: task.dueDate }),
+      });
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "Unable to undo the miss");
+      await refresh();
+      setToast(`${task.animalName}: ${task.title} back on the list`);
+      window.setTimeout(() => setToast(null), 2800);
+    } catch (unmissError) {
+      setToast(unmissError instanceof Error ? unmissError.message : "Unable to undo the miss");
+      window.setTimeout(() => setToast(null), 2800);
+    } finally {
+      setBusyTask(null);
+    }
+  };
+
   const missTask = (task: Task) => missGroup([task]);
 
   const missOnce = async (task: Task): Promise<ActionResult> => {
@@ -952,10 +1012,12 @@ export default function HusbandryApp() {
   const skipped = data?.tasks.filter((task) => task.skippedAt && !task.complete) ?? [];
   const accountable = data?.tasks.filter((task) => !task.skippedAt || task.complete) ?? [];
   // Missed is settled work too: the keeper has said it is not happening. It
-  // leaves the list like a skip does, but unlike a skip it stays in the day's
-  // totals, because a missed task is a lapse and the day should not read as
-  // complete without it.
-  const missed = accountable.filter((task) => !task.complete && task.missedAt);
+  // leaves the active list like a skip does, but unlike a skip it stays in the
+  // day's totals, because a missed task is a lapse and the day should not read as
+  // complete without it. The display list comes from the server so a task marked
+  // missed on an earlier day stays findable and reversible instead of vanishing
+  // once past its grace window.
+  const missed = data?.missed ?? [];
   const pending = accountable.filter((task) => !task.complete && !task.missedAt);
   const completed = accountable.filter((task) => task.complete);
   const overdue = data?.overdue ?? [];
@@ -1227,22 +1289,28 @@ export default function HusbandryApp() {
               ))}
             </div>
 
-            {/* Marked missed during the day rather than discovered overdue the
-                next morning. Still correctable: if it happened after all, Mark
-                done clears the miss. */}
+            {/* Tasks acknowledged as not done. They leave the active lists, but
+                stay here — findable and reversible — rather than vanishing once
+                past their grace window. "Actually done" records it after all;
+                "Put back" returns it to the list if it was marked by mistake. */}
             {missed.length > 0 && (
               <>
-                <div className="section-title compact"><h2>Missed today</h2><span>{missed.length}</span></div>
+                <div className="section-title compact"><h2>Missed</h2><span>{missed.length}</span></div>
                 <div className="completed-list missed-list">
                   {missed.map((task) => (
                     <div key={task.id}>
                       <span>!</span>
                       <b>{task.animalName}</b>
-                      <p>{task.title}{task.missedBy ? ` · ${task.missedBy}` : ""}</p>
+                      <p>{task.title}{task.dueDate !== data?.date ? ` · ${task.dueDate}` : ""}{task.missedBy ? ` · ${task.missedBy}` : ""}</p>
                       <span className="completion-correction-actions">
                         <button disabled={taskIsBusy(task.id)} onClick={() => void completeTask(task)}>
                           {taskIsBusy(task.id) ? "Saving…" : "Actually done"}
                         </button>
+                        {can("care.miss") && (
+                          <button className="mark-not-done" disabled={taskIsBusy(task.id)} onClick={() => void unmissTask(task)}>
+                            Put back
+                          </button>
+                        )}
                       </span>
                     </div>
                   ))}
@@ -1682,6 +1750,7 @@ export default function HusbandryApp() {
           <AnimalQuickLog
             animal={{ id: animal.id, name: animal.name, enclosureName: animal.enclosureName }}
             tasks={collectQuickLogTasks(source, quickLogId, data.date)}
+            otherCare={collectOtherCare(data.careMenu, source, quickLogId)}
             today={data.date}
             canComplete={can("care.complete")}
             canRecordWeight={can("weights.record")}
@@ -1694,6 +1763,9 @@ export default function HusbandryApp() {
                 ? completeOnce(task, "done", occurredOn)
                 : Promise.resolve({ ok: false, error: "That task is no longer due." });
             }}
+            // Out-of-cycle / early logging: no due task exists, so log the
+            // schedule as done today through the same completion path.
+            logCare={(scheduleId, title) => logScheduleOnce(scheduleId, animal.id, title, animal.name, data.date)}
             onClose={() => setQuickLogId(null)}
             onSaved={(message, opts) => {
               if (message) {

@@ -8,6 +8,7 @@ import { requireCapability } from "@/lib/household-auth";
 import { memberBalance } from "@/lib/rewards";
 import { loadFeederForecast } from "@/lib/feeder-forecast-data";
 import { feederGuidance } from "@/lib/feeder-guidance";
+import { scheduleAnimalIds } from "@/lib/care-group";
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +48,24 @@ export async function GET(request: Request) {
     const tasksResult = await db.prepare("SELECT t.id, t.schedule_id AS scheduleId, t.animal_id AS animalId, a.name AS animalName, a.species, t.task_type AS taskType, t.title, t.details, t.due_date AS dueDate, t.skipped_at AS skippedAt, t.skip_reason AS skipReason, t.missed_at AS missedAt, t.missed_by_name AS missedBy, e.outcome AS outcome, COALESCE(s.grace_days, 0) AS graceDays, CASE WHEN e.id IS NULL THEN 0 ELSE 1 END AS complete, e.id AS completionEventId, e.completed_by_member_id AS completedByMemberId, COALESCE(e.completed_by_name, e.actor_role) AS completedBy FROM care_tasks t JOIN animals a ON a.id=t.animal_id " + CARE_SCHEDULE_JOIN_SQL + " LEFT JOIN husbandry_events e ON e.task_id=t.id AND e.due_date=t.due_date AND e.voided_at IS NULL WHERE a.active = 1 AND a.brumating = 0 AND " + TASK_IS_CURRENT_SQL + " ORDER BY complete, t.due_date, a.name, t.title").bind(today, today).all<DashboardTask>();
     // Leftovers from earlier days that were never completed and not marked missed.
     const overdueResult = await db.prepare("SELECT t.id, t.schedule_id AS scheduleId, t.animal_id AS animalId, a.name AS animalName, a.species, t.task_type AS taskType, t.title, t.details, t.due_date AS dueDate, COALESCE(s.grace_days, 0) AS graceDays, 0 AS complete, NULL AS completionEventId, NULL AS completedByMemberId, NULL AS completedBy FROM care_tasks t JOIN animals a ON a.id=t.animal_id " + CARE_SCHEDULE_JOIN_SQL + " LEFT JOIN husbandry_events e ON e.task_id=t.id AND e.due_date=t.due_date AND e.voided_at IS NULL WHERE a.active = 1 AND a.brumating = 0 AND " + TASK_IS_OVERDUE_SQL + " AND t.due_date >= ? AND e.id IS NULL AND t.missed_at IS NULL AND t.skipped_at IS NULL ORDER BY t.due_date DESC, a.name, t.title").bind(today, overdueSince).all<DashboardTask>();
+    // The animal's whole active routine, so the enclosure-QR quick-log can offer
+    // care that is not due today — logged early (before a trip) or out of cycle.
+    // Expanded per covered active animal here (grouped plans cover several), the
+    // same rule the materializer and week projection use.
+    const careScheduleRows = await db.prepare(
+      "SELECT id, animal_id AS animalId, animal_ids_json AS animalIdsJson, task_type AS taskType, title FROM care_schedules WHERE active = 1",
+    ).all<{ id: string; animalId: string; animalIdsJson: string | null; taskType: string; title: string }>();
+    const activeAnimalIds = new Set((animalsResult.results as Array<{ id: string }>).map((row) => row.id));
+    const careMenu = careScheduleRows.results.flatMap((schedule) =>
+      scheduleAnimalIds(schedule)
+        .filter((animalId) => activeAnimalIds.has(animalId))
+        .map((animalId) => ({ id: schedule.id, animalId, taskType: schedule.taskType, title: schedule.title })),
+    );
+    // Missed tasks: acknowledged as not done, so they leave the active pending
+    // and overdue lists — but they must not vanish. Kept findable and reversible
+    // here (back to the baseline), since a task marked missed past its grace
+    // window otherwise disappears with no way to undo it.
+    const missedResult = await db.prepare("SELECT t.id, t.schedule_id AS scheduleId, t.animal_id AS animalId, a.name AS animalName, a.species, t.task_type AS taskType, t.title, t.details, t.due_date AS dueDate, t.missed_by_name AS missedBy, COALESCE(s.grace_days, 0) AS graceDays, 0 AS complete, NULL AS completionEventId, NULL AS completedByMemberId, NULL AS completedBy FROM care_tasks t JOIN animals a ON a.id=t.animal_id " + CARE_SCHEDULE_JOIN_SQL + " LEFT JOIN husbandry_events e ON e.task_id=t.id AND e.due_date=t.due_date AND e.voided_at IS NULL WHERE a.active = 1 AND a.brumating = 0 AND t.missed_at IS NOT NULL AND e.id IS NULL AND t.due_date >= ? ORDER BY t.due_date DESC, a.name, t.title").bind(overdueSince).all<DashboardTask>();
     const eventsResult = await db.prepare("SELECT e.id, e.task_id AS taskId, e.due_date AS dueDate, a.name AS animalName, e.task_type AS taskType, e.title, e.notes, e.outcome AS outcome, e.occurred_at AS occurredAt, e.actor_role AS actorRole, e.completed_by_member_id AS completedByMemberId, COALESCE(e.completed_by_name, e.actor_role) AS completedBy, e.voided_at AS voidedAt, e.voided_by_member_id AS voidedByMemberId, e.voided_by_name AS voidedBy, e.void_reason AS voidReason FROM husbandry_events e JOIN animals a ON a.id=e.animal_id WHERE e.voided_at IS NULL ORDER BY e.occurred_at DESC LIMIT 20").all();
     const weightsResult = await db.prepare("SELECT w.animal_id AS animalId, a.name AS animalName, w.recorded_on AS recordedOn, w.weight_grams AS weightGrams FROM weight_events w JOIN animals a ON a.id=w.animal_id ORDER BY w.animal_id, w.recorded_on").all();
     const [enclosureCountRow, scheduleCountRow, eventCountRow, keeperCountRow] = await Promise.all([
@@ -94,6 +113,8 @@ export async function GET(request: Request) {
       viewer: member ? { id: member.id, displayName: member.displayName, role: member.role, earningEnabled, balanceCents: viewerBalanceCents } : null,
       tasks: todayTasks.map(enrichTask),
       overdue: overdueResult.results.map(enrichTask),
+      missed: missedResult.results.map(enrichTask),
+      careMenu,
       animals: animalsResult.results,
       recentEvents: eventsResult.results,
       weightTrends,

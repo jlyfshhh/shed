@@ -69,6 +69,57 @@ export function collectQuickLogTasks(
   }));
 }
 
+/** One active care schedule, expanded to a single animal it covers. */
+export type CareMenuItem = {
+  /** The schedule id. */
+  id: string;
+  animalId: string;
+  title: string;
+  taskType: string;
+};
+
+/**
+ * A care type the animal has that is NOT already on the due list — the rest of
+ * its routine, offered so a keeper standing at the enclosure can log care done
+ * early (before a trip) or out of cycle (noticed it needed doing). Logged as of
+ * today through the normal completion path, so a feeding still deducts a feeder
+ * and earns exactly as a due feeding would.
+ */
+export type OtherCareItem = {
+  scheduleId: string;
+  title: string;
+  taskType: string;
+};
+
+/**
+ * The animal's loggable "other" care: every active schedule for it except the
+ * ones already represented on the due list. A schedule with any occurrence in
+ * `dueSources` — due, overdue, or already recorded today — is left to the due
+ * section so the same care is never offered twice or double-logged. The due
+ * sources carry the schedule id (the collected QuickLogTask rows do not), so the
+ * exclusion is by schedule, not by occurrence. De-duplicated by schedule and
+ * ordered by title, matching the due list's ordering.
+ */
+export function collectOtherCare(
+  menu: readonly CareMenuItem[],
+  dueSources: readonly { animalId: string; scheduleId: string | null }[],
+  animalId: string,
+): OtherCareItem[] {
+  const alreadyDue = new Set(
+    dueSources.filter((row) => row.animalId === animalId && row.scheduleId).map((row) => row.scheduleId as string),
+  );
+  const seen = new Set<string>();
+  const items: OtherCareItem[] = [];
+  for (const entry of menu) {
+    if (entry.animalId !== animalId) continue;
+    if (alreadyDue.has(entry.id) || seen.has(entry.id)) continue;
+    seen.add(entry.id);
+    items.push({ scheduleId: entry.id, title: entry.title, taskType: entry.taskType });
+  }
+  items.sort((a, b) => a.title.localeCompare(b.title));
+  return items;
+}
+
 /**
  * The keeper's chosen care date for an overdue row, bounded the same way the
  * Today view's timing dialog bounds it: never before the day it was due, never

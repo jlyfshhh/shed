@@ -11,6 +11,7 @@ import {
   missAllOverdueTasks,
   missScheduledTask,
   TaskDispositionError,
+  unmissScheduledTask,
 } from "@/lib/task-dispositions";
 
 const noStore = { "Cache-Control": "no-store" };
@@ -45,5 +46,29 @@ export async function POST(request: Request) {
       return Response.json({ error: error.message }, { status: error.status, headers: noStore });
     }
     return internalErrorResponse(error, { context: "Task missed-state update failed", message: "Unable to update the task", headers: noStore });
+  }
+}
+
+/** Un-miss: put a task marked missed back on the active list. Same capability
+ * as marking it — a reversible judgement about expected care, the Head Keeper's. */
+export async function DELETE(request: Request) {
+  try {
+    const parsed = await readJsonObject(request);
+    if (parsed.response) return parsed.response;
+    const payload = parsed.body as unknown as { taskId?: string; dueDate?: string };
+    if (!payload.taskId || !payload.dueDate) {
+      return Response.json({ error: "Task and due date are required" }, { status: 400, headers: noStore });
+    }
+    const db = await ensureDatabase();
+    const auth = await requireCapability(request, db, "care.miss");
+    if (auth.response) return auth.response;
+
+    await unmissScheduledTask(db, payload.taskId, payload.dueDate);
+    return Response.json({ saved: true }, { headers: noStore });
+  } catch (error) {
+    if (error instanceof TaskDispositionError) {
+      return Response.json({ error: error.message }, { status: error.status, headers: noStore });
+    }
+    return internalErrorResponse(error, { context: "Task un-miss failed", message: "Unable to restore the task", headers: noStore });
   }
 }

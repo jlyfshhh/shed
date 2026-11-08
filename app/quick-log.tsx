@@ -6,6 +6,7 @@ import type { MemberResult } from "@/lib/group-actions";
 import {
   quickLogCareDateValid,
   summariseQuickLogSave,
+  type OtherCareItem,
   type QuickLogEntryResult,
   type QuickLogTask,
 } from "@/lib/quick-log";
@@ -49,16 +50,20 @@ async function postJson(url: string, body: Record<string, unknown>): Promise<OpR
 export function AnimalQuickLog({
   animal,
   tasks,
+  otherCare,
   today,
   canComplete,
   canRecordWeight,
   canRecordShed,
   completeTask,
+  logCare,
   onClose,
   onSaved,
 }: {
   animal: { id: string; name: string; enclosureName: string | null };
   tasks: QuickLogTask[];
+  /** The rest of the animal's routine, loggable early or out of cycle. */
+  otherCare: OtherCareItem[];
   today: string;
   canComplete: boolean;
   canRecordWeight: boolean;
@@ -66,10 +71,15 @@ export function AnimalQuickLog({
   // Reuses the host's normal completion request, so feeder deduction / shortage
   // detail comes back in the result rather than being thrown away here.
   completeTask: (taskId: string, occurredOn?: string) => Promise<MemberResult>;
+  // Logs a not-due schedule as done today, through the same completion path.
+  logCare: (scheduleId: string, title: string) => Promise<MemberResult>;
   onClose: () => void;
   onSaved: (message?: string, opts?: { slow?: boolean }) => void;
 }) {
   const [checked, setChecked] = useState<Set<string>>(new Set());
+  // Checked "other care" rows, keyed by schedule id (kept apart from the due
+  // task ids above so the two lists never collide).
+  const [checkedOther, setCheckedOther] = useState<Set<string>>(new Set());
   // Per overdue task, the keeper's answer to "when was this done?" (defaults to
   // the due date — care logged late is attributed to when it was actually due
   // unless the keeper says otherwise).
@@ -90,12 +100,20 @@ export function AnimalQuickLog({
       return next;
     });
 
+  const toggleOther = (scheduleId: string) =>
+    setCheckedOther((prev) => {
+      const next = new Set(prev);
+      if (next.has(scheduleId)) next.delete(scheduleId);
+      else next.add(scheduleId);
+      return next;
+    });
+
   const careDateFor = (task: QuickLogTask) => careDates[task.id] ?? task.dueDate;
   const setCareDate = (id: string, value: string) => setCareDates((prev) => ({ ...prev, [id]: value }));
 
   const gramsValue = Number(grams);
   const weightValid = !weightOn || (Number.isFinite(gramsValue) && gramsValue > 0);
-  const entryCount = checked.size + (weightOn ? 1 : 0) + (shedOn ? 1 : 0);
+  const entryCount = checked.size + checkedOther.size + (weightOn ? 1 : 0) + (shedOn ? 1 : 0);
 
   const save = async () => {
     if (!entryCount) {
@@ -115,7 +133,7 @@ export function AnimalQuickLog({
     setBusy(true);
     setError(null);
 
-    type Settled = { kind: "task" | "weight" | "shed"; id?: string; result: QuickLogEntryResult };
+    type Settled = { kind: "task" | "other" | "weight" | "shed"; id?: string; result: QuickLogEntryResult };
     const jobs: Array<Promise<Settled>> = [];
 
     for (const task of checkedTasks) {
@@ -127,6 +145,18 @@ export function AnimalQuickLog({
           result: result.ok
             ? { ok: true, note: result.note, shortage: result.shortage, slow: result.slow }
             : { ok: false, label: task.title, error: result.error },
+        })),
+      );
+    }
+    const checkedOtherItems = otherCare.filter((item) => checkedOther.has(item.scheduleId));
+    for (const item of checkedOtherItems) {
+      jobs.push(
+        logCare(item.scheduleId, item.title).then((result): Settled => ({
+          kind: "other",
+          id: item.scheduleId,
+          result: result.ok
+            ? { ok: true, note: result.note, shortage: result.shortage, slow: result.slow }
+            : { ok: false, label: item.title, error: result.error },
         })),
       );
     }
@@ -171,6 +201,12 @@ export function AnimalQuickLog({
         for (const id of okTaskIds) delete next[id];
         return next;
       });
+    }
+    const okOtherIds = new Set(
+      settled.filter((entry) => entry.kind === "other" && entry.result.ok).map((entry) => entry.id as string),
+    );
+    if (okOtherIds.size) {
+      setCheckedOther((prev) => new Set([...prev].filter((id) => !okOtherIds.has(id))));
     }
     if (settled.some((entry) => entry.kind === "weight" && entry.result.ok)) {
       setWeightOn(false);
@@ -252,6 +288,27 @@ export function AnimalQuickLog({
               ) : (
                 <p className="quicklog-muted">Nothing due right now.</p>
               )}
+            </section>
+          )}
+
+          {canComplete && otherCare.length > 0 && (
+            <section className="quicklog-section">
+              <h3>Other care</h3>
+              <p className="quicklog-muted">Anything you did early or out of cycle — recorded as of today.</p>
+              <ul className="quicklog-tasks">
+                {otherCare.map((item) => (
+                  <li key={item.scheduleId}>
+                    <label className="quicklog-check">
+                      <input
+                        type="checkbox"
+                        checked={checkedOther.has(item.scheduleId)}
+                        onChange={() => toggleOther(item.scheduleId)}
+                      />
+                      <span>{item.title}</span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
             </section>
           )}
 

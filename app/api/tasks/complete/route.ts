@@ -5,6 +5,7 @@ import { CompletionTimingError, resolveOccurredAt } from "@/lib/completion-timin
 import { attributedTo, requireCapability } from "@/lib/household-auth";
 import { getDefaultRewardCents, memberBalance, rewardForCompletion } from "@/lib/rewards";
 import { claimMatchingFeederStatements } from "@/lib/feeder-consumption";
+import { careTaskId, scheduleAnimalIds } from "@/lib/care-group";
 import {
   CompletionCorrectionError,
   correctCompletionAttribution,
@@ -14,6 +15,15 @@ import {
 type CompletionPayload = {
   taskId?: string;
   dueDate?: string;
+  /**
+   * Log a care type that has no due task yet — the enclosure-QR quick-log's
+   * "other care", done early or out of cycle. The occurrence is materialized for
+   * `dueDate` (today) from this schedule, then completed by the normal path, so
+   * a feeding still deducts a feeder and earns like any other. Ignored when
+   * `taskId` is given.
+   */
+  scheduleId?: string;
+  animalId?: string;
   actorRole?: string;
   /** "done", or "refused" when a feeding was offered and the animal did not eat. */
   outcome?: string;
@@ -55,7 +65,11 @@ export async function POST(request: Request) {
     const parsed = await readJsonObject(request);
     if (parsed.response) return parsed.response;
     const payload = parsed.body as unknown as CompletionPayload;
-    if (!payload.taskId || !payload.dueDate) {
+    // Either an existing occurrence (taskId) or a schedule to log on demand
+    // (scheduleId + animalId). The due date is always required: it is the day
+    // the care is attributed to and the occurrence's identity.
+    const onDemand = !payload.taskId && Boolean(payload.scheduleId && payload.animalId);
+    if (!payload.dueDate || (!payload.taskId && !onDemand)) {
       return Response.json({ error: "Task and due date are required" }, { status: 400, headers: noStore });
     }
     if (payload.outcome !== undefined && payload.outcome !== "done" && payload.outcome !== "refused") {
@@ -68,9 +82,32 @@ export async function POST(request: Request) {
     if (auth.response) return auth.response;
     const member = auth.member;
 
+    // On-demand logging: materialize this schedule's occurrence for the day
+    // before the normal lookup finds it. The task id matches what the
+    // materializer would produce, so it is idempotent with a real occurrence and
+    // re-materialization never doubles it.
+    let taskId = payload.taskId;
+    if (onDemand) {
+      const schedule = await db.prepare(
+        "SELECT id, animal_id AS animalId, animal_ids_json AS animalIdsJson, task_type AS taskType, title, details FROM care_schedules WHERE id = ? AND active = 1",
+      ).bind(payload.scheduleId).first<{ id: string; animalId: string; animalIdsJson: string | null; taskType: string; title: string; details: string }>();
+      if (!schedule) return Response.json({ error: "Care plan not found" }, { status: 404, headers: noStore });
+      if (!scheduleAnimalIds(schedule).includes(payload.animalId as string)) {
+        return Response.json({ error: "That animal is not on this care plan" }, { status: 400, headers: noStore });
+      }
+      const animalActive = await db.prepare("SELECT active FROM animals WHERE id = ?").bind(payload.animalId).first<{ active: number }>();
+      if (!animalActive || animalActive.active === 0) {
+        return Response.json({ error: "That animal is archived" }, { status: 400, headers: noStore });
+      }
+      taskId = careTaskId(schedule.id, payload.animalId as string, schedule.animalId, payload.dueDate);
+      await db.prepare(
+        "INSERT OR IGNORE INTO care_tasks (id, schedule_id, animal_id, task_type, title, details, due_date) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      ).bind(taskId, schedule.id, payload.animalId, schedule.taskType, schedule.title, schedule.details, payload.dueDate).run();
+    }
+
     const task = await db.prepare(
       "SELECT t.id, t.schedule_id AS scheduleId, t.animal_id AS animalId, t.task_type AS taskType, t.title, t.details, s.reward_cents AS scheduleReward, s.prey_species AS preySpecies, s.prey_size_class AS preySizeClass, COALESCE(s.prey_description, s.prey_species) AS preyDescription, COALESCE(s.buy_as_needed, 0) AS buyAsNeeded, COALESCE(a.earning_enabled, 1) AS animalEarningEnabled FROM care_tasks t LEFT JOIN care_schedules s ON s.id = t.schedule_id LEFT JOIN animals a ON a.id = t.animal_id WHERE t.id=? AND t.due_date=?",
-    ).bind(payload.taskId, payload.dueDate).first<{ id: string; scheduleId: string | null; animalId: string; taskType: string; title: string; details: string; scheduleReward: number | null; preySpecies: string | null; preySizeClass: string | null; preyDescription: string | null; buyAsNeeded: number; animalEarningEnabled: number }>();
+    ).bind(taskId, payload.dueDate).first<{ id: string; scheduleId: string | null; animalId: string; taskType: string; title: string; details: string; scheduleReward: number | null; preySpecies: string | null; preySizeClass: string | null; preyDescription: string | null; buyAsNeeded: number; animalEarningEnabled: number }>();
     if (!task) return Response.json({ error: "Task not found" }, { status: 404, headers: noStore });
 
     const existing = await db.prepare(

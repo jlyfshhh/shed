@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  collectOtherCare,
   collectQuickLogTasks,
   quickLogCareDateValid,
   summariseQuickLogSave,
+  type CareMenuItem,
   type QuickLogEntryResult,
   type QuickLogSource,
 } from "../lib/quick-log.ts";
@@ -169,4 +171,61 @@ test("when nothing saved the message gives each failure's reason and claims no s
   assert.doesNotMatch(summary.message, /Saved/);
   assert.match(summary.message, /Feed \(Task is no longer due\)/);
   assert.match(summary.message, /Shed \(Network error\)/);
+});
+
+// ── collectOtherCare: the rest of the routine, loggable early / out of cycle ──
+
+const menu = (over: Partial<CareMenuItem> & Pick<CareMenuItem, "id">): CareMenuItem => ({
+  animalId: "a1",
+  title: "Clean water bowl",
+  taskType: "water bowl cleaning",
+  ...over,
+});
+
+test("other care is every active schedule not already on the due list", () => {
+  const rows = collectOtherCare(
+    [
+      menu({ id: "water-a1", title: "Clean water bowl" }),
+      menu({ id: "mist-a1", title: "Mist enclosure", taskType: "misting" }),
+      menu({ id: "feed-a1", title: "Feed", taskType: "feeding" }),
+    ],
+    // "feed-a1" has a due occurrence today, so it belongs to due care, not here.
+    [{ animalId: "a1", scheduleId: "feed-a1" }],
+    "a1",
+  );
+  assert.deepEqual(rows.map((row) => row.scheduleId), ["water-a1", "mist-a1"]);
+  assert.equal(rows[0].taskType, "water bowl cleaning");
+});
+
+test("a schedule already recorded today is still excluded (no double-log)", () => {
+  // A completed occurrence is a due-list source too, so its schedule drops out.
+  const rows = collectOtherCare(
+    [menu({ id: "water-a1" }), menu({ id: "mist-a1", title: "Mist enclosure" })],
+    [{ animalId: "a1", scheduleId: "water-a1" }],
+    "a1",
+  );
+  assert.deepEqual(rows.map((row) => row.scheduleId), ["mist-a1"]);
+});
+
+test("only the scanned animal's schedules appear, deduped and title-ordered", () => {
+  const rows = collectOtherCare(
+    [
+      menu({ id: "mist-a1", title: "Mist enclosure", taskType: "misting" }),
+      menu({ id: "water-a1", title: "Clean water bowl" }),
+      menu({ id: "mist-a1", title: "Mist enclosure", taskType: "misting" }),
+      menu({ id: "feed-b2", animalId: "b2", title: "Feed" }),
+    ],
+    [],
+    "a1",
+  );
+  assert.deepEqual(rows.map((row) => row.scheduleId), ["water-a1", "mist-a1"]);
+});
+
+test("an ad-hoc due source (no schedule) never hides a menu entry", () => {
+  const rows = collectOtherCare(
+    [menu({ id: "water-a1" })],
+    [{ animalId: "a1", scheduleId: null }],
+    "a1",
+  );
+  assert.deepEqual(rows.map((row) => row.scheduleId), ["water-a1"]);
 });
