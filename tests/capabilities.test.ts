@@ -12,9 +12,10 @@ import {
   type Capability,
 } from "../lib/capabilities.ts";
 
-test("Keeper is read plus completion only and Owner holds the whole matrix", () => {
-  assert.deepEqual(KEEPER_CAPABILITIES, ["care.read", "care.complete"]);
-  assert.deepEqual(capabilitiesForRole("Zookeeper"), ["care.read", "care.complete"]);
+test("Keeper does daily care plus weight/shed logging, and Owner holds the whole matrix", () => {
+  const keeper = ["care.read", "care.complete", "weights.record", "sheds.record"];
+  assert.deepEqual(KEEPER_CAPABILITIES, keeper);
+  assert.deepEqual(capabilitiesForRole("Zookeeper"), keeper);
   assert.deepEqual(capabilitiesForRole("Owner"), ALL_CAPABILITIES);
 
   for (const capability of ALL_CAPABILITIES) {

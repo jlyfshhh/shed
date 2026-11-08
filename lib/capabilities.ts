@@ -33,9 +33,13 @@ export type Capability =
   /** Download the whole database. */
   | "records.export"
   | "animal.photo.write"
+  /** Record a weight. Zookeepers may log these (household choice): weighing is
+      hands-on care, and the Owner can still delete or reassign a weight in Manage
+      if one is wrong. */
   | "weights.record"
-  /** Log a shed when someone notices one. Owner-only for the same reason as
-      weights: there is no keeper-facing way to correct a shed once saved. */
+  /** Log a shed when someone notices one. Zookeepers may log these too; note that
+      unlike a weight there is still no keeper-facing way to correct a shed once
+      saved, so a wrong entry stands until the Owner handles it. */
   | "sheds.record"
   | "feeders.manage"
   | "lighting.manage"
@@ -52,8 +56,8 @@ const CAPABILITY_ROLES: Record<Capability, readonly HouseholdRole[]> = {
   "records.manage": ["Owner"],
   "records.export": ["Owner"],
   "animal.photo.write": ["Owner"],
-  "weights.record": ["Owner"],
-  "sheds.record": ["Owner"],
+  "weights.record": ["Owner", "Zookeeper"],
+  "sheds.record": ["Owner", "Zookeeper"],
   "feeders.manage": ["Owner"],
   "lighting.manage": ["Owner"],
   "household.manage": ["Owner"],
