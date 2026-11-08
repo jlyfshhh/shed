@@ -9,6 +9,7 @@ import { memberBalance } from "@/lib/rewards";
 import { loadFeederForecast } from "@/lib/feeder-forecast-data";
 import { feederGuidance } from "@/lib/feeder-guidance";
 import { scheduleAnimalIds } from "@/lib/care-group";
+import { MISSED_TASKS_SQL, missedTasksSince } from "@/lib/missed-tasks";
 
 export const dynamic = "force-dynamic";
 
@@ -67,10 +68,10 @@ export async function GET(request: Request) {
     // and overdue lists — but they must not vanish. Kept findable and reversible
     // here (back to the baseline), since a task marked missed past its grace
     // window otherwise disappears with no way to undo it.
-    // `superseded` marks a miss whose plan has since come due again: it can be
-    // completed late but not "put back" (auto-miss would re-apply it), so the UI
-    // hides the restore control for these.
-    const missedResult = await db.prepare("SELECT t.id, t.schedule_id AS scheduleId, t.animal_id AS animalId, a.name AS animalName, a.species, t.task_type AS taskType, t.title, t.details, t.due_date AS dueDate, t.missed_by_name AS missedBy, COALESCE(s.grace_days, 0) AS graceDays, 0 AS complete, NULL AS completionEventId, NULL AS completedByMemberId, NULL AS completedBy, (EXISTS (SELECT 1 FROM care_tasks later WHERE later.schedule_id = t.schedule_id AND later.animal_id = t.animal_id AND later.due_date > t.due_date AND later.due_date <= ?)) AS superseded FROM care_tasks t JOIN animals a ON a.id=t.animal_id " + CARE_SCHEDULE_JOIN_SQL + " LEFT JOIN husbandry_events e ON e.task_id=t.id AND e.due_date=t.due_date AND e.voided_at IS NULL WHERE a.active = 1 AND a.brumating = 0 AND t.missed_at IS NOT NULL AND e.id IS NULL AND t.due_date >= ? ORDER BY t.due_date DESC, a.name, t.title").bind(today, overdueSince).all<DashboardTask>();
+    // Kept findable back to the care baseline (missedTasksSince), not the rolling
+    // overdue cutoff, so a non-superseded miss (e.g. a monthly feeding whose next
+    // occurrence is weeks off) does not vanish 13 days after it was missed.
+    const missedResult = await db.prepare(MISSED_TASKS_SQL).bind(today, missedTasksSince(careStartDate)).all<DashboardTask>();
     const eventsResult = await db.prepare("SELECT e.id, e.task_id AS taskId, e.due_date AS dueDate, a.name AS animalName, e.task_type AS taskType, e.title, e.notes, e.outcome AS outcome, e.occurred_at AS occurredAt, e.actor_role AS actorRole, e.completed_by_member_id AS completedByMemberId, COALESCE(e.completed_by_name, e.actor_role) AS completedBy, e.voided_at AS voidedAt, e.voided_by_member_id AS voidedByMemberId, e.voided_by_name AS voidedBy, e.void_reason AS voidReason FROM husbandry_events e JOIN animals a ON a.id=e.animal_id WHERE e.voided_at IS NULL ORDER BY e.occurred_at DESC LIMIT 20").all();
     const weightsResult = await db.prepare("SELECT w.animal_id AS animalId, a.name AS animalName, w.recorded_on AS recordedOn, w.weight_grams AS weightGrams FROM weight_events w JOIN animals a ON a.id=w.animal_id ORDER BY w.animal_id, w.recorded_on").all();
     const [enclosureCountRow, scheduleCountRow, eventCountRow, keeperCountRow] = await Promise.all([

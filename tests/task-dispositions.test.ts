@@ -11,6 +11,7 @@ import {
   unmissScheduledTask,
   unskipScheduledTask,
 } from "../lib/task-dispositions.ts";
+import { MISSED_TASKS_SQL, missedTasksSince } from "../lib/missed-tasks.ts";
 
 class BoundStatement {
   private readonly statement: StatementSync;
@@ -303,6 +304,36 @@ test("a superseded auto-miss cannot be put back, but a non-superseded miss can â
   assert.equal(task(adapter, "feed:2026-11-08").missed_at, null);
   assert.equal(await autoMissSupersededTasks(adapter as unknown as D1Database, "2026-11-08"), 0, "nothing new is superseded");
   assert.equal(task(adapter, "feed:2026-11-08").missed_at, null, "the restored, non-superseded task is left alone");
+});
+
+test("the missed list reaches back to the care baseline, not the 13-day overdue window", () => {
+  const adapter = new SqliteD1();
+  adapter.sqlite.exec(`
+    CREATE TABLE care_tasks (id TEXT PRIMARY KEY, schedule_id TEXT, animal_id TEXT NOT NULL, task_type TEXT, title TEXT, details TEXT, due_date TEXT NOT NULL, missed_at TEXT, missed_by_name TEXT);
+    CREATE TABLE animals (id TEXT PRIMARY KEY, name TEXT, species TEXT, active INTEGER NOT NULL DEFAULT 1, brumating INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE care_schedules (id TEXT PRIMARY KEY, grace_days INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE husbandry_events (id TEXT PRIMARY KEY, task_id TEXT, due_date TEXT, voided_at TEXT);
+    INSERT INTO animals (id, name, species, active, brumating) VALUES ('snake','Taco','BP',1,0), ('gone','Archived','x',0,0);
+    INSERT INTO care_schedules (id, grace_days) VALUES ('feed-monthly',0), ('feed-daily',0);
+    INSERT INTO care_tasks (id, schedule_id, animal_id, task_type, title, details, due_date, missed_at, missed_by_name) VALUES
+      ('feed-monthly:2026-10-19','feed-monthly','snake','feeding','Feed','','2026-10-19','2026-10-20T00:00:00Z','Keeper A'),
+      ('feed-daily:2026-11-01','feed-daily','snake','feeding','Feed insects','','2026-11-01','2026-11-02T00:00:00Z',NULL),
+      ('feed-daily:2026-11-08','feed-daily','snake','feeding','Feed insects','','2026-11-08',NULL,NULL),
+      ('feed-monthly:2026-10-05','feed-monthly','snake','feeding','Feed','','2026-10-05','2026-10-06T00:00:00Z',NULL),
+      ('feed-daily:2026-11-03-gone','feed-daily','gone','feeding','Feed','','2026-11-03','2026-11-04T00:00:00Z',NULL);
+  `);
+  const rows = adapter.sqlite.prepare(MISSED_TASKS_SQL).all("2026-11-08", missedTasksSince("2026-10-10")) as Array<{ id: string; superseded: number }>;
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  // A 20-day-old, non-superseded monthly miss stays findable â€” the old
+  // today-minus-13 cutoff would have dropped it on day 14.
+  assert.equal(byId.get("feed-monthly:2026-10-19")?.superseded, 0);
+  // A recent daily miss overtaken by today's occurrence is present and flagged.
+  assert.equal(byId.get("feed-daily:2026-11-01")?.superseded, 1);
+  // Excluded: before the baseline, the now-due (not missed) occurrence, an archived animal.
+  assert.equal(byId.has("feed-monthly:2026-10-05"), false);
+  assert.equal(byId.has("feed-daily:2026-11-08"), false);
+  assert.equal(byId.has("feed-daily:2026-11-03-gone"), false);
+  assert.equal(rows.length, 2);
 });
 
 test("legacy impossible dispositions are normalized without inventing care", async () => {
