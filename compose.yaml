@@ -4,7 +4,12 @@ services:
     # compile on the target machine. To build from this checkout instead, add
     # the dev overlay:
     #   docker compose -f compose.yaml -f compose.dev.yaml up -d --build
-    image: ghcr.io/jlyfshhh/shed:${SHED_TAG:-v1.1.1}
+    #
+    # The tag has no leading "v": the publish workflow tags images with
+    # docker/metadata-action's semver pattern, which normalises the git tag
+    # "v1.1.2" to the image tag "1.1.2" (a ":v1.1.2" image is never published).
+    # Override with SHED_TAG to pin a different release.
+    image: ghcr.io/jlyfshhh/shed:${SHED_TAG:-1.1.2}
     container_name: shed
     restart: unless-stopped
     logging:
