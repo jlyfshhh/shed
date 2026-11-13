@@ -89,3 +89,25 @@ export function resolveOccurredAt({
 export function taskIsOverdue(dueDate: string, now = new Date(), timeZone = DEFAULT_TIME_ZONE) {
   return dueDate < dateInTimeZone(timeZone, now);
 }
+
+/**
+ * Every calendar day a late completion could honestly be attributed to: the due
+ * date (the day it first appeared on the list) through today, inclusive. This is
+ * exactly the window `resolveOccurredAt` accepts, surfaced as discrete choices so
+ * a grace-window task — on the list Friday, done Saturday, logged Monday — can be
+ * marked for the day it was really done instead of only its endpoints.
+ *
+ * Returns `[]` when today precedes the due date (nothing to backdate), or when
+ * the span is longer than `cap` days — a months-old occurrence is better served
+ * by a free date field than by a wall of buttons, so the caller falls back to one.
+ */
+export function completionDayOptions(dueDate: string, today: string, cap = 14): string[] {
+  if (!isIsoDate(dueDate) || !isIsoDate(today) || today < dueDate) return [];
+  const start = Date.parse(`${dueDate}T12:00:00.000Z`);
+  const end = Date.parse(`${today}T12:00:00.000Z`);
+  const days = Math.round((end - start) / 86_400_000) + 1;
+  if (days > cap) return [];
+  return Array.from({ length: days }, (_, index) =>
+    new Date(start + index * 86_400_000).toISOString().slice(0, 10),
+  );
+}

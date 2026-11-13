@@ -12,6 +12,7 @@ import { animalFacts, speciesGlyph } from "@/lib/animal-traits";
 import { groupTasks } from "@/lib/care-group";
 import { groupToast, type MemberOutcome, type MemberResult } from "@/lib/group-actions";
 import { taskIsOverdue, taskLastDay } from "@/lib/care-window";
+import { completionDayOptions } from "@/lib/completion-timing";
 import type { Capability } from "@/lib/capabilities";
 
 type Role = "Owner" | "Zookeeper";
@@ -1806,7 +1807,15 @@ export default function HusbandryApp() {
           onNotice={notify}
         />
       )}
-      {timingTask && data && (
+      {timingTask && data && (() => {
+        // Every day the care could have happened on — the due date (when it first
+        // appeared on the list) through today — offered as discrete choices, so a
+        // grace-window task is logged on the day it was really done rather than
+        // only its endpoints. A months-old occurrence (beyond the cap) falls back
+        // to a free date field instead of a wall of buttons.
+        const dayOptions = completionDayOptions(timingTask.task.dueDate, data.date);
+        const busy = busyTask === timingTask.task.id;
+        return (
         <div className="sheet-backdrop attribution-backdrop" role="dialog" aria-modal="true" aria-labelledby="timing-title" onClick={() => setTimingTask(null)}>
           <div className="sheet attribution-sheet" onClick={(event) => event.stopPropagation()}>
             <header className="sheet-head">
@@ -1819,60 +1828,61 @@ export default function HusbandryApp() {
             <div className="attribution-body">
               <div className="correction-notice">
                 <b>This was due {formatDate(timingTask.task.dueDate)}.</b>
-                <span>Any answer records the care. It only sets the date this shows under in {timingTask.task.animalName}’s history.</span>
+                <span>Pick the day it was actually done. It only sets the date this shows under in {timingTask.task.animalName}’s history.</span>
               </div>
-              {/* The two buttons cover the common cases; the picker exists because
-                  care given on neither of those days is just as ordinary — fed on
-                  Sunday, due Friday, logged Monday. */}
-              {timingTask.task.dueDate !== data.date && (
-                <label>
-                  <span>Or another day</span>
-                  <input
-                    type="date"
-                    min={timingTask.task.dueDate}
-                    max={data.date}
-                    value={timingDate}
-                    onChange={(event) => setTimingDate(event.target.value)}
-                  />
-                  <small>Between {shortDate(timingTask.task.dueDate)} and today.</small>
-                </label>
+              {dayOptions.length > 0 ? (
+                // One button per day from the due date through today.
+                <div className="sheet-actions" style={{ flexWrap: "wrap" }}>
+                  {dayOptions.map((day) => (
+                    <button
+                      key={day}
+                      type="button"
+                      className={day === data.date ? undefined : "ghost"}
+                      disabled={busy}
+                      onClick={() => recordCompletionAll(timingTask.tasks, timingTask.outcome, day)}
+                    >
+                      {day === data.date
+                        ? (busy ? "Saving…" : "Today")
+                        : `${shortDate(day)}${day === timingTask.task.dueDate ? " · due" : ""}`}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                // Fallback for a span too long to list: a bounded free date field.
+                <>
+                  <label>
+                    <span>When was it done?</span>
+                    <input
+                      type="date"
+                      min={timingTask.task.dueDate}
+                      max={data.date}
+                      value={timingDate}
+                      onChange={(event) => setTimingDate(event.target.value)}
+                    />
+                    <small>Between {shortDate(timingTask.task.dueDate)} and today.</small>
+                  </label>
+                  {timingDate && (timingDate < timingTask.task.dueDate || timingDate > data.date) && (
+                    <p className="form-error" role="alert">
+                      Pick a day between {shortDate(timingTask.task.dueDate)} and today.
+                    </p>
+                  )}
+                  <div className="sheet-actions">
+                    {timingDate && timingDate >= timingTask.task.dueDate && timingDate <= data.date && (
+                      <button type="button" disabled={busy} onClick={() => recordCompletionAll(timingTask.tasks, timingTask.outcome, timingDate)}>
+                        {busy ? "Saving…" : `On ${shortDate(timingDate)}`}
+                      </button>
+                    )}
+                    <button type="button" disabled={busy} onClick={() => recordCompletionAll(timingTask.tasks, timingTask.outcome, data.date)}>
+                      {busy ? "Saving…" : "Today"}
+                    </button>
+                  </div>
+                </>
               )}
-              {timingDate && (timingDate < timingTask.task.dueDate || timingDate > data.date) && (
-                <p className="form-error" role="alert">
-                  Pick a day between {shortDate(timingTask.task.dueDate)} and today.
-                </p>
-              )}
-              <div className="sheet-actions">
-                {timingDate && timingDate >= timingTask.task.dueDate && timingDate <= data.date
-                  && timingDate !== timingTask.task.dueDate && timingDate !== data.date && (
-                  <button
-                    type="button"
-                    disabled={busyTask === timingTask.task.id}
-                    onClick={() => recordCompletionAll(timingTask.tasks, timingTask.outcome, timingDate)}
-                  >
-                    {busyTask === timingTask.task.id ? "Saving…" : `On ${shortDate(timingDate)}`}
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="ghost"
-                  disabled={busyTask === timingTask.task.id}
-                  onClick={() => recordCompletionAll(timingTask.tasks, timingTask.outcome, timingTask.task.dueDate)}
-                >
-                  On {shortDate(timingTask.task.dueDate)}
-                </button>
-                <button
-                  type="button"
-                  disabled={busyTask === timingTask.task.id}
-                  onClick={() => recordCompletionAll(timingTask.tasks, timingTask.outcome, data.date)}
-                >
-                  {busyTask === timingTask.task.id ? "Saving…" : "Today"}
-                </button>
-              </div>
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {attributionTask && can("care.correct") && (
         <div className="sheet-backdrop attribution-backdrop" role="dialog" aria-modal="true" aria-labelledby="attribution-title" onClick={() => setAttributionTask(null)}>

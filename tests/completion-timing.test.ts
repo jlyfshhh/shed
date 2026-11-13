@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   CompletionTimingError,
+  completionDayOptions,
   resolveOccurredAt,
   taskIsOverdue,
 } from "../lib/completion-timing.ts";
@@ -150,4 +151,33 @@ test("an overdue task completed near midnight still resolves to the local today"
   });
   assert.equal(timing.occurredAt, lateEvening.toISOString());
   assert.equal(timing.backdated, false);
+});
+
+// ── completionDayOptions: every grace day from the due date through today ──
+
+test("a grace-window task offers each day from its due date through today", () => {
+  // On the list Friday, still open Monday: Fri, Sat, Sun, Mon are all offerable.
+  assert.deepEqual(
+    completionDayOptions("2026-11-06", "2026-11-09"),
+    ["2026-11-06", "2026-11-07", "2026-11-08", "2026-11-09"],
+  );
+});
+
+test("a task due today offers only today", () => {
+  assert.deepEqual(completionDayOptions("2026-11-09", "2026-11-09"), ["2026-11-09"]);
+});
+
+test("every offered day is accepted by resolveOccurredAt (no option can be rejected)", () => {
+  const due = "2026-11-06";
+  const today = "2026-11-09";
+  const now = new Date(`${today}T18:30:00.000Z`);
+  for (const day of completionDayOptions(due, today)) {
+    assert.doesNotThrow(() => resolveOccurredAt({ dueDate: due, occurredOn: day, now, timeZone: "UTC" }));
+  }
+});
+
+test("nothing to backdate, or too long a span, yields no day buttons (caller uses a date field)", () => {
+  assert.deepEqual(completionDayOptions("2026-11-09", "2026-11-06"), []); // today before due
+  assert.equal(completionDayOptions("2026-01-01", "2026-12-31").length, 0); // > cap
+  assert.equal(completionDayOptions("2026-11-01", "2026-11-14").length, 14); // exactly cap
 });
