@@ -7,9 +7,9 @@ services:
     #
     # The tag has no leading "v": the publish workflow tags images with
     # docker/metadata-action's semver pattern, which normalises the git tag
-    # "v1.1.5" to the image tag "1.1.5" (a ":v1.1.5" image is never published).
+    # "v1.1.6" to the image tag "1.1.6" (a ":v1.1.6" image is never published).
     # Override with SHED_TAG to pin a different release.
-    image: ghcr.io/jlyfshhh/shed:${SHED_TAG:-1.1.5}
+    image: ghcr.io/jlyfshhh/shed:${SHED_TAG:-1.1.6}
     container_name: shed
     restart: unless-stopped
     logging:
