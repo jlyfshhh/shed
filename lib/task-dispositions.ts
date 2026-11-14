@@ -1,3 +1,6 @@
+// Relative import: covered by a `node --test` suite without the bundler alias.
+import { supersededSql } from "./superseded.ts";
+
 export class TaskDispositionError extends Error {
   readonly status: 404 | 409;
 
@@ -138,7 +141,8 @@ export async function unskipScheduledTask(db: D1Database, taskId: string, dueDat
  * Un-miss: the keeper changed their mind, or marked the wrong one missed. It
  * returns to the active list exactly as un-skip does — but only while the
  * make-up window is still open. Once the plan has come due again (a later
- * occurrence of the same plan and animal is due on or before `today`), the
+ * occurrence of the same task — see lib/superseded.ts — is due on or before
+ * `today`), the
  * occurrence was genuinely superseded, and `autoMissSupersededTasks` would
  * re-miss it on the next materialization anyway; restoring it would silently
  * reverse on the next date rollover or worker restart. So restoring a
@@ -150,14 +154,9 @@ export async function unmissScheduledTask(db: D1Database, taskId: string, dueDat
   const superseded = await db.prepare(
     `SELECT 1 AS yes
        FROM care_tasks self
-       JOIN care_tasks later
-         ON later.schedule_id = self.schedule_id
-        AND later.animal_id = self.animal_id
-        AND later.due_date > self.due_date
-        AND later.due_date <= ?
-      WHERE self.id = ? AND self.due_date = ? AND self.schedule_id IS NOT NULL
+      WHERE self.id = ? AND self.due_date = ? AND ${supersededSql("self")}
       LIMIT 1`,
-  ).bind(today, taskId, dueDate).first<{ yes: number }>();
+  ).bind(taskId, dueDate, today).first<{ yes: number }>();
   if (superseded) {
     throw new TaskDispositionError(
       "This was superseded when its plan came due again, so it can't be put back — mark it done if it actually happened.",
@@ -239,8 +238,9 @@ export async function missAllOverdueTasks(
  * A keeper can make up an overdue task only until its plan comes due again:
  * once the next occurrence is due, doing the care now counts toward that new
  * occurrence, and the earlier one was simply missed. So any still-open
- * occurrence that a later occurrence of the same plan and animal has already
- * overtaken — its due date reached (<= today) — is recorded missed. No keeper
+ * occurrence that a later occurrence of the same task for that animal (same
+ * plan, or another plan with the same type and title — see lib/superseded.ts)
+ * has already overtaken — its due date reached (<= today) — is recorded missed. No keeper
  * is attributed: this is the system closing an expired make-up window, not a
  * person's judgement, so missed_by is left null.
  *
@@ -267,13 +267,7 @@ export async function autoMissSupersededTasks(
              AND e.due_date = care_tasks.due_date
              AND e.voided_at IS NULL
         )
-        AND EXISTS (
-          SELECT 1 FROM care_tasks later
-           WHERE later.schedule_id = care_tasks.schedule_id
-             AND later.animal_id = care_tasks.animal_id
-             AND later.due_date > care_tasks.due_date
-             AND later.due_date <= ?
-        )`,
+        AND ${supersededSql("care_tasks")}`,
   ).bind(occurredAt ?? new Date().toISOString(), today).run();
   return result.meta.changes ?? 0;
 }

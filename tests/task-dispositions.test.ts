@@ -59,6 +59,8 @@ function fixture() {
       id TEXT PRIMARY KEY,
       schedule_id TEXT,
       animal_id TEXT,
+      task_type TEXT,
+      title TEXT,
       due_date TEXT NOT NULL,
       missed_at TEXT,
       missed_by_member_id TEXT,
@@ -229,7 +231,7 @@ test("auto-miss closes a superseded occurrence once the plan is due again, and o
   const adapter = new SqliteD1();
   adapter.sqlite.exec(`
     CREATE TABLE care_tasks (
-      id TEXT PRIMARY KEY, schedule_id TEXT, animal_id TEXT NOT NULL, due_date TEXT NOT NULL,
+      id TEXT PRIMARY KEY, schedule_id TEXT, animal_id TEXT NOT NULL, task_type TEXT, title TEXT, due_date TEXT NOT NULL,
       missed_at TEXT, missed_by_member_id TEXT, missed_by_name TEXT,
       skipped_at TEXT, skipped_by_member_id TEXT, skipped_by_name TEXT, skip_reason TEXT
     );
@@ -268,11 +270,56 @@ test("auto-miss closes a superseded occurrence once the plan is due again, and o
   assert.equal(await autoMissSupersededTasks(adapter as unknown as D1Database, "2026-11-08"), 0);
 });
 
+test("a same-named task on another plan supersedes too (dart frogs: Thu calcium feed, Sat multivitamin feed)", async () => {
+  const adapter = new SqliteD1();
+  adapter.sqlite.exec(`
+    CREATE TABLE care_tasks (
+      id TEXT PRIMARY KEY, schedule_id TEXT, animal_id TEXT NOT NULL, task_type TEXT, title TEXT, due_date TEXT NOT NULL,
+      missed_at TEXT, missed_by_member_id TEXT, missed_by_name TEXT,
+      skipped_at TEXT, skipped_by_member_id TEXT, skipped_by_name TEXT, skip_reason TEXT
+    );
+    CREATE TABLE husbandry_events (id TEXT PRIMARY KEY, task_id TEXT, due_date TEXT, voided_at TEXT);
+    INSERT INTO care_tasks (id, schedule_id, animal_id, task_type, title, due_date) VALUES
+      ('calcium:2026-11-12', 'calcium', 'frogs', 'feeding', 'Feed fruit flies', '2026-11-12'), -- Thu, open
+      ('multi:2026-11-14',   'multi',   'frogs', 'feeding', 'Feed fruit flies', '2026-11-14'), -- Sat, today
+      ('mist:2026-11-12',    'mist',    'frogs', 'misting', 'Mist enclosure',   '2026-11-12'), -- other task, no later mist due
+      ('bowl:2026-11-12',    'bowl',    'frogs', 'cleaning', 'Clean water bowl', '2026-11-12'), -- same type as spot,
+      ('spot:2026-11-14',    'spot',    'frogs', 'cleaning', 'Spot clean',       '2026-11-14'), -- different title: not the same task
+      ('gecko:2026-11-12',   'gecko',   'gecko', 'feeding', 'Feed fruit flies', '2026-11-12'), -- other animal
+      ('adhoc:2026-11-12',   NULL,      'frogs', 'feeding', 'Feed fruit flies', '2026-11-12'), -- ad-hoc never superseded
+      ('adhoc:2026-11-13',   NULL,      'frogs', 'feeding', 'Feed fruit flies', '2026-11-13'); -- ad-hoc never supersedes
+  `);
+
+  // Friday: Saturday's feeding is not due yet, so Thursday's can still be made up.
+  assert.equal(await autoMissSupersededTasks(adapter as unknown as D1Database, "2026-11-13"), 0);
+
+  // Saturday: the multivitamin feeding is due, so Thursday's calcium feeding is closed.
+  assert.equal(await autoMissSupersededTasks(adapter as unknown as D1Database, "2026-11-14", "2026-11-14T12:00:00.000Z"), 1);
+  assert.equal(task(adapter, "calcium:2026-11-12").missed_at, "2026-11-14T12:00:00.000Z");
+  for (const id of ["multi:2026-11-14", "mist:2026-11-12", "bowl:2026-11-12", "gecko:2026-11-12", "adhoc:2026-11-12", "adhoc:2026-11-13"]) {
+    assert.equal(task(adapter, id).missed_at, null, `${id} should not be auto-missed`);
+  }
+
+  // The put-back guard and the missed list agree with auto-miss.
+  await assert.rejects(
+    unmissScheduledTask(adapter as unknown as D1Database, "calcium:2026-11-12", "2026-11-12", "2026-11-14"),
+    (error) => error instanceof TaskDispositionError && error.status === 409,
+  );
+  await missScheduledTask(adapter as unknown as D1Database, {
+    taskId: "bowl:2026-11-12", dueDate: "2026-11-12", actor: owner, occurredAt: "2026-11-13T09:00:00.000Z",
+  });
+  assert.deepEqual(
+    await unmissScheduledTask(adapter as unknown as D1Database, "bowl:2026-11-12", "2026-11-12", "2026-11-14"),
+    { missed: false },
+    "a differently-titled chore of the same type does not supersede it",
+  );
+});
+
 test("a superseded auto-miss cannot be put back, but a non-superseded miss can — and stays put through another pass", async () => {
   const adapter = new SqliteD1();
   adapter.sqlite.exec(`
     CREATE TABLE care_tasks (
-      id TEXT PRIMARY KEY, schedule_id TEXT, animal_id TEXT NOT NULL, due_date TEXT NOT NULL,
+      id TEXT PRIMARY KEY, schedule_id TEXT, animal_id TEXT NOT NULL, task_type TEXT, title TEXT, due_date TEXT NOT NULL,
       missed_at TEXT, missed_by_member_id TEXT, missed_by_name TEXT,
       skipped_at TEXT, skipped_by_member_id TEXT, skipped_by_name TEXT, skip_reason TEXT
     );
